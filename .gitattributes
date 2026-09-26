@@ -1,0 +1,12 @@
+@'
+# Historical HTML snapshots — treat as binary/docs, not code
+ver/*.html linguist-documentation
+ver/*.html binary
+
+# Normalize line endings for source files
+*.js    text eol=lf
+*.json  text eol=lf
+*.md    text eol=lf
+*.yml   text eol=lf
+*.html  text eol=lf
+'@ | Set-Content -Path .gitattributes -Encoding UTF8

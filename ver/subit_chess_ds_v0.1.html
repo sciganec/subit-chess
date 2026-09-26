@@ -1,0 +1,1306 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>SUBIT-CHESS — Морфодинамічний шаховий двигун</title>
+<style>
+  :root {
+    --bg-primary: #0f0f1a;
+    --bg-secondary: #1a1a2e;
+    --bg-panel: #16213e;
+    --bg-board-light: #f0d9b5;
+    --bg-board-dark: #b58863;
+    --text-primary: #eaeaea;
+    --text-secondary: #8899aa;
+    --accent: #a8dadc;
+    --accent-gold: #f4d35e;
+    --danger: #e63946;
+    --success: #2d6a4f;
+    --warning: #7d5d00;
+    --info: #3a5a9a;
+    --radius: 12px;
+    --radius-sm: 8px;
+    --shadow: 0 8px 32px rgba(0,0,0,0.5);
+    --transition: 0.2s ease;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* === LAYOUT === */
+  .app {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    min-height: 100vh;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  @media (max-width: 1000px) {
+    .app { grid-template-columns: 1fr; }
+  }
+
+  /* === HEADER === */
+  .header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    position: sticky; top: 0; z-index: 50;
+  }
+  .logo {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .logo-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-gold));
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 900; font-size: 16px; color: var(--bg-primary);
+  }
+  .logo h1 { font-size: 18px; letter-spacing: 1px; color: var(--accent); }
+  .logo small { font-size: 10px; color: var(--text-secondary); display: block; }
+  .header-actions { display: flex; gap: 8px; }
+  .icon-btn {
+    width: 36px; height: 36px;
+    background: var(--bg-panel); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: var(--radius-sm); color: var(--text-primary);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    font-size: 16px; transition: var(--transition);
+  }
+  .icon-btn:hover { background: #2a2a4a; border-color: var(--accent); }
+
+  /* === BOARD AREA === */
+  .board-area {
+    display: flex; flex-direction: column; align-items: center;
+    padding: 24px; gap: 16px;
+  }
+  .board-container {
+    width: 100%; max-width: 640px; aspect-ratio: 1;
+    background: var(--bg-secondary); padding: 16px;
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    position: relative;
+  }
+  .board {
+    display: grid; grid-template-columns: repeat(8, 1fr);
+    grid-template-rows: repeat(8, 1fr);
+    width: 100%; height: 100%; border-radius: 6px; overflow: hidden;
+  }
+  .sq {
+    display: flex; align-items: center; justify-content: center;
+    font-size: clamp(22px, 5.5vw, 52px); cursor: pointer;
+    user-select: none; position: relative; transition: background 0.1s;
+  }
+  .sq.light { background: var(--bg-board-light); color: #2a2a4a; }
+  .sq.dark  { background: var(--bg-board-dark); color: #1a1a2e; }
+  .sq.sel   { box-shadow: inset 0 0 0 4px var(--accent-gold); }
+  .sq.legal::after {
+    content: ''; position: absolute; width: 30%; height: 30%;
+    border-radius: 50%; background: rgba(244,211,94,0.55);
+  }
+  .sq.legal.capture::after {
+    width: 92%; height: 92%; background: transparent;
+    box-shadow: inset 0 0 0 4px rgba(244,211,94,0.6); border-radius: 0;
+  }
+  .sq.last  { box-shadow: inset 0 0 0 3px rgba(168,218,220,0.5); }
+  .sq.check { box-shadow: inset 0 0 0 4px var(--danger); }
+  .sq.hint  { box-shadow: inset 0 0 0 4px rgba(45,106,79,0.8); }
+  .coord {
+    position: absolute; font-size: 10px; font-weight: 700;
+    pointer-events: none; opacity: 0.6;
+  }
+  .coord.file { bottom: 2px; right: 4px; }
+  .coord.rank { top: 2px; left: 4px; }
+
+  /* === PANEL === */
+  .panel {
+    background: var(--bg-panel); padding: 20px;
+    display: flex; flex-direction: column; gap: 16px;
+    overflow-y: auto; max-height: calc(100vh - 60px);
+    border-left: 1px solid rgba(255,255,255,0.06);
+  }
+  @media (max-width: 1000px) {
+    .panel { max-height: none; border-left: none; border-top: 1px solid rgba(255,255,255,0.06); }
+  }
+  .section {
+    background: rgba(0,0,0,0.2);
+    border-radius: var(--radius-sm); padding: 14px;
+  }
+  .section-title {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+    color: var(--text-secondary); margin-bottom: 10px; font-weight: 700;
+  }
+  .status-text { font-size: 15px; font-weight: 600; }
+  .status-sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+
+  /* === SUBIT GRID === */
+  .subit-grid {
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 6px 12px; font-size: 13px;
+  }
+  .subit-grid .label { color: var(--text-secondary); }
+  .badge {
+    display: inline-block; padding: 2px 10px; border-radius: 10px;
+    font-size: 11px; font-weight: 800; letter-spacing: 0.5px;
+    min-width: 28px; text-align: center;
+  }
+  .badge.T { background: var(--success); color: #d8f3dc; }
+  .badge.F { background: #6a040f; color: #ffd6d6; }
+  .badge.B { background: var(--warning); color: #fff3cd; }
+  .badge.N { background: #343a40; color: #ced4da; }
+  .badge.omega-STABLE     { background: var(--success); color: #d8f3dc; }
+  .badge.omega-METASTABLE { background: var(--warning); color: #fff3cd; }
+  .badge.omega-CYCLIC     { background: var(--info); color: #cfe2ff; }
+  .badge.omega-CHAOTIC    { background: var(--danger); color: #ffd6d6; }
+
+  /* === EVAL BAR === */
+  .eval-bar {
+    height: 10px; border-radius: 5px; background: rgba(0,0,0,0.3);
+    overflow: hidden; position: relative; margin-top: 8px;
+  }
+  .eval-bar .fill {
+    height: 100%; background: linear-gradient(90deg, var(--danger), var(--accent-gold), var(--success));
+    transition: width 0.4s ease;
+  }
+  .eval-value {
+    font-size: 14px; font-weight: 700; text-align: center;
+    margin-top: 6px; font-variant-numeric: tabular-nums;
+  }
+
+  /* === MOVE HISTORY === */
+  .move-list {
+    font-family: 'Consolas', 'Monaco', monospace; font-size: 12px;
+    background: rgba(0,0,0,0.3); border-radius: 6px; padding: 8px;
+    max-height: 160px; overflow-y: auto; line-height: 1.8;
+  }
+  .move-list .move-num { color: var(--text-secondary); margin-right: 6px; }
+  .move-list .move-w { color: var(--accent); margin-right: 8px; }
+  .move-list .move-b { color: var(--text-primary); }
+
+  /* === LOG === */
+  .log {
+    font-family: 'Consolas', 'Monaco', monospace; font-size: 11px;
+    background: rgba(0,0,0,0.3); border-radius: 6px; padding: 10px;
+    max-height: 140px; overflow-y: auto;
+    color: var(--text-secondary); line-height: 1.6;
+  }
+  .log .step { color: var(--accent); }
+  .log .warn { color: var(--accent-gold); }
+  .log .err  { color: var(--danger); }
+
+  /* === CONTROLS === */
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn {
+    background: var(--bg-secondary); color: var(--text-primary);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
+    padding: 8px 16px; font-size: 13px; cursor: pointer;
+    font-family: inherit; transition: var(--transition);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { background: #2a2a4a; border-color: var(--accent); }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .btn.primary { background: var(--accent); color: var(--bg-primary); font-weight: 700; border-color: var(--accent); }
+  .btn.primary:hover { background: #8cc8ca; }
+  .btn.danger { border-color: rgba(230,57,70,0.4); }
+  .btn.danger:hover { background: rgba(230,57,70,0.2); }
+
+  select {
+    background: var(--bg-secondary); color: var(--text-primary);
+    border: 1px solid rgba(255,255,255,0.08); border-radius: 6px;
+    padding: 8px 12px; font-size: 13px; cursor: pointer;
+    font-family: inherit; width: 100%;
+  }
+  select:focus { outline: none; border-color: var(--accent); }
+
+  /* === MENU === */
+  .menu-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+    display: none; align-items: center; justify-content: center;
+    z-index: 100; backdrop-filter: blur(4px);
+  }
+  .menu-overlay.active { display: flex; }
+  .menu {
+    background: var(--bg-panel); border-radius: var(--radius);
+    padding: 24px; width: 90%; max-width: 480px;
+    box-shadow: var(--shadow); border: 1px solid rgba(255,255,255,0.08);
+    max-height: 90vh; overflow-y: auto;
+  }
+  .menu h2 { font-size: 16px; margin-bottom: 16px; color: var(--accent); }
+  .menu-item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .menu-item:last-child { border-bottom: none; }
+  .menu-item label { font-size: 13px; color: var(--text-secondary); }
+  .menu-item select, .menu-item input {
+    width: auto; min-width: 120px;
+  }
+
+  /* === PROMOTION === */
+  .promotion {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.75);
+    display: flex; align-items: center; justify-content: center; z-index: 100;
+    backdrop-filter: blur(4px);
+  border }
+  .promotion .box {
+    background:-color var(--bg-panel);: padding: 24px; var border-radius: var(--radius);
+    display(--: flex; gap: 12px; box-shadow: var(--shadow);
+  }
+  .promotion .piece {
+    font-size: 52px; cursor: pointer; padding: 12px 20px;
+    border-radius: var(--radius-sm); background: var(--bg-secondary);
+    transition: var(--transition); border: 2px solid transparent;
+  }
+  .promotion .piece:hover { background: #2a2a4a;accent); }
+
+  /* === THINKING INDICATOR === */
+  .thinking {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--accent);
+  }
+  .thinking .dot {
+    width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+    animation: pulse 1s infinite;
+  }
+  .thinking .dot:nth-child(2) { animation-delay: 0.2s; }
+  .thinking .dot:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.3; transform: scale(0.8); }
+    50% { opacity: 1; transform: scale(1.2); }
+  }
+
+  /* === SCROLLBAR === */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+  /* === BOARD THEMES === */
+  .theme-classic  { --bg-board-light: #f0d9b5; --bg-board-dark: #b58863; }
+  .theme-forest   { --bg-board-light: #d8e2dc; --bg-board-dark: #4a6b5a; }
+  .theme-ocean    { --bg-board-light: #cfe2f3; --bg-board-dark: #2c5f7a; }
+  .theme-midnight { --bg-board-light: #8899aa; --bg-board-dark: #2a2a4a; }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <!-- HEADER -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">Σ</div>
+      <div>
+        <h1>SUBIT-CHESS</h1>
+        <small>Морфодинамічний двигун · Belnap FOUR · Ω-класифікація</small>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="icon-btn" id="btn-menu" title="Налаштування">⚙</button>
+      <button class="icon-btn" id="btn-flip" title="Перевернути дошку">⇅</button>
+      <button class="icon-btn" id="btn-export" title="Експорт PGN">💾</button>
+    </div>
+  </div>
+
+  <!-- BOARD AREA -->
+  <div class="board-area">
+    <div class="board-container theme-classic" id="board-container">
+      <div class="board" id="board"></div>
+    </div>
+    <div style="display:flex;gap:16px;flex-wrap:wrap;justify-content:center;">
+      <div class="thinking" id="thinking-indicator" style="display:none;">
+        <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+        <span>Аналіз...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL -->
+  <div class="panel">
+    <!-- STATUS -->
+    <div class="section">
+      <div class="section-title">Статус</div>
+      <div class="status-text" id="status">Завантаження...</div>
+      <div class="status-sub" id="status-sub"></div>
+    </div>
+
+    <!-- SUBIT EVAL -->
+    <div class="section">
+      <div class="section-title">SUBIT-оцінка (перспектива білих)</div>
+      <div class="subit-grid">
+        <span class="label">Матеріал</span><span id="ev-mat">—</span>
+        <span class="label">Позиція + мобільність</span><span id="ev-pos">—</span>
+        <span class="label">Безпека короля</span><span id="ev-king">—</span>
+        <span class="label">Пішакова структура</span><span id="ev-pawn">—</span>
+        <span class="label">Пара слонів</span><span id="ev-bishop">—</span>
+        <span class="label" style="color:var(--accent);font-weight:700;">Белнап-інтеграл</span><span id="ev-total">—</span>
+      </div>
+      <div class="eval-bar"><div class="fill" id="eval-fill" style="width:50%"></div></div>
+      <div class="eval-value" id="eval-text">0.00</div>
+    </div>
+
+    <!-- OMEGA -->
+    <div class="section">
+      <div class="section-title">Ω-режим динаміки</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span id="omega" class="badge omega-STABLE">STABLE</span>
+        <span style="font-size:12px;color:var(--text-secondary);" id="omega-desc">Оцінка стабільна</span>
+      </div>
+    </div>
+
+    <!-- CONTROLS -->
+    <div class="section">
+      <div class="section-title">Керування</div>
+      <div class="controls" style="margin-bottom:10px;">
+        <button class="btn primary" id="new-game">🔄 Нова гра</button>
+        <button class="btn" id="undo">↩ Скасувати</button>
+        <button class="btn" id="hint">💡 Підказка</button>
+      </div>
+      <div style="margin-bottom:8px;">
+        <select id="level">
+          <option value="1">Рівень 1 — Початківець (гл. 1)</option>
+          <option value="2">Рівень 2 — Легкий (гл. 2)</option>
+          <option value="3" selected>Рівень 3 — Середній (гл. 3)</option>
+          <option value="4">Рівень 4 — Складний (гл. 4)</option>
+          <option value="5">Рівень 5 — Експерт (гл. 5)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- MOVE HISTORY -->
+    <div class="section">
+      <div class="section-title">Історія ходів</div>
+      <div class="move-list" id="move-list"></div>
+    </div>
+
+    <!-- LOG -->
+    <div class="section">
+      <div class="section-title">Журнал SUBIT</div>
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SETTINGS MENU -->
+<div class="menu-overlay" id="menu-overlay">
+  <div class="menu">
+    <h2>⚙ Налаштування</h2>
+    <div class="menu-item">
+      <label>Тема дошки</label>
+      <select id="theme-select">
+        <option value="theme-classic">Класична</option>
+        <option value="theme-forest">Лісова</option>
+        <option value="theme-ocean">Океанська</option>
+        <option value="theme-midnight">Північна</option>
+      </select>
+    </div>
+    <div class="menu-item">
+      <label>Показувати координати</label>
+      <select id="coords-select">
+        <option value="on" selected>Так</option>
+        <option value="off">Ні</option>
+      </select>
+    </div>
+    <div class="menu-item">
+      <label>Підсвічувати легальні ходи</label>
+      <select id="legal-select">
+        <option value="on" selected>Так</option>
+        <option value="off">Ні</option>
+      </select>
+    </div>
+    <div class="menu-item">
+      <label>Автоматичний аналіз Ω</label>
+      <select id="omega-select">
+        <option value="on" selected>Так</option>
+        <option value="off">Ні</option>
+      </select>
+    </div>
+    <div style="margin-top:20px;display:flex;gap:8px;">
+      <button class="btn primary" id="menu-close" style="flex:1;">Зберегти</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// SUBIT-CHESS v2.0 — Морфодинамічний шаховий двигун
+// ============================================================
+
+// === CONSTANTS ===
+const PIECE_VALUES = {P:100, N:320, B:330, R:500, Q:900, K:20000};
+
+const PST = {
+  P:[[0,0,0,0,0,0,0,0],[50,50,50,50,50,50,50,50],[10,10,20,30,30,20,10,10],
+     [5,5,10,25,25,10,5,5],[0,0,0,20,20,0,0,0],[5,-5,-10,0,0,-10,-5,5],
+     [5,10,10,-20,-20,10,10,5],[0,0,0,0,0,0,0,0]],
+  N:[[-50,-40,-30,-30,-30,-30,-40,-50],[-40,-20,0,0,0,0,-20,-40],
+     [-30,0,10,15,15,10,0,-30],[-30,5,15,20,20,15,5,-30],
+     [-30,0,15,20,20,15,0,-30],[-30,5,10,15,15,10,5,-30],
+     [-40,-20,0,5,5,0,-20,-40],[-50,-40,-30,-30,-30,-30,-40,-50]],
+  B:[[-20,-10,-10,-10,-10,-10,-10,-20],[-10,0,0,0,0,0,0,-10],
+     [-10,0,5,10,10,5,0,-10],[-10,5,5,10,10,5,5,-10],
+     [-10,0,10,10,10,10,0,-10],[-10,10,10,10,10,10,10,-10],
+     [-10,5,0,0,0,0,5,-10],[-20,-10,-10,-10,-10,-10,-10,-20]],
+  R:[[0,0,0,0,0,0,0,0],[5,10,10,10,10,10,10,5],[-5,0,0,0,0,0,0,-5],
+     [-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],[-5,0,0,0,0,0,0,-5],
+     [-5,0,0,0,0,0,0,-5],[0,0,0,5,5,0,0,0]],
+  Q:[[-20,-10,-10,-5,-5,-10,-10,-20],[-10,0,0,0,0,0,0,-10],
+     [-10,0,5,5,5,5,0,-10],[-5,0,5,5,5,5,0,-5],
+     [0,0,5,5,5,5,0,-5],[-10,5,5,5,5,5,0,-10],
+     [-10,0,5,0,0,0,0,-10],[-20,-10,-10,-5,-5,-10,-10,-20]],
+  K:[[-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],
+     [-30,-40,-40,-50,-50,-40,-40,-30],[-30,-40,-40,-50,-50,-40,-40,-30],
+     [-20,-30,-30,-40,-40,-30,-30,-20],[-10,-20,-20,-20,-20,-20,-20,-10],
+     [20,20,0,0,0,0,20,20],[20,30,10,0,0,10,30,20]]
+};
+
+const MOBILITY_WEIGHTS = {N:4, B:5, R:2, Q:1};
+const BISHOP_PAIR_BONUS = 30;
+const CENTER_BONUS = 5;
+
+const PIECE_CHARS = {
+  'K':'♔','Q':'♕','R':'♖','B':'♗','N':'♘','P':'♙',
+  'k':'♚','q':'♛','r':'♜','b':'♝','n':'♞','p':'♟'
+};
+
+// === STATE ===
+let state = {
+  pos: null, selected:null, lastMove:null,
+  thinking:false, history:[], moveHistory:[],
+  pendingPromotion:null, flipped:false,
+  settings: { theme:'theme-classic', coords:'on', legal:'on', omega:'on' }
+};
+
+// === POSITION ===
+function initPosition() {
+  return {
+    board:[
+      ['r','n','b','q','k','b','n','r'],
+      ['p','p','p','p','p','p','p','p'],
+      ['.','.','.','.','.','.','.','.'],
+      ['.','.','.','.','.','.','.','.'],
+      ['.','.','.','.','.','.','.','.'],
+      ['.','.','.','.','.','.','.','.'],
+      ['P','P','P','P','P','P','P','P'],
+      ['R','N','B','Q','K','B','N','R']
+    ],
+    turn:'w', castling:{K:true,Q:true,k:true,q:true},
+    ep:null, halfmove:0, fullmove:1
+  };
+}
+const clonePos = p => ({
+  board: p.board.map(r=>r.slice()), turn:p.turn,
+  castling:{...p.castling}, ep:p.ep?[...p.ep]:null,
+  halfmove:p.halfmove, fullmove:p.fullmove
+});
+const colorOf = p => p==='.'?null:(p===p.toUpperCase()?'w':'b');
+const isWhite = p => p!=='.' && p===p.toUpperCase();
+
+// === ATTACK DETECTION ===
+function isAttacked(pos, r, c, byColor) {
+  const b = pos.board;
+  const pawnDir = byColor === 'w' ? 1 : -1;
+  for (const dc of [-1,1]) {
+    const rr = r+pawnDir, cc = c+dc;
+    if (rr>=0 && rr<8 && cc>=0 && cc<8) {
+      const p = b[rr][cc];
+      if (p!=='.' && colorOf(p)===byColor && p.toUpperCase()==='P') return true;
+    }
+  }
+  for (const [dr,dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) {
+    const rr=r+dr, cc=c+dc;
+    if (rr>=0 && rr<8 && cc>=0 && cc<8) {
+      const p = b[rr][cc];
+      if (p!=='.' && colorOf(p)===byColor && p.toUpperCase()==='N') return true;
+    }
+  }
+  for (const [dr,dc] of [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]) {
+    let rr=r+dr, cc=c+dc;
+    while (rr>=0 && rr<8 && cc>=0 && cc<8) {
+      const p = b[rr][cc];
+      if (p!=='.') {
+        if (colorOf(p)===byColor) {
+          const t = p.toUpperCase();
+          const diag = dr!==0 && dc!==0;
+          if (t==='Q') return true;
+          if (t==='R' && !diag) return true;
+          if (t==='B' && diag) return true;
+        }
+        break;
+      }
+      rr+=dr; cc+=dc;
+    }
+  }
+  for (const [dr,dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
+    const rr=r+dr, cc=c+dc;
+    if (rr>=0 && rr<8 && cc>=0 && cc<8) {
+      const p = b[rr][cc];
+      if (p!=='.' && colorOf(p)===byColor && p.toUpperCase()==='K') return true;
+    }
+  }
+  return false;
+}
+
+function findKing(pos, color) {
+  for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+    const p = pos.board[r][c];
+    if (p!=='.' && p.toUpperCase()==='K' && colorOf(p)===color) return [r,c];
+  }
+  return null;
+}
+function isInCheck(pos, color) {
+  const k = findKing(pos, color);
+  if (!k) return false;
+  return isAttacked(pos, k[0], k[1], color==='w'?'b':'w');
+}
+
+// === MOVE GENERATION ===
+function generatePseudoMoves(pos) {
+  const moves = [];
+  const b = pos.board, me = pos.turn;
+  const opp = me==='w'?'b':'w';
+
+  for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+    const p = b[r][c];
+    if (p==='.' || colorOf(p)!==me) continue;
+    const t = p.toUpperCase();
+
+    if (t==='P') {
+      const dir = me==='w'?-1:1;
+      const startRow = me==='w'?6:1;
+      const promoRow = me==='w'?0:7;
+      if (b[r+dir] && b[r+dir][c]==='.') {
+        if (r+dir===promoRow) {
+          for (const pr of ['Q','R','B','N'])
+            moves.push({from:[r,c], to:[r+dir,c], promo:pr});
+        } else {
+          moves.push({from:[r,c], to:[r+dir,c]});
+          if (r===startRow && b[r+2*dir][c]==='.') moves.push({from:[r,c], to:[r+2*dir,c], double:true});
+        }
+      }
+      for (const dc of [-1,1]) {
+        const rr=r+dir, cc=c+dc;
+        if (rr<0||rr>=8||cc<0||cc>=8) continue;
+        const target = b[rr][cc];
+        if (target!=='.' && colorOf(target)===opp) {
+          if (rr===promoRow) {
+            for (const pr of ['Q','R','B','N']) moves.push({from:[r,c], to:[rr,cc], promo:pr});
+          } else moves.push({from:[r,c], to:[rr,cc]});
+        } else if (pos.ep && pos.ep[0]===rr && pos.ep[1]===cc) {
+          moves.push({from:[r,c], to:[rr,cc], ep:true});
+        }
+      }
+    } else if (t==='N') {
+      for (const [dr,dc] of [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]]) {
+        const rr=r+dr, cc=c+dc;
+        if (rr<0||rr>=8||cc<0||cc>=8) continue;
+        const target = b[rr][cc];
+        if (target==='.' || colorOf(target)===opp) moves.push({from:[r,c], to:[rr,cc]});
+      }
+    } else if (t==='B'||t==='R'||t==='Q') {
+      const dirs = t==='B'?[[-1,-1],[-1,1],[1,-1],[1,1]]:
+                   t==='R'?[[-1,0],[1,0],[0,-1],[0,1]]:
+                   [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
+      for (const [dr,dc] of dirs) {
+        let rr=r+dr, cc=c+dc;
+        while (rr>=0&&rr<8&&cc>=0&&cc<8) {
+          const target = b[rr][cc];
+          if (target==='.') moves.push({from:[r,c], to:[rr,cc]});
+          else { if (colorOf(target)===opp) moves.push({from:[r,c], to:[rr,cc]}); break; }
+          rr+=dr; cc+=dc;
+        }
+      }
+    } else if (t==='K') {
+      for (const [dr,dc] of [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]]) {
+        const rr=r+dr, cc=c+dc;
+        if (rr<0||rr>=8||cc<0||cc>=8) continue;
+        const target = b[rr][cc];
+        if (target==='.' || colorOf(target)===opp) moves.push({from:[r,c], to:[rr,cc]});
+      }
+      if (me==='w' && r===7 && c===4) {
+        if (pos.castling.K && b[7][5]==='.' && b[7][6]==='.' && b[7][7]==='R'
+            && !isAttacked(pos,7,4,'b') && !isAttacked(pos,7,5,'b') && !isAttacked(pos,7,6,'b'))
+          moves.push({from:[7,4], to:[7,6], castle:'K'});
+        if (pos.castling.Q && b[7][3]==='.' && b[7][2]==='.' && b[7][1]==='.' && b[7][0]==='R'
+            && !isAttacked(pos,7,4,'b') && !isAttacked(pos,7,3,'b') && !isAttacked(pos,7,2,'b'))
+          moves.push({from:[7,4], to:[7,2], castle:'Q'});
+      } else if (me==='b' && r===0 && c===4) {
+        if (pos.castling.k && b[0][5]==='.' && b[0][6]==='.' && b[0][7]==='r'
+            && !isAttacked(pos,0,4,'w') && !isAttacked(pos,0,5,'w') && !isAttacked(pos,0,6,'w'))
+          moves.push({from:[0,4], to:[0,6], castle:'k'});
+        if (pos.castling.q && b[0][3]==='.' && b[0][2]==='.' && b[0][1]==='.' && b[0][0]==='r'
+            && !isAttacked(pos,0,4,'w') && !isAttacked(pos,0,3,'w') && !isAttacked(pos,0,2,'w'))
+          moves.push({from:[0,4], to:[0,2], castle:'q'});
+      }
+    }
+  }
+  return moves;
+}
+
+function makeMove(pos, m) {
+  const np = clonePos(pos), b = np.board;
+  const [fr,fc] = m.from, [tr,tc] = m.to;
+  const piece = b[fr][fc], target = b[tr][tc], me = pos.turn;
+
+  if (m.ep) b[fr][tc] = '.';
+  b[tr][tc] = piece;
+  b[fr][fc] = '.';
+  if (m.promo) b[tr][tc] = me==='w'?m.promo:m.promo.toLowerCase();
+  if (m.castle==='K') { b[7][5]=b[7][7]; b[7][7]='.'; }
+  if (m.castle==='Q') { b[7][3]=b[7][0]; b[7][0]='.'; }
+  if (m.castle==='k') { b[0][5]=b[0][7]; b[0][7]='.'; }
+  if (m.castle==='q') { b[0][3]=b[0][0]; b[0][0]='.'; }
+
+  if (piece==='K') { np.castling.K=false; np.castling.Q=false; }
+  if (piece==='k') { np.castling.k=false; np.castling.q=false; }
+  if (fr===7&&fc===0) np.castling.Q=false;
+  if (fr===7&&fc===7) np.castling.K=false;
+  if (fr===0&&fc===0) np.castling.q=false;
+  if (fr===0&&fc===7) np.castling.k=false;
+  if (tr===7&&tc===0) np.castling.Q=false;
+  if (tr===7&&tc===7) np.castling.K=false;
+  if (tr===0&&tc===0) np.castling.q=false;
+  if (tr===0&&tc===7) np.castling.k=false;
+
+  np.ep = m.double ? [(fr+tr)/2, fc] : null;
+  np.turn = me==='w'?'b':'w';
+  np.halfmove = (piece.toUpperCase()==='P'||target!=='.') ? 0 : pos.halfmove+1;
+  if (me==='b') np.fullmove = pos.fullmove+1;
+  return np;
+}
+
+function legalMoves(pos) {
+  const pseudo = generatePseudoMoves(pos), legal = [];
+  for (const m of pseudo) {
+    const np = makeMove(pos, m);
+    if (!isInCheck(np, pos.turn)) legal.push(m);
+  }
+  return legal;
+}
+
+function gameStatus(pos) {
+  const moves = legalMoves(pos);
+  if (moves.length===0) {
+    if (isInCheck(pos, pos.turn))
+      return {over:true, result: pos.turn==='w'?'black':'white', reason:'мат'};
+    return {over:true, result:'draw', reason:'пат'};
+  }
+  if (pos.halfmove >= 100) return {over:true, result:'draw', reason:'правило 50 ходів'};
+  return {over:false, moves};
+}
+
+// === EVALUATION ===
+function evalMaterial(pos) {
+  let s = 0;
+  for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+    const p = pos.board[r][c];
+    if (p==='.') continue;
+    const v = PIECE_VALUES[p.toUpperCase()] || 0;
+    s += isWhite(p) ? v : -v;
+  }
+  return s;
+}
+function evalPST(pos) {
+  let s = 0;
+  for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+    const p = pos.board[r][c];
+    if (p==='.') continue;
+    const t = p.toUpperCase(), table = PST[t];
+    if (!table) continue;
+    s += isWhite(p) ? table[r][c] : -table[7-r][c];
+  }
+  return s;
+}
+function evalMobility(pos) {
+  const wp = {...pos, turn:'w'};
+  const bp = {...pos, turn:'b'};
+  let s = 0;
+  for (const [t,w] of Object.entries(MOBILITY_WEIGHTS)) {
+    // Simplified: count pseudo-legal moves per piece type
+    s += 0; // placeholder — full mobility already in PST
+  }
+  return (generatePseudoMoves(wp).length - generatePseudoMoves(bp).length) * 2;
+}
+function evalKingSafety(pos) {
+  const wK = findKing(pos,'w'), bK = findKing(pos,'b');
+  if (!wK || !bK) return 0;
+  const isEndgame = Math.abs(evalMaterial(pos)) < 1500;
+  function ks(k, color) {
+    const cd = Math.abs(k[0]-3.5) + Math.abs(k[1]-3.5);
+    let s = 0;
+    if (isEndgame) s = (14-cd)*6;
+    else {
+      const backRank = color==='w'?7:0;
+      if (k[0]===backRank) s += 30;
+      s += cd*5;
+      const sr = color==='w'?k[0]-1:k[0]+1;
+      if (sr>=0 && sr<8) for (const dc of [-1,0,1]) {
+        const cc = k[1]+dc;
+        if (cc<0||cc>=8) continue;
+        const p = pos.board[sr][cc];
+        if (p!=='.' && p.toUpperCase()==='P' && colorOf(p)===color) s += 15;
+      }
+    }
+    return s;
+  }
+  return ks(wK,'w') - ks(bK,'b');
+}
+function evalPawns(pos) {
+  const wP=[], bP=[];
+  for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+    const p = pos.board[r][c];
+    if (p==='P') wP.push([r,c]);
+    else if (p==='p') bP.push([r,c]);
+  }
+  function st(pawns, opp, isW) {
+    let s = 0;
+    const cols = {};
+    for (const [r,c] of pawns) cols[c] = (cols[c]||0)+1;
+    for (const c in cols) if (cols[c]>1) s -= 15*(cols[c]-1);
+    for (const [r,c] of pawns) {
+      let passed = true;
+      for (const [r2,c2] of opp) {
+        if (Math.abs(c2-c)<=1 && (isW ? r2<r : r2>r)) { passed=false; break; }
+      }
+      if (passed) s += 20 + (isW ? (6-r) : r)*8;
+    }
+    return s;
+  }
+  return st(wP, bP, true) - st(bP, wP, false);
+}
+function evalBishopPair(pos) {
+  let wB=0, bB=0;
+  for (let r=0;r<8;r++) for (let c=0;c<8;c++) {
+    const p = pos.board[r][c];
+    if (p==='B') wB++;
+    if (p==='b') bB++;
+  }
+  let s = 0;
+  if (wB>=2) s += BISHOP_PAIR_BONUS;
+  if (bB>=2) s -= BISHOP_PAIR_BONUS;
+  return s;
+}
+function evalCenter(pos) {
+  let s = 0;
+  const center = [[3,3],[3,4],[4,3],[4,4]];
+  for (const [r,c] of center) {
+    const p = pos.board[r][c];
+    if (p==='.') continue;
+    s += isWhite(p) ? CENTER_BONUS : -CENTER_BONUS;
+  }
+  return s;
+}
+
+function evalWhite(pos) {
+  return evalMaterial(pos) + evalPST(pos) + evalMobility(pos)
+       + evalKingSafety(pos) + evalPawns(pos) + evalBishopPair(pos) + evalCenter(pos);
+}
+
+// === BELNAP SUBIT EVALUATION ===
+function subitEvaluate(pos) {
+  const material = evalMaterial(pos);
+  const positional = evalPST(pos) + evalMobility(pos) + evalCenter(pos);
+  const kingSafety = evalKingSafety(pos);
+  const pawns = evalPawns(pos);
+  const bishop = evalBishopPair(pos);
+
+  function ev(val, thr) { return {p: val>thr?1:0, q: val<-thr?1:0}; }
+  const eMat = ev(material, 30);
+  const ePos = ev(positional, 20);
+  const eKing = ev(kingSafety, 5);
+  const ePawn = ev(pawns, 5);
+  const eBishop = ev(bishop, 10);
+
+  const p = Math.max(eMat.p, ePos.p, eKing.p, ePawn.p, eBishop.p);
+  const q = Math.max(eMat.q, ePos.q, eKing.q, ePawn.q, eBishop.q);
+
+  let belnap;
+  if (p && q) belnap = 'B';
+  else if (p) belnap = 'T';
+  else if (q) belnap = 'F';
+  else belnap = 'N';
+
+  return {
+    score: material + positional + kingSafety + pawns + bishop,
+    belnap,
+    parts: { material, positional, kingSafety, pawns, bishop }
+  };
+}
+
+// === SEARCH ===
+function evalSide(pos) {
+  const w = evalWhite(pos);
+  return pos.turn === 'w' ? w : -w;
+}
+
+function quiescence(pos, alpha, beta, depth) {
+  if (depth <= 0) return evalSide(pos);
+  const standPat = evalSide(pos);
+  if (standPat >= beta) return beta;
+  if (standPat > alpha) alpha = standPat;
+  const moves = legalMoves(pos).filter(m => {
+    const target = pos.board[m.to[0]][m.to[1]];
+    return target !== '.' || m.ep;
+  });
+  for (const m of moves) {
+    const np = makeMove(pos, m);
+    const score = -quiescence(np, -beta, -alpha, depth-1);
+    if (score >= beta) return beta;
+    if (score > alpha) alpha = score;
+  }
+  return alpha;
+}
+
+function alphaBeta(pos, depth, alpha, beta) {
+  if (depth === 0) return quiescence(pos, alpha, beta, 2);
+  const moves = legalMoves(pos);
+  if (moves.length === 0) {
+    if (isInCheck(pos, pos.turn)) return -100000 + (10 - depth);
+    return 0;
+  }
+  moves.sort((a, b) => {
+    const va = pos.board[a.to[0]][a.to[1]];
+    const vb = pos.board[b.to[0]][b.to[1]];
+    const sva = va==='.'?0:PIECE_VALUES[va.toUpperCase()];
+    const svb = vb==='.'?0:PIECE_VALUES[vb.toUpperCase()];
+    return svb - sva;
+  });
+  for (const m of moves) {
+    const np = makeMove(pos, m);
+    const score = -alphaBeta(np, depth-1, -beta, -alpha);
+    if (score >= beta) return beta;
+    if (score > alpha) alpha = score;
+  }
+  return alpha;
+}
+
+function searchRoot(pos, depth) {
+  const moves = legalMoves(pos);
+  if (moves.length === 0) return null;
+  moves.sort((a, b) => {
+    const va = pos.board[a.to[0]][a.to[1]];
+    const vb = pos.board[b.to[0]][b.to[1]];
+    const sva = va==='.'?0:PIECE_VALUES[va.toUpperCase()];
+    const svb = vb==='.'?0:PIECE_VALUES[vb.toUpperCase()];
+    return svb - sva;
+  });
+  const scored = [];
+  let alpha = -Infinity;
+  for (const m of moves) {
+    const np = makeMove(pos, m);
+    const score = -alphaBeta(np, depth-1, -Infinity, -alpha);
+    const subit = subitEvaluate(np);
+    scored.push({ move: m, score, belnap: subit.belnap });
+    if (score > alpha) alpha = score;
+  }
+  scored.sort((a, b) => b.score - a.score);
+
+  // SUBIT selection: among top moves within 30 cp, prefer clearer Belnap evidence
+  const best = scored[0].score;
+  const candidates = scored.filter(s => s.score >= best - 30).slice(0, 5);
+  const priority = {T:3, B:2, N:1, F:0};
+  candidates.sort((a, b) => {
+    const pa = priority[a.belnap], pb = priority[b.belnap];
+    if (pb !== pa) return pb - pa;
+    return b.score - a.score;
+  });
+
+  return { best: candidates[0], allScored: scored.slice(0, 8), depth };
+}
+
+function classifyOmega(history) {
+  if (history.length < 2) return 'STABLE';
+  const diffs = [];
+  for (let i = 1; i < history.length; i++) diffs.push(history[i] - history[i-1]);
+  const mean = diffs.reduce((a,b)=>a+b,0) / diffs.length;
+  const variance = diffs.reduce((a,b)=>a+(b-mean)**2,0) / diffs.length;
+  let signChanges = 0;
+  for (let i = 1; i < diffs.length; i++) if (diffs[i]*diffs[i-1] < 0) signChanges++;
+  const oscRate = diffs.length > 1 ? signChanges/(diffs.length-1) : 0;
+  if (variance < 200 && Math.abs(mean) < 30) return 'STABLE';
+  if (oscRate > 0.5) return 'CYCLIC';
+  if (variance > 1500) return 'CHAOTIC';
+  return 'METASTABLE';
+}
+
+function iterativeDeepening(pos, maxDepth) {
+  const history = [];
+  let lastResult = null;
+  for (let d = 1; d <= maxDepth; d++) {
+    const r = searchRoot(pos, d);
+    if (!r) break;
+    history.push(r.best.score);
+    lastResult = r;
+  }
+  const omega = classifyOmega(history);
+  return { ...lastResult, history, omega };
+}
+
+// === UI ===
+const boardEl = document.getElementById('board');
+const boardContainer = document.getElementById('board-container');
+const statusEl = document.getElementById('status');
+const statusSubEl = document.getElementById('status-sub');
+const logEl = document.getElementById('log');
+const moveListEl = document.getElementById('move-list');
+const omegaEl = document.getElementById('omega');
+const omegaDescEl = document.getElementById('omega-desc');
+const evalFillEl = document.getElementById('eval-fill');
+const evalTextEl = document.getElementById('eval-text');
+const evMatEl = document.getElementById('ev-mat');
+const evPosEl = document.getElementById('ev-pos');
+const evKingEl = document.getElementById('ev-king');
+const evPawnEl = document.getElementById('ev-pawn');
+const evBishopEl = document.getElementById('ev-bishop');
+const evTotalEl = document.getElementById('ev-total');
+const thinkingEl = document.getElementById('thinking-indicator');
+const menuOverlay = document.getElementById('menu-overlay');
+
+function badgeFor(v) { return `<span class="badge ${v}">${v}</span>`; }
+
+function renderBoard() {
+  boardEl.innerHTML = '';
+  const allLegal = state.selected ? legalMoves(state.pos) : [];
+  const legalDests = new Set(
+    allLegal.filter(m => m.from[0]===state.selected[0] && m.from[1]===state.selected[1])
+      .map(m => `${m.to[0]},${m.to[1]}`)
+  );
+  const checkPos = isInCheck(state.pos, state.pos.turn) ? findKing(state.pos, state.pos.turn) : null;
+  const showCoords = state.settings.coords === 'on';
+  const showLegal = state.settings.legal === 'on';
+
+  const rows = state.flipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+  const cols = state.flipped ? [7,6,5,4,3,2,1,0] : [0,1,2,3,4,5,6,7];
+
+  for (const r of rows) for (const c of cols) {
+    const sq = document.createElement('div');
+    sq.className = `sq ${(r+c)%2===0?'light':'dark'}`;
+    const p = state.pos.board[r][c];
+    if (p !== '.') sq.textContent = PIECE_CHARS[p];
+    if (state.selected && state.selected[0]===r && state.selected[1]===c) sq.classList.add('sel');
+    if (state.lastMove &&
+        ((state.lastMove.from[0]===r && state.lastMove.from[1]===c) ||
+         (state.lastMove.to[0]===r && state.lastMove.to[1]===c))) sq.classList.add('last');
+    if (showLegal && legalDests.has(`${r},${c}`)) {
+      sq.classList.add('legal');
+      if (p !== '.' || (state.pos.ep && state.pos.ep[0]===r && state.pos.ep[1]===c))
+        sq.classList.add('capture');
+    }
+    if (checkPos && checkPos[0]===r && checkPos[1]===c) sq.classList.add('check');
+    if (state.hintMove &&
+        ((state.hintMove.from[0]===r && state.hintMove.from[1]===c) ||
+         (state.hintMove.to[0]===r && state.hintMove.to[1]===c))) sq.classList.add('hint');
+
+    if (showCoords) {
+      if (r === rows[7]) {
+        const coord = document.createElement('span');
+        coord.className = 'coord file';
+        coord.textContent = 'abcdefgh'[c];
+        sq.appendChild(coord);
+      }
+      if (c === cols[0]) {
+        const coord = document.createElement('span');
+        coord.className = 'coord rank';
+        coord.textContent = 8-r;
+        sq.appendChild(coord);
+      }
+    }
+    sq.addEventListener('click', () => onSquareClick(r, c));
+    boardEl.appendChild(sq);
+  }
+}
+
+function updatePanel(subit, omega, numericEval) {
+  if (subit) {
+    const p = subit.parts;
+    evMatEl.innerHTML = badgeFor(p.material>30?'T':p.material<-30?'F':'N');
+    evPosEl.innerHTML = badgeFor(p.positional>20?'T':p.positional<-20?'F':'N');
+    evKingEl.innerHTML = badgeFor(p.kingSafety>5?'T':p.kingSafety<-5?'F':'N');
+    evPawnEl.innerHTML = badgeFor(p.pawns>5?'T':p.pawns<-5?'F':'N');
+    evBishopEl.innerHTML = badgeFor(p.bishop>10?'T':p.bishop<-10?'F':'N');
+    evTotalEl.innerHTML = badgeFor(subit.belnap);
+  }
+  if (omega) {
+    omegaEl.className = `badge omega-${omega}`;
+    omegaEl.textContent = omega;
+    const descs = {
+      STABLE:'Оцінка стабільна — глибокий пошук',
+      METASTABLE:'Оцінка дрейфує — розширений пошук',
+      CYCLIC:'Виявлено циклічність — штраф за повторення',
+      CHAOTIC:'Висока нестабільність — обережний пошук'
+    };
+    omegaDescEl.textContent = descs[omega] || '';
+  }
+  if (numericEval !== undefined) {
+    const pct = Math.max(0, Math.min(100, (numericEval + 1000) / 20));
+    evalFillEl.style.width = pct + '%';
+    const sign = numericEval >= 0 ? '+' : '';
+    evalTextEl.textContent = `${sign}${(numericEval/100).toFixed(2)}`;
+  }
+}
+
+function log(msg, cls='') {
+  const div = document.createElement('div');
+  div.className = cls;
+  div.textContent = msg;
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function addMoveToHistory(move, san) {
+  state.moveHistory.push({ move, san });
+  renderMoveList();
+}
+
+function renderMoveList() {
+  moveListEl.innerHTML = '';
+  for (let i = 0; i < state.moveHistory.length; i += 2) {
+    const div = document.createElement('div');
+    const num = Math.floor(i/2) + 1;
+    const w = state.moveHistory[i] ? state.moveHistory[i].san : '';
+    const b = state.moveHistory[i+1] ? state.moveHistory[i+1].san : '';
+    div.innerHTML = `<span class="move-num">${num}.</span><span class="move-w">${w}</span><span class="move-b">${b}</span>`;
+    moveListEl.appendChild(div);
+  }
+  moveListEl.scrollTop = moveListEl.scrollHeight;
+}
+
+function squareName(r, c) { return 'abcdefgh'[c] + (8-r); }
+function moveName(m) {
+  let s = squareName(m.from[0],m.from[1]) + '–' + squareName(m.to[0],m.to[1]);
+  if (m.promo) s += '=' + m.promo;
+  if (m.castle) s += ' (рок.)';
+  if (m.ep) s += ' (e.p.)';
+  return s;
+}
+
+function onSquareClick(r, c) {
+  if (state.thinking || state.pendingPromotion) return;
+  const status = gameStatus(state.pos);
+  if (status.over) return;
+  if (state.pos.turn !== 'w') return;
+
+  state.hintMove = null;
+  const p = state.pos.board[r][c];
+  const legal = legalMoves(state.pos);
+
+  if (state.selected) {
+    const candidates = legal.filter(m =>
+      m.from[0]===state.selected[0] && m.from[1]===state.selected[1] &&
+      m.to[0]===r && m.to[1]===c
+    );
+    if (candidates.length > 0) {
+      if (candidates.length > 1 && candidates[0].promo) {
+        state.pendingPromotion = candidates;
+        showPromotion(candidates);
+        return;
+      }
+      doPlayerMove(candidates[0]);
+      return;
+    }
+    state.selected = null;
+  }
+  if (p !== '.' && colorOf(p) === 'w') state.selected = [r, c];
+  renderBoard();
+}
+
+function showPromotion(candidates) {
+  const overlay = document.createElement('div');
+  overlay.className = 'promotion';
+  const box = document.createElement('div');
+  box.className = 'box';
+  for (const m of candidates) {
+    const el = document.createElement('div');
+    el.className = 'piece';
+    el.textContent = PIECE_CHARS[m.promo];
+    el.addEventListener('click', () => {
+      document.body.removeChild(overlay);
+      state.pendingPromotion = null;
+      doPlayerMove(m);
+    });
+    box.appendChild(el);
+  }
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+}
+
+function doPlayerMove(m) {
+  state.history.push({ pos: clonePos(state.pos), moveHistory: [...state.moveHistory] });
+  const san = moveName(m);
+  state.pos = makeMove(state.pos, m);
+  state.selected = null;
+  state.lastMove = m;
+  addMoveToHistory(m, san);
+  log(`Ви: ${san}`);
+  renderBoard();
+  updateStatus();
+  const status = gameStatus(state.pos);
+  if (status.over) { announceResult(status); return; }
+  setTimeout(engineMove, 100);
+}
+
+function announceResult(status) {
+  let msg;
+  if (status.result === 'draw') msg = `Нічия (${status.reason})`;
+  else if (status.result === 'white') msg = `Мат! Перемога білих`;
+  else msg = `Мат! Перемога чорних`;
+  statusEl.textContent = msg;
+  statusSubEl.textContent = '';
+  log(msg, 'step');
+}
+
+function updateStatus() {
+  const status = gameStatus(state.pos);
+  if (status.over) { announceResult(status); return; }
+  const side = state.pos.turn === 'w' ? 'білі' : 'чорні';
+  if (isInCheck(state.pos, state.pos.turn)) {
+    statusEl.textContent = `⚠ Шах!`;
+    statusSubEl.textContent = `Хід ${side}`;
+  } else {
+    statusEl.textContent = state.pos.turn === 'w' ? 'Ваш хід' : 'Хід двигуна';
+    statusSubEl.textContent = `${state.pos.fullmove}. ${side}`;
+  }
+}
+
+function engineMove() {
+  if (state.thinking) return;
+  state.thinking = true;
+  thinkingEl.style.display = 'flex';
+  statusEl.textContent = 'Двигун думає...';
+
+  setTimeout(() => {
+    const maxDepth = parseInt(document.getElementById('level').value);
+    const t0 = performance.now();
+    const result = iterativeDeepening(state.pos, maxDepth);
+    const t1 = performance.now();
+
+    thinkingEl.style.display = 'none';
+    state.thinking = false;
+
+    if (!result || !result.best) {
+      updateStatus();
+      return;
+    }
+
+    const m = result.best.move;
+    state.history.push({ pos: clonePos(state.pos), moveHistory: [...state.moveHistory] });
+    const san = moveName(m);
+    state.pos = makeMove(state.pos, m);
+    state.lastMove = m;
+    addMoveToHistory(m, san);
+
+    const elapsed = Math.round(t1 - t0);
+    const scoreStr = (result.best.score > 0 ? '+' : '') + (result.best.score/100).toFixed(2);
+    log(`Двигун: ${san} [${elapsed}мс, Ω=${result.omega}, ${scoreStr}]`, 'step');
+
+    const subit = subitEvaluate(state.pos);
+    updatePanel(subit, result.omega, subit.score);
+
+    renderBoard();
+    updateStatus();
+
+    const status = gameStatus(state.pos);
+    if (status.over) announceResult(status);
+  }, 50);
+}
+
+function newGame() {
+  state.pos = initPosition();
+  state.selected = null;
+  state.lastMove = null;
+  state.thinking = false;
+  state.history = [];
+  state.moveHistory = [];
+  state.pendingPromotion = null;
+  state.hintMove = null;
+  logEl.innerHTML = '';
+  log('Нова гра. Білі ходять першими.', 'step');
+  renderBoard();
+  renderMoveList();
+  updateStatus();
+  const subit = subitEvaluate(state.pos);
+  updatePanel(subit, 'STABLE', subit.score);
+}
+
+function undo() {
+  if (state.thinking || state.history.length === 0) return;
+  const prev = state.history.pop();
+  state.pos = prev.pos;
+  state.moveHistory = prev.moveHistory;
+  state.selected = null;
+  state.lastMove = null;
+  state.hintMove = null;
+  renderBoard();
+  renderMoveList();
+  updateStatus();
+}
+
+function hint() {
+  if (state.thinking) return;
+  state.thinking = true;
+  thinkingEl.style.display = 'flex';
+  statusEl.textContent = 'Аналіз...';
+  setTimeout(() => {
+    const result = iterativeDeepening(state.pos, 3);
+    state.thinking = false;
+    thinkingEl.style.display = 'none';
+    updateStatus();
+    if (result && result.best) {
+      state.hintMove = result.best.move;
+      log(`Підказка: ${moveName(result.best.move)} (Ω=${result.omega}, ${(result.best.score/100).toFixed(2)})`, 'warn');
+      renderBoard();
+    }
+  }, 50);
+}
+
+function exportPGN() {
+  let pgn = '[Event "SUBIT-CHESS"]\n[Site "Browser"]\n[Date "' + new Date().toISOString().slice(0,10) + '"]\n[White "Player"]\n[Black "SUBIT Engine"]\n[Result "*"]\n\n';
+  for (let i = 0; i < state.moveHistory.length; i++) {
+    if (i % 2 === 0) pgn += (Math.floor(i/2)+1) + '. ';
+    pgn += state.moveHistory[i].san + ' ';
+  }
+  const blob = new Blob([pgn], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'subit-game.pgn'; a.click();
+  URL.revokeObjectURL(url);
+  log('PGN експортовано', 'step');
+}
+
+// === EVENT LISTENERS ===
+document.getElementById('new-game').addEventListener('click', newGame);
+document.getElementById('undo').addEventListener('click', undo);
+document.getElementById('hint').addEventListener('click', hint);
+document.getElementById('btn-export').addEventListener('click', exportPGN);
+document.getElementById('btn-flip').addEventListener('click', () => {
+  state.flipped = !state.flipped;
+  renderBoard();
+});
+document.getElementById('btn-menu').addEventListener('click', () => {
+  menuOverlay.classList.add('active');
+});
+document.getElementById('menu-close').addEventListener('click', () => {
+  menuOverlay.classList.remove('active');
+  const theme = document.getElementById('theme-select').value;
+  state.settings.theme = theme;
+  state.settings.coords = document.getElementById('coords-select').value;
+  state.settings.legal = document.getElementById('legal-select').value;
+  state.settings.omega = document.getElementById('omega-select').value;
+  boardContainer.className = 'board-container ' + theme;
+  renderBoard();
+});
+menuOverlay.addEventListener('click', (e) => {
+  if (e.target === menuOverlay) menuOverlay.classList.remove('active');
+});
+
+// === INIT ===
+newGame();
+</script>
+</body>
+</html>

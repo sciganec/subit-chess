@@ -1,0 +1,8 @@
+node_modules/
+results/*.json
+!results/.gitkeep
+!results/*-final.json
+*.log
+.DS_Store
+.idea/
+.vscode/

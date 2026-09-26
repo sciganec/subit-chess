@@ -1,0 +1,70 @@
+{
+  "name": "subit-chess",
+  "version": "1.9.1",
+  "description": "Browser chess engine with S₀ morphological grammar (I×Z×Φ=48) and ρ_s policy vector on 8 signal cells",
+  "keywords": [
+    "chess",
+    "chess-engine",
+    "subit",
+    "grammar",
+    "telemetry",
+    "rho-s",
+    "alpha-beta",
+    "browser",
+    "single-file"
+  ],
+  "license": "MIT",
+  "author": "SUBIT",
+  "homepage": "https://github.com/USER/subit-chess",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/USER/subit-chess.git"
+  },
+  "bugs": {
+    "url": "https://github.com/USER/subit-chess/issues"
+  },
+  "main": "src/subit_chess_v1.9.1.html",
+  "browser": "src/subit_chess_v1.9.1.html",
+  "files": [
+    "src/",
+    "runners/",
+    "tests/",
+    "docs/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node tests/test.js",
+    "test:perft": "node tests/test.js --only-perft",
+    "test:policy": "node tests/test.js --only-policy",
+
+    "selfplay": "node runners/run.js --mode selfplay --games 100 --depth 2",
+    "teacher": "node runners/run.js --mode teacher --games 100 --depth 2 --out results/run1.json",
+
+    "match": "node runners/run.js --mode match --games 400 --depth 2 --seed 42",
+    "match:baseline": "node runners/run.js --mode match --games 400 --depth 2 --seed 42 --policy off",
+    "match:rho8": "node runners/run.js --mode match --games 400 --depth 2 --seed 42 --policy on",
+
+    "screening": "node runners/run.js --mode match --games 200 --depth 2 --seed 42",
+    "screening:baseline": "node runners/run.js --mode match --games 200 --depth 2 --seed 42 --policy off",
+
+    "clean": "node -e \"require('fs').rmSync('results',{recursive:true,force:true});require('fs').mkdirSync('results',{recursive:true});require('fs').writeFileSync('results/.gitkeep','')\"",
+    "release": "npm run test && git tag v$npm_package_version && git push origin v$npm_package_version"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  },
+  "dependencies": {},
+  "peerDependencies": {},
+  "optionalDependencies": {},
+  "packageManager": "npm@10.8.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "private": false
+}

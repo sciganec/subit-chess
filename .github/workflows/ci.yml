@@ -1,0 +1,247 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+# Cancel in-flight runs for same ref (except tags — those must complete)
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # 1. Fast tests — perft(1..3), hash, symmetry, S0, policy
+  # ---------------------------------------------------------------------------
+  test:
+    name: Test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [ '20', '22' ]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Verify engine file exists
+        run: |
+          if [ ! -f src/subit_chess_v1.9.1.html ]; then
+            echo "::error::src/subit_chess_v1.9.1.html not found"
+            exit 1
+          fi
+          ls -la src/
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Upload test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-failure-node${{ matrix.node }}
+          path: |
+            src/subit_chess_v1.9.1.html
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # 2. Full perft (slow) — only on main + tags, not on every PR
+  # ---------------------------------------------------------------------------
+  perft-full:
+    name: perft(4) — move generator
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name != 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm install --no-audit --no-fund
+
+      - name: Run full perft
+        run: node tests/test.js --only-perft --full
+
+  # ---------------------------------------------------------------------------
+  # 3. Smoke test of runner — very short selfplay, ensure CLI wiring works
+  # ---------------------------------------------------------------------------
+  runner-smoke:
+    name: Runner smoke test
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm install --no-audit --no-fund
+
+      - name: Selfplay 4 games
+        run: |
+          node runners/run.js --mode selfplay --games 4 --depth 2 \
+            --max-plies 20 --chunk 2 \
+            --out results/smoke.json --quiet
+
+      - name: Verify output JSON
+        run: |
+          node -e "
+            const r = require('./results/smoke.json');
+            if (!r.results || r.results.total !== 4) {
+              console.error('unexpected results:', r.results);
+              process.exit(1);
+            }
+            if (!r.telemetry || r.telemetry.cellCount !== 48) {
+              console.error('unexpected telemetry:', r.telemetry);
+              process.exit(1);
+            }
+            console.log('smoke OK:', r.results, 'H=' + r.telemetry.entropy.toFixed(2));
+          "
+
+      - name: Upload smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-report
+          path: results/smoke.json
+          if-no-files-found: ignore
+
+  # ---------------------------------------------------------------------------
+  # 4. Package + upload HTML (always, for every ref)
+  # ---------------------------------------------------------------------------
+  package:
+    name: Package artifact
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm install --no-audit --no-fund
+
+      - name: Compute HTML checksum
+        id: hash
+        run: |
+          HASH=$(sha256sum src/subit_chess_v1.9.1.html | cut -d' ' -f1)
+          echo "sha256=$HASH" >> $GITHUB_OUTPUT
+          echo "HTML sha256: $HASH"
+
+      - name: Upload engine artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: subit-chess-html
+          path: src/subit_chess_v1.9.1.html
+          retention-days: 30
+
+      - name: Write build summary
+        run: |
+          {
+            echo "### Build summary"
+            echo ""
+            echo "- Engine: \`src/subit_chess_v1.9.1.html\`"
+            echo "- SHA256: \`${{ steps.hash.outputs.sha256 }}\`"
+            echo "- Size: $(stat -c%s src/subit_chess_v1.9.1.html) bytes"
+          } >> $GITHUB_STEP_SUMMARY
+
+  # ---------------------------------------------------------------------------
+  # 5. Release — only on tag push, after all gates pass
+  # ---------------------------------------------------------------------------
+  release:
+    name: Release ${{ github.ref_name }}
+    runs-on: ubuntu-latest
+    needs: [ test, perft-full, package ]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm install --no-audit --no-fund
+
+      - name: Extract changelog for this tag
+        id: changelog
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          echo "tag version: $TAG"
+          if [ -f CHANGELOG.md ]; then
+            # Extract section between "[$TAG]" and next "## ["
+            awk -v tag="[$TAG]" '
+              $0 ~ tag { found=1; next }
+              found && /^## \[/ { exit }
+              found { print }
+            ' CHANGELOG.md > /tmp/changelog.md
+            if [ ! -s /tmp/changelog.md ]; then
+              echo "_(no changelog section for $TAG — see README)_" > /tmp/changelog.md
+            fi
+          else
+            echo "_(no CHANGELOG.md — see README)_" > /tmp/changelog.md
+          fi
+          echo "--- changelog preview ---"
+          cat /tmp/changelog.md
+
+      - name: Compute checksum
+        id: hash
+        run: |
+          HASH=$(sha256sum src/subit_chess_v1.9.1.html | cut -d' ' -f1)
+          echo "sha256=$HASH" >> $GITHUB_OUTPUT
+
+      - name: Append verification info
+        run: |
+          {
+            echo ""
+            echo "---"
+            echo ""
+            echo "**Engine artifact:** \`subit_chess_v1.9.1.html\`"
+            echo ""
+            echo "**SHA256:** \`${{ steps.hash.outputs.sha256 }}\`"
+            echo ""
+            echo "**Verify:**"
+            echo "\`\`\`bash"
+            echo "sha256sum subit_chess_v1.9.1.html"
+            echo "\`\`\`"
+            echo ""
+            echo "**Architecture decisions:** see [\`docs/DECISIONS.md\`](docs/DECISIONS.md)"
+            echo "**Roadmap:** see [\`docs/ROADMAP.md\`](docs/ROADMAP.md)"
+          } >> /tmp/changelog.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SUBIT-CHESS ${{ github.ref_name }}
+          body_path: /tmp/changelog.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
+          files: |
+            src/subit_chess_v1.9.1.html
+          fail_on_unmatched_files: true
