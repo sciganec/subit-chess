@@ -1,0 +1,51 @@
+@'
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'src/subit_chess_v1.9.1.html'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Pages artifact
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare site directory
+        run: |
+          mkdir -p _site
+          cp src/subit_chess_v1.9.1.html _site/index.html
+          cp src/subit_chess_v1.9.1.html _site/subit_chess_v1.9.1.html
+          echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>subit-chess</title></head><body style="font-family:system-ui;background:#302e2b;color:#e8e6e3;padding:2rem"><h1>subit-chess</h1><p>Play: <a style="color:#81b64c" href="./subit_chess_v1.9.1.html">subit_chess_v1.9.1.html</a></p><p>Source: <a style="color:#81b64c" href="https://github.com/sciganec/subit-chess">github.com/sciganec/subit-chess</a></p></body></html>' > _site/README.html
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+'@ | Set-Content -Path .github\workflows\pages.yml -Encoding UTF8
