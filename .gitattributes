@@ -1,5 +1,4 @@
-@'
-# Historical HTML snapshots — treat as binary/docs, not code
+# Historical HTML snapshots - treat as docs, not code
 ver/*.html linguist-documentation
 ver/*.html binary
 
@@ -9,4 +8,3 @@ ver/*.html binary
 *.md    text eol=lf
 *.yml   text eol=lf
 *.html  text eol=lf
-'@ | Set-Content -Path .gitattributes -Encoding UTF8
