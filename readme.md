@@ -198,6 +198,14 @@ node runners/run.js --mode match --games 400 --depth 2 --seed 42
 git tag v1.9.1 && git push origin v1.9.1
 ```
 
+## Documentation
+
+- [`docs/SUBIT-CHESS-SPEC.md`](docs/spec/SUBIT-CHESS-SPEC.md) — formal specification
+  instantiated from SUBIT-∞ v5.2
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — architecture decision records
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — release roadmap and gates
+- [`docs/USER-MANUAL.md`](docs/USER-MANUAL.md) — **start here** — full user guide
+
 ## Changelog
 
 ### [1.9.1] — 2026-09-26
