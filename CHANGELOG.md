@@ -19,6 +19,17 @@ Nothing yet. Waiting on **Gate 1** (400-game ρ_s A/B — see `docs/ROADMAP.md`)
 
 ---
 
+## [1.9.1-docs] — 2026-09-27
+
+Documentation-only addition; no engine code changed.
+
+- **Added** `docs/SUBIT-CHESS-SPEC.md` — formal specification derived from SUBIT-∞ v5.2.
+- **Added** `docs/SUBIT-EXPERIMENT-SPEC.md` — pre-registered experimental protocol.
+- **Added** `docs/USER-MANUAL.md` — comprehensive user guide.
+- **Added** `docs/ROADMAP.md` — release plan and gates.
+- **Added** `docs/DECISIONS.md` — 8 architecture decision records.
+- **Updated** README with full documentation index.
+
 ## [1.9.1] — 2026-09-26
 
 Infrastructure release. Game strength ≈ v1.8.7 in baseline mode. Focus: make

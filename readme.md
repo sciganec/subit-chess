@@ -171,12 +171,13 @@ node runners/run.js --mode match --games 400 --policy off  # baseline
 ## Repository layout
 
 ```
-src/       single-file HTML engine (no build)
-runners/   Node CLI: selfplay / teacher / match
-tests/     perft + hash + symmetry + policy + S₀
-docs/      DECISIONS.md — ADRs + methodology
-.github/   CI: tests + release artifact
-ver/       historical snapshots
+src/ single-file HTML engine (current: v1.9.1)
+docs/ USER-MANUAL.md, SUBIT-CHESS-SPEC.md, SUBIT-EXPERIMENT-SPEC.md,
+DECISIONS.md, ROADMAP.md
+runners/ Node CLI: selfplay / teacher / match
+tests/ perft + hash + symmetry + S₀ + policy (100 assertions)
+results/ A/B and teacher run reports (JSON, git-ignored except *-final.json)
+.github/ CI: tests + perft + smoke + release artifact
 ```
 
 ## Repository workflow
@@ -199,6 +200,26 @@ git tag v1.9.1 && git push origin v1.9.1
 ```
 
 ## Documentation
+
+### For users
+
+- [`docs/USER-MANUAL.md`](docs/USER-MANUAL.md) — **start here** — full user guide.
+  Explains every panel, button, and console command.
+
+### For researchers
+
+- [`docs/SUBIT-CHESS-SPEC.md`](docs/SUBIT-CHESS-SPEC.md) — formal specification
+  (instantiated from SUBIT-∞ v5.2).
+- [`docs/SUBIT-EXPERIMENT-SPEC.md`](docs/SUBIT-EXPERIMENT-SPEC.md) — pre-registered
+  experimental protocol for testing the SUBIT hypothesis.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — architecture decision records (8 ADRs).
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — release plan and gates.
+
+### For contributors
+
+- [`CHANGELOG.md`](CHANGELOG.md) — version history.
+- [`tests/test.js`](tests/test.js) — test suite (100 assertions).
+- [`runners/run.js`](runners/run.js) — Node CLI for self-play and A/B matches.
 
 - [`docs/SUBIT-CHESS-SPEC.md`](docs/spec/SUBIT-CHESS-SPEC.md) — formal specification
   instantiated from SUBIT-∞ v5.2
