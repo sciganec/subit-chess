@@ -1,0 +1,24 @@
+{
+  "hardware": {
+    "cpuModel": "AMD Ryzen 7 7730U with Radeon Graphics         ",
+    "cpuCores": 16,
+    "totalRamGb": 15.4,
+    "platform": "win32",
+    "arch": "x64",
+    "nodeVersion": "v24.14.0",
+    "jsdomVersion": "24.1.3"
+  },
+  "engineVersion": "1.9.1",
+  "calibratedAt": "2026-09-29T01:56:49.734Z",
+  "rawTimingsUs": {
+    "searchNode": 106.4196,
+    "computeS0": 197.4288,
+    "updateOmega": 0.8119,
+    "lookupPi": 0.0583
+  },
+  "constants": {
+    "c_S": 1.8552,
+    "c_Omega": 0.0076,
+    "c_Pi": 0.0005
+  }
+}
