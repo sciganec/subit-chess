@@ -41,8 +41,8 @@ jobs:
 
       - name: Verify engine file exists
         run: |
-          if [ ! -f src/subit_chess_v1.9.1.html ]; then
-            echo "::error::src/subit_chess_v1.9.1.html not found"
+          if [ ! -f src/subit_chess_v2.2.0.html ]; then
+            echo "::error::src/subit_chess_v2.2.0.html not found"
             exit 1
           fi
           ls -la src/
@@ -56,7 +56,7 @@ jobs:
         with:
           name: test-failure-node${{ matrix.node }}
           path: |
-            src/subit_chess_v1.9.1.html
+            src/subit_chess_v2.2.0.html
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------
@@ -146,7 +146,7 @@ jobs:
       - name: Compute HTML checksum
         id: hash
         run: |
-          HASH=$(sha256sum src/subit_chess_v1.9.1.html | cut -d' ' -f1)
+          HASH=$(sha256sum src/subit_chess_v2.2.0.html | cut -d' ' -f1)
           echo "sha256=$HASH" >> $GITHUB_OUTPUT
           echo "HTML sha256: $HASH"
 
@@ -154,7 +154,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: subit-chess-html
-          path: src/subit_chess_v1.9.1.html
+          path: src/subit_chess_v2.2.0.html
           retention-days: 30
 
       - name: Write build summary
@@ -162,9 +162,9 @@ jobs:
           {
             echo "### Build summary"
             echo ""
-            echo "- Engine: \`src/subit_chess_v1.9.1.html\`"
+            echo "- Engine: \`src/subit_chess_v2.2.0.html\`"
             echo "- SHA256: \`${{ steps.hash.outputs.sha256 }}\`"
-            echo "- Size: $(stat -c%s src/subit_chess_v1.9.1.html) bytes"
+            echo "- Size: $(stat -c%s src/subit_chess_v2.2.0.html) bytes"
           } >> $GITHUB_STEP_SUMMARY
 
   # ---------------------------------------------------------------------------
@@ -213,7 +213,7 @@ jobs:
       - name: Compute checksum
         id: hash
         run: |
-          HASH=$(sha256sum src/subit_chess_v1.9.1.html | cut -d' ' -f1)
+          HASH=$(sha256sum src/subit_chess_v2.2.0.html | cut -d' ' -f1)
           echo "sha256=$HASH" >> $GITHUB_OUTPUT
 
       - name: Append verification info
@@ -222,13 +222,13 @@ jobs:
             echo ""
             echo "---"
             echo ""
-            echo "**Engine artifact:** \`subit_chess_v1.9.1.html\`"
+            echo "**Engine artifact:** \`subit_chess_v2.2.0.html\`"
             echo ""
             echo "**SHA256:** \`${{ steps.hash.outputs.sha256 }}\`"
             echo ""
             echo "**Verify:**"
             echo "\`\`\`bash"
-            echo "sha256sum subit_chess_v1.9.1.html"
+            echo "sha256sum subit_chess_v2.2.0.html"
             echo "\`\`\`"
             echo ""
             echo "**Architecture decisions:** see [\`docs/DECISIONS.md\`](docs/DECISIONS.md)"
@@ -243,5 +243,5 @@ jobs:
           draft: false
           prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') }}
           files: |
-            src/subit_chess_v1.9.1.html
+            src/subit_chess_v2.2.0.html
           fail_on_unmatched_files: true
