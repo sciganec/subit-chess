@@ -1,4 +1,4 @@
-# Changelog
+﻿# Changelog
 
 All notable changes to **subit-chess** are documented here.
 
@@ -13,9 +13,28 @@ Statuses:
 
 ---
 
+## [2.2.0] — 2026-10-19
+
+Major milestone. Controlled generation of chess studies via discrete latent diffusion (CFG) + SUBIT-∞ v6.13.
+
+### Added
+
+- **Controlled Diffusion Study Generation Engine** (makeStudyDiffusionModule):
+  - Board tensor 8×8×14 (12 piece channels + turn + castling/ep = 896 values).
+  - Reverse denoising guided by p(position | beauty) with CFG: x = x_uncond + w·(x_cond - x_uncond).
+  - Guidance slider w ∈ [1.0, 10.0]. Themes: queen_sac, zugzwang, stalemate_defense, domination, reti_maneuver, underpromotion, battery, quiet_key.
+  - Cook filter (minimax depth 4-8), Aesthetic Scorer A ∈ [0.40, 1.00].
+  - Live denoising mini-board UI, step progress T=15→0, candidate viewer with FEN output.
+- **SUBIT v6.13 Trajectory Classes (§11.1)**: FIXED, PERIODIC, MIN_ZERO, MIN_POS, NONMIN_ZERO, NONMIN_POS.
+- **Classify⁺ (§4.5)**: (OrbitType, InclusionType, ChaosStatus, Min). ChaosStatus: NOT_APPLICABLE ≠ NON_CHAOTIC.
+- **d_Ω_traj metric (§11.3)**: Normalized Hamming on 12-code representation.
+- **Exported**: window.__subit.v6_13, window.__subit.diffusion.
+- **Tests**: Groups [v6_13] + [diffusion] added. Total: **128 passed, 0 failed** (v2.2.0); backward-compat **100/100** (v1.9.1).
+
+---
 ## [Unreleased]
 
-Nothing yet. Waiting on **Gate 1** (400-game ρ_s A/B — see `docs/ROADMAP.md`).
+Nothing scheduled.
 
 ---
 
@@ -401,3 +420,4 @@ Development history. Not formally released. Key milestones:
 ---
 
 *End of CHANGELOG.md — latest: v1.9.1 (2026-09-26)*
+

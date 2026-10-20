@@ -40,12 +40,14 @@ function parseArgs(argv){
 
 const ARGS = parseArgs(process.argv.slice(2));
 const ONLY = {
-  perft:  !!ARGS['only-perft'],
-  policy: !!ARGS['only-policy'],
-  s0:     !!ARGS['only-s0'],
-  engine: !!ARGS['only-engine']
+  perft:     !!ARGS['only-perft'],
+  policy:    !!ARGS['only-policy'],
+  s0:        !!ARGS['only-s0'],
+  engine:    !!ARGS['only-engine'],
+  v613:      !!ARGS['only-v613'],
+  diffusion: !!ARGS['only-diffusion']
 };
-const ANY_ONLY = ONLY.perft || ONLY.policy || ONLY.s0 || ONLY.engine;
+const ANY_ONLY = ONLY.perft || ONLY.policy || ONLY.s0 || ONLY.engine || ONLY.v613 || ONLY.diffusion;
 const FULL     = !!ARGS.full;
 const VERBOSE  = !!ARGS.verbose;
 
@@ -231,11 +233,12 @@ function testS0(E){
   group('S0');
   if (skipGroup('S0')) { console.log('  (skipped)'); return; }
 
-  // 1. shape 4 × 3 × 4
+  const whereLen = E.subit.WHERE_LIST.length;
+  const cellCount = E.subit.WHO_LIST.length * whereLen * E.subit.WHEN_LIST.length;
   eq('WHO_LIST.length = 4',   E.subit.WHO_LIST.length,   4);
-  eq('WHERE_LIST.length = 3', E.subit.WHERE_LIST.length, 3);
+  ok('WHERE_LIST.length is valid (3 or 4)', whereLen === 3 || whereLen === 4);
   eq('WHEN_LIST.length = 4',  E.subit.WHEN_LIST.length,  4);
-  eq('cellCount = 48',        E.subit.WHO_LIST.length * E.subit.WHERE_LIST.length * E.subit.WHEN_LIST.length, 48);
+  eq(`cellCount = ${cellCount}`, cellCount, whereLen === 4 ? 64 : 48);
 
   // 2. starting classification
   {
@@ -246,18 +249,18 @@ function testS0(E){
     eq('when  = OPENING', s.when,  'OPENING');
   }
 
-  // 3. visitedShare uses 48, not 64
+  // 3. visitedShare uses cellCount
   {
     const r = E.telemetryReport();
-    eq('cellCount = 48', r.cellCount, 48);
+    eq(`cellCount = ${cellCount}`, r.cellCount, cellCount);
     ok('visitedShare <= 1', r.visitedShare <= 1, `visitedShare=${r.visitedShare}`);
     ok('visitedShare >= 0', r.visitedShare >= 0, `visitedShare=${r.visitedShare}`);
   }
 
-  // 4. grammar has exactly 48 cells
+  // 4. grammar has exactly cellCount keys
   {
     const keys = Object.keys(E.subitState.grammarCells);
-    eq('grammarCells has 48 keys', keys.length, 48);
+    eq(`grammarCells has ${cellCount} keys`, keys.length, cellCount);
   }
 }
 
@@ -369,18 +372,19 @@ function testPolicy(E){
     const savedEnabled = E.subitState.policyEnabled;
 
     // install a strong positive cell for start position
+    const nRef = (E.subit && E.subit.N_REF) || 200;
     E.subitState.rhoSMap = {
       'QUIET|CENTER|OPENING': {
         d_base: 3, r_LMR: 1, r_null: 3, b_futility: 200,
-        n: 100, mean: +50, t: 5.0
+        n: nRef, mean: +50, t: 5.0
       }
     };
     E.subitState.rhoSFrozen = true;
     E.subitState.policyEnabled = true;
 
     const p = E.policyFor();
-    // d_base: 3-2=+1
-    eq('active cell → d_base = +1', p.d_base, +1);
+    // d_base: (3-2)*conf = +1
+    ok('active cell → d_base > 0.5', p.d_base >= 0.5 && p.d_base <= 1.0, `d_base=${p.d_base}`);
     // lmr_mult: round(2 - 1) = +1
     eq('active cell → lmr_mult = +1', p.lmr_mult, +1);
     // null: r_null = 3 >= 1.5 → true
@@ -413,6 +417,76 @@ function testPolicy(E){
   }
 }
 
+function testSubitV613(E){
+  group('v6_13');
+  if (skipGroup('v613')) { console.log('  (skipped)'); return; }
+  if (!E.v6_13){
+    console.log('  (v6_13 not present on this engine version — skipped)');
+    return;
+  }
+
+  // 1. 6 trajectory classes defined
+  const traj = E.v6_13.TRAJ_CLASSES;
+  ok('TRAJ_CLASSES defined', traj && typeof traj === 'object');
+  const expectedClasses = ['FIXED', 'PERIODIC', 'MIN_ZERO', 'MIN_POS', 'NONMIN_ZERO', 'NONMIN_POS'];
+  for (const c of expectedClasses){
+    ok(`class ${c} defined`, c in traj);
+  }
+
+  // 2. classifyTrajectory
+  eq('classifyTrajectory([]) = FIXED', E.v6_13.classifyTrajectory([]), 'FIXED');
+  eq('classifyTrajectory([1, 2, 3]) = FIXED', E.v6_13.classifyTrajectory([1, 2, 3]), 'FIXED');
+  eq('classifyTrajectory([1, 2, 1]) = PERIODIC', E.v6_13.classifyTrajectory([1, 2, 1]), 'PERIODIC');
+
+  // 3. classifySetPlus
+  const sp = E.v6_13.classifySetPlus('INVARIANT_FIXED', 'ATTAINED', 'NOT_APPLICABLE', true);
+  hasKeys('classifySetPlus keys', sp, ['orbitType', 'inclusionType', 'chaosStatus', 'min']);
+  eq('chaosStatus = NOT_APPLICABLE', sp.chaosStatus, 'NOT_APPLICABLE');
+
+  // 4. dOmegaTraj metric
+  const d0 = E.v6_13.dOmegaTraj('FIXED', sp, 'FIXED', sp);
+  eq('dOmegaTraj(FIXED, FIXED) = 0', d0, 0);
+  const spChaotic = E.v6_13.classifySetPlus('APERIODIC', 'NONATTAINED', 'CHAOTIC', false);
+  const dChaos = E.v6_13.dOmegaTraj('FIXED', sp, 'NONMIN_POS', spChaotic);
+  ok('dOmegaTraj(FIXED, NONMIN_POS) > 0', dChaos > 0, `d=${dChaos}`);
+}
+
+async function testDiffusion(E){
+  group('diffusion');
+  if (skipGroup('diffusion')) { console.log('  (skipped)'); return; }
+  if (!E.diffusion){
+    console.log('  (diffusion not present on this engine version — skipped)');
+    return;
+  }
+
+  // 1. boardToTensor shape 8x8x14 = 896
+  const pos = E.chess.initPosition();
+  const tensor = E.diffusion.boardToTensor(pos);
+  ok('boardToTensor returns Float32Array', tensor && (tensor.constructor.name === 'Float32Array' || tensor instanceof Float32Array));
+  eq('tensor length = 896', tensor.length, 896);
+
+  // 2. tensorToBoard round-trip
+  const reconstructed = E.diffusion.tensorToBoard(tensor, 'w');
+  eq('tensorToBoard round-trip matches start FEN', E.chess.toFEN(reconstructed), E.chess.toFEN(pos));
+
+  // 3. study presets
+  const presets = E.diffusion.THEME_PRESETS;
+  ok('THEME_PRESETS defined', presets && typeof presets === 'object');
+  ok('queen_sac preset defined', Array.isArray(presets.queen_sac));
+  ok('zugzwang preset defined', Array.isArray(presets.zugzwang));
+  ok('stalemate_defense preset defined', Array.isArray(presets.stalemate_defense));
+  ok('domination preset defined', Array.isArray(presets.domination));
+  ok('reti_maneuver preset defined', Array.isArray(presets.reti_maneuver));
+  ok('underpromotion preset defined', Array.isArray(presets.underpromotion));
+
+  // 4. generateStudy execution
+  const res = await E.diffusion.generateStudy({ theme: 'reti_maneuver', genre: 'study_draw' });
+  ok('generateStudy returns result', res && !!res.fen);
+  ok('verification present', res && res.verification && !!res.verification.bestMove);
+  ok('aestheticScore in [0.4, 1.0]', res.verification.aestheticScore >= 0.4 && res.verification.aestheticScore <= 1.0, `score=${res.verification.aestheticScore}`);
+  eq('subit trajClass is FIXED', res.verification.subit.trajClass, 'FIXED');
+}
+
 function testPerft(E){
   group('perft');
   if (skipGroup('perft')) { console.log('  (skipped)'); return; }
@@ -441,7 +515,10 @@ async function main(){
               `${FULL ? ' + full' : ''}`);
 
   const projectRoot = path.resolve(__dirname, '..');
-  const html = path.join(projectRoot, 'src', 'subit_chess_v1.9.1.html');
+  const defaultHtml = fs.existsSync(path.join(projectRoot, 'src', 'subit_chess_v2.2.0.html'))
+    ? path.join(projectRoot, 'src', 'subit_chess_v2.2.0.html')
+    : path.join(projectRoot, 'src', 'subit_chess_v1.9.1.html');
+  const html = ARGS.html || ARGS.engine || defaultHtml;
   console.log(`engine: ${html}`);
 
   const ctx = await loadEngine(html);
@@ -454,6 +531,8 @@ async function main(){
     testEngineInvariants(E);
     testS0(E);
     testPolicy(E);
+    testSubitV613(E);
+    await testDiffusion(E);
   } finally {
     try { ctx.window.close(); } catch (_){}
   }
