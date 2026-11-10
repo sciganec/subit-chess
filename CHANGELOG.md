@@ -32,6 +32,48 @@ Major milestone. Controlled generation of chess studies via discrete latent diff
 - **Tests**: Groups [v6_13] + [diffusion] added. Total: **128 passed, 0 failed** (v2.2.0); backward-compat **100/100** (v1.9.1).
 
 ---
+## [3.0.0-alpha.1] — 2026-11-10
+
+First v3.0 milestone: foundation only. Full SUBIT-CHESS v3.0 (CPU-native search,
+transaction gates, evidence registry, UI workbench) is **not** implemented yet.
+
+### Added
+
+- **53-bit position key** (`src/subit_chess_v3.0.0-alpha.html`): two independent
+  Zobrist word tables. `ZOBRIST` (xorshift32, unchanged) and `ZOBRIST2`
+  (murmur3 fmix32 of a counter). `pos.hashLo` / `pos.hashHi` hold the 32-bit
+  words; `pos.hash = hashKey(lo, hi)` is the 53-bit key used by TT, repetition
+  and component caches. New API: `chess.setHash(pos)`, `chess.hashKey(lo, hi)`.
+- **FOUR logic module** `src/four/four.js`: encode/decode, NOT, AND, OR, SJOIN,
+  SMEET, BXOR, NAND, NOR; bit-parallel FOUR_WORD ops; FILL; EQ; knowledge and
+  truth orders; five-gate masks.
+- **Tests**: `tests/four.test.js` (22 checks, exhaustive over 4 values and all
+  65 536 words); `hash53` group in `tests/test.js` (incremental == full recompute
+  on castling, en passant, promotion and random playouts; make/unmake restore).
+
+### Fixed
+
+- **Hash collisions.** The 32-bit Zobrist key collided in practice: 19 true
+  collisions among ~399 000 distinct random positions (birthday bound ≈ 18.6).
+  The 53-bit key: 0 true collisions in 400 000 samples (399 090 distinct),
+  1 797 965 incremental-vs-recompute checks with 0 failures. The two runs used
+  different random generators, so the comparison is at equal scale, not
+  identical samples.
+
+### Changed
+
+- `classifyTrajectory([])` and `classifyTrajectory([1,2,3])` now return
+  `UNRESOLVED`. This is the v2.3.0 behaviour; the two stale test expectations
+  (which assumed the old silent `FIXED`) were updated. Needs owner confirmation.
+
+### Notes
+
+- `SUBIT-CPU` spec gate masks: the example `T,T,T,B,T = 0x02EA` implies gate *i*
+  at bits 2i+1:2i (gate 0 least significant). The spec does not state this; it
+  is pinned in `tests/four.test.js`.
+- `CMP` is not implemented: the spec leaves its comparison policy undefined.
+
+---
 ## [Unreleased]
 
 Nothing scheduled.

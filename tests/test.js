@@ -16,7 +16,7 @@
      node tests/test.js --verbose        # print extra on pass
 
    Requires: jsdom
-   Engine:   src/subit_chess_v1.9.1.html  (single file, exposes window.__subit)
+   Engine:   src/subit_chess_v3.0.0-alpha.html  (single file, exposes window.__subit)
    ========================================================================= */
 
 const fs   = require('fs');
@@ -200,7 +200,7 @@ function testEngineInvariants(E){
     const w = chess.initPosition();
     const b = chess.clonePos(w);
     b.turn = 'b';
-    b.hash = chess.fullHash(b);
+    chess.setHash(b);
     const delta = chess.evalWhiteObjective(w) + chess.evalWhiteObjective(b);
     eq('color-symmetry delta = 0', delta, 0);
   }
@@ -434,8 +434,11 @@ function testSubitV613(E){
   }
 
   // 2. classifyTrajectory
-  eq('classifyTrajectory([]) = FIXED', E.v6_13.classifyTrajectory([]), 'FIXED');
-  eq('classifyTrajectory([1, 2, 3]) = FIXED', E.v6_13.classifyTrajectory([1, 2, 3]), 'FIXED');
+  // v2.3.0 change: an unresolved finite trajectory is UNRESOLVED, not FIXED
+  // (previously silent FIXED). No repeat within budget is not evidence of FIXED.
+  eq('classifyTrajectory([]) = UNRESOLVED (v2.3.0)', E.v6_13.classifyTrajectory([]), 'UNRESOLVED');
+  eq('classifyTrajectory([1, 2, 3]) = UNRESOLVED (v2.3.0)', E.v6_13.classifyTrajectory([1, 2, 3]), 'UNRESOLVED');
+  eq('classifyTrajectory([1, 2, 1]) = PERIODIC', E.v6_13.classifyTrajectory([1, 2, 1]), 'PERIODIC');
   eq('classifyTrajectory([1, 2, 1]) = PERIODIC', E.v6_13.classifyTrajectory([1, 2, 1]), 'PERIODIC');
 
   // 3. classifySetPlus
@@ -509,15 +512,86 @@ function testPerft(E){
 
 // ---------- Main -------------------------------------------------------------
 
+// ---------- v3.0: dual-word Zobrist (53-bit key) ----------------------------
+function testHash53(E){
+  group('hash53');
+  if (skipGroup('hash53')) { console.log('  (skipped)'); return; }
+  const chess = E.chess;
+
+  const sameWords = (a, b) => a.hash === b.hash && a.hashLo === b.hashLo && a.hashHi === b.hashHi;
+
+  // Key range: 53-bit, exact in a JS number
+  {
+    const p = chess.initPosition(); chess.setHash(p);
+    ok('key is integer in [0, 2^53)', Number.isInteger(p.hash) && p.hash >= 0 && p.hash < 2 ** 53, `hash=${p.hash}`);
+    ok('words are unsigned 32-bit', p.hashLo >= 0 && p.hashLo < 2 ** 32 && p.hashHi >= 0 && p.hashHi < 2 ** 32);
+  }
+
+  // Incremental == full recompute on special-rule positions
+  const fens = [
+    ['start', null],
+    ['castling-rich', 'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1'],
+    ['en passant', 'rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3'],
+    ['promotion', '8/P6k/8/8/8/8/8/K7 w - - 0 1'],
+  ];
+  for (const [label, fen] of fens) {
+    let root = fen ? chess.fromFEN(fen) : chess.initPosition();
+    chess.setHash(root);
+    let pos = root, bad = 0, plies = 0;
+    // Depth-3 exhaustive walk from each root: every move, every reply, every third
+    const walk = (p, d) => {
+      if (d === 0) return;
+      for (const m of chess.legalMoves(p)){
+        const nx = chess.makeMovePure(p, m);
+        const probe = chess.clonePos(nx); chess.setHash(probe);
+        plies++;
+        if (!sameWords(probe, nx)) bad++;
+        walk(nx, d - 1);
+      }
+    };
+    walk(root, 3);
+    ok(`incremental == recompute, depth-3 walk: ${label} (${plies} nodes)`, bad === 0, bad ? `bad=${bad}` : '');
+  }
+
+  // make/unmake restores both words exactly
+  {
+    const p = chess.fromFEN(fens[1][1]); chess.setHash(p);
+    const before = chess.clonePos(p);
+    let allRestored = true;
+    for (const m of chess.legalMoves(p)){
+      const u = chess.makeMove(p, m);
+      chess.unmakeMove(p, u);
+      if (!sameWords(p, before)) { allRestored = false; break; }
+    }
+    ok('make/unmake restores hash, hashLo, hashHi on all root moves', allRestored);
+  }
+
+  // Random playouts: incremental == recompute at every ply
+  {
+    let s = 2024, bad = 0, checks = 0;
+    const rnd = () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+    for (let g = 0; g < 40; g++){
+      let p = chess.initPosition(); chess.setHash(p);
+      for (let ply = 0; ply < 120; ply++){
+        const ms = chess.legalMoves(p); if (!ms.length) break;
+        p = chess.makeMovePure(p, ms[Math.floor(rnd() * ms.length)]);
+        const probe = chess.clonePos(p); chess.setHash(probe);
+        checks++; if (!sameWords(probe, p)) bad++;
+      }
+    }
+    ok(`random playouts: incremental == recompute (${checks} plies)`, bad === 0, bad ? `bad=${bad}` : '');
+  }
+}
+
 async function main(){
   console.log('subit-chess test suite');
   console.log(`mode: ${ANY_ONLY ? Object.keys(ONLY).filter(k => ONLY[k]).join(',') : 'all'}` +
               `${FULL ? ' + full' : ''}`);
 
   const projectRoot = path.resolve(__dirname, '..');
-  const defaultHtml = fs.existsSync(path.join(projectRoot, 'src', 'subit_chess_v2.2.0.html'))
-    ? path.join(projectRoot, 'src', 'subit_chess_v2.2.0.html')
-    : path.join(projectRoot, 'src', 'subit_chess_v1.9.1.html');
+  const defaultHtml = fs.existsSync(path.join(projectRoot, 'src', 'subit_chess_v3.0.0-alpha.html'))
+    ? path.join(projectRoot, 'src', 'subit_chess_v3.0.0-alpha.html')
+    : path.join(projectRoot, 'src', 'subit_chess_v2.2.0.html');
   const html = ARGS.html || ARGS.engine || defaultHtml;
   console.log(`engine: ${html}`);
 
@@ -529,6 +603,7 @@ async function main(){
   try {
     testPerft(E);
     testEngineInvariants(E);
+    testHash53(E);
     testS0(E);
     testPolicy(E);
     testSubitV613(E);

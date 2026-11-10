@@ -1,7 +1,7 @@
 {
   "name": "subit-chess",
-  "version": "1.9.1",
-  "description": "Browser chess engine with S₀ morphological grammar (I×Z×Φ=48) and ρ_s policy vector on 8 signal cells",
+  "version": "3.0.0-alpha.1",
+  "description": "Browser chess engine: SUBIT morphology (S₀ = I×Z×Φ), 53-bit Zobrist key, FOUR logic module (v3.0 alpha)",
   "keywords": [
     "chess",
     "chess-engine",
@@ -23,8 +23,8 @@
   "bugs": {
     "url": "https://github.com/USER/subit-chess/issues"
   },
-  "main": "src/subit_chess_v1.9.1.html",
-  "browser": "src/subit_chess_v1.9.1.html",
+  "main": "src/subit_chess_v3.0.0-alpha.html",
+  "browser": "src/subit_chess_v3.0.0-alpha.html",
   "files": [
     "src/",
     "runners/",
@@ -39,22 +39,19 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node tests/test.js",
+    "test": "node tests/test.js && node tests/four.test.js",
     "test:perft": "node tests/test.js --only-perft",
     "test:policy": "node tests/test.js --only-policy",
-
     "selfplay": "node runners/run.js --mode selfplay --games 100 --depth 2",
     "teacher": "node runners/run.js --mode teacher --games 100 --depth 2 --out results/run1.json",
-
     "match": "node runners/run.js --mode match --games 400 --depth 2 --seed 42",
     "match:baseline": "node runners/run.js --mode match --games 400 --depth 2 --seed 42 --policy off",
     "match:rho8": "node runners/run.js --mode match --games 400 --depth 2 --seed 42 --policy on",
-
     "screening": "node runners/run.js --mode match --games 200 --depth 2 --seed 42",
     "screening:baseline": "node runners/run.js --mode match --games 200 --depth 2 --seed 42 --policy off",
-
     "clean": "node -e \"require('fs').rmSync('results',{recursive:true,force:true});require('fs').mkdirSync('results',{recursive:true});require('fs').writeFileSync('results/.gitkeep','')\"",
-    "release": "npm run test && git tag v$npm_package_version && git push origin v$npm_package_version"
+    "release": "npm run test && git tag v$npm_package_version && git push origin v$npm_package_version",
+    "test:four": "node tests/four.test.js"
   },
   "devDependencies": {
     "jsdom": "^24.1.0"
