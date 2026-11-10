@@ -99,7 +99,7 @@ function buildNativeKingMovesProgram(CPU, options = {}) {
       branch(0,accept); // empty target
 
       // Non-empty target: accept only an opponent piece.
-      load(1,0x30000-friendlyThreshold);
+      load(1,0x10000-friendlyThreshold);
       ext(X.UADD,1,2,1); // C=1 iff target >= friendlyThreshold
       if(side==='w') {
         branchWhenFalse(3,skip); // C=0 => target < 9 => friendly
@@ -136,8 +136,8 @@ function buildNativeKingMovesProgram(CPU, options = {}) {
 if(require.main===module) {
   const CPU=require('../src/cpu/subit_cpu.js');
   const cpu=new CPU();
-  // Minimal synthetic position: white kings on b1 and g1, otherwise empty.
-  cpu.memory[0]=0x0200; // a1=0, b1=2, c1=0, d1=0
+  // Minimal synthetic position: white king on e4, otherwise empty.
+  cpu.memory[7]=0x0000; // board starts empty
   cpu.memory[1]=0x0000;
   cpu.memory[2]=0x0000;
   cpu.memory[3]=0x0000;
@@ -154,6 +154,9 @@ if(require.main===module) {
   cpu.memory[14]=0x0000;
   cpu.memory[15]=0x0000;
   cpu.memory[0x10]=0;
+  const kingSquare=28, word=boardAddressPlaceholder;
+  const addr=kingSquare>>>2, shift=(3-(kingSquare&3))*4;
+  cpu.memory[addr]=(cpu.memory[addr]&~(15<<shift))|(6<<shift);
   const p=buildNativeKingMovesProgram(CPU,{side:'w'});
   cpu.loadProgram(p.words,p.start);
   const result=cpu.run({maxSteps:50000});
