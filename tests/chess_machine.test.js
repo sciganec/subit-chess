@@ -492,3 +492,33 @@ assert.equal(runPreflight(12,13,[[12,4],[13,1]],'w').status,6); // friendly targ
 assert.equal(runPreflight(12,12,[[12,4]]).status,3); // same square
 assert.equal(runPreflight(12,13,[[12,4]],'w',1).status,2); // reserved bit
 assert.equal(runPreflight(12,13,[[12,12]],'b').status,1); // black source
+
+
+// CPU-native Move Geometry: ROM lookup chooses a piece-specific geometric
+// relation; the CPU itself reads every intermediate square for sliders and
+// pawn double advances. The table builder is static assembly/data generation.
+const {buildNativeMoveGeometryProgram,GEOMETRY_STATUS}=require('../examples/cpu_native_move_geometry.js');
+function runGeometry(from,to,pieces,side='w',promotion=0){
+  cpu2.reset();cpu2.memory.fill(0,0x0000,0x0600);
+  for(const [sq,code] of pieces)setKingTestPiece(cpu2.memory,sq,code);
+  cpu2.memory[ABI.FLAGS]=side==='w'?0:1;
+  cpu2.memory[ABI.MOVE_DATA]=((from&63)<<10)|((to&63)<<4)|((promotion&7)<<1);
+  const geometry=buildNativeMoveGeometryProgram(SubitCPU,{side,start:0xD000});
+  cpu2.memory.set(geometry.tableWords,geometry.tableBase);
+  cpu2.memory.set(geometry.oneHotWords,geometry.oneHotBase);
+  cpu2.loadProgram(geometry.words,geometry.start);
+  const result=cpu2.run({maxSteps:10000});
+  assert.equal(result.status,'HALTED',JSON.stringify({result,trap:cpu2.trap}));
+  return {status:cpu2.memory[geometry.statusAddress],steps:result.steps,words:geometry.words.length};
+}
+assert.equal(runGeometry(1,18,[[1,2]]).status,GEOMETRY_STATUS.VALID); // Nb1-c3
+assert.equal(runGeometry(1,17,[[1,2]]).status,GEOMETRY_STATUS.INVALID_GEOMETRY); // Nb1-b3
+assert.equal(runGeometry(12,28,[[12,4]]).status,GEOMETRY_STATUS.VALID); // Re2-e4
+assert.equal(runGeometry(12,28,[[12,4],[20,1]]).status,GEOMETRY_STATUS.BLOCKED_PATH); // pawn blocks rook
+assert.equal(runGeometry(2,38,[[2,3]]).status,GEOMETRY_STATUS.VALID); // Bc1-g5
+assert.equal(runGeometry(2,38,[[2,3],[20,1]]).status,GEOMETRY_STATUS.BLOCKED_PATH);
+assert.equal(runGeometry(12,28,[[12,1]]).status,GEOMETRY_STATUS.VALID); // e2-e4, clear middle
+assert.equal(runGeometry(12,28,[[12,1],[20,9]]).status,GEOMETRY_STATUS.BLOCKED_PATH); // blocked double push
+assert.equal(runGeometry(52,36,[[52,9]],'b').status,GEOMETRY_STATUS.VALID); // black e7-e5
+assert.equal(runGeometry(12,36,[[12,1]]).status,GEOMETRY_STATUS.INVALID_GEOMETRY); // pawn cannot e2-e5
+assert.equal(runGeometry(8,16,[[8,1]],'w',1).status,GEOMETRY_STATUS.UNSUPPORTED_PROMOTION);
