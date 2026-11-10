@@ -380,4 +380,39 @@ assert.deepEqual(
   {status:4,square:0xffff}
 ); // WRONG_SIDE
 
+
+ 
+// CPU-native staged move application copies the source board, decodes the
+// 16-bit move ABI, clears the source nibble, and writes the piece at target.
+const {buildNativeMoveApplyProgram}=require('../examples/cpu_native_move_apply.js');
+function runNativeMoveApply(from,to,piece,targetPiece=0){
+  cpu2.reset();
+  cpu2.memory.fill(0,0x0000,0x0600);
+  setKingTestPiece(cpu2.memory,from,piece);
+  if(targetPiece)setKingTestPiece(cpu2.memory,to,targetPiece);
+  const moveWord=(from<<10)|(to<<4);
+  cpu2.memory[ABI.MOVE_DATA]=moveWord;
+  const apply=buildNativeMoveApplyProgram(SubitCPU,{start:0x8000,
+    boardAddress:ABI.BOARD,scratchBoardAddress:0x0500,moveAddress:ABI.MOVE_DATA});
+  cpu2.loadProgram(apply.words,apply.start);
+  const result=cpu2.run({maxSteps:10000});
+  assert.equal(result.status,'HALTED');
+  assert.equal(cpu2.memory[0x0342],1);
+  assert.equal(cpu2.memory[ABI.BOARD+(from>>>2)]===0, false,
+    'original board must remain intact');
+  const staged=cpu2.memory.slice(0x0500,0x0510);
+  const pieceAt=(sq)=>((staged[sq>>>2]>>>((3-(sq&3))*4))&15);
+  assert.equal(pieceAt(from),0);
+  assert.equal(pieceAt(to),piece);
+  assert.equal(cpu2.memory[ABI.BOARD+(from>>>2)]!==0,true,
+    'source board is not modified');
+  return {steps:result.steps,programWords:apply.words.length,staged:Array.from(staged)};
+}
+const quietApply=runNativeMoveApply(12,28,1);
+assert.ok(quietApply.steps>0);
+assert.ok(quietApply.programWords<0x1000);
+// Captures overwrite the destination nibble in the staged copy only.
+const captureApply=runNativeMoveApply(27,36,1,9);
+assert.equal(((captureApply.staged[36>>>2]>>>((3-(36&3))*4))&15),1);
+
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
