@@ -80,4 +80,18 @@ const wrongSideRun=cpu2.run({maxSteps:50000});
 assert.equal(wrongSideRun.status,'HALTED');
 assert.equal(cpu2.memory[ABI.LEGAL_COUNT],0);
 
+// Black-side knight generation on the same initial position.
+cpu2.reset(); cpu2.memory[ABI.FLAGS]=1;
+const blackKnightProgram=buildNativeKnightMovesProgram(SubitCPU,{side:'b',start:0x1000});
+cpu2.loadProgram(blackKnightProgram.words,blackKnightProgram.start);
+const blackKnightRun=cpu2.run({maxSteps:50000});
+assert.equal(blackKnightRun.status,'HALTED');
+assert.equal(cpu2.memory[ABI.LEGAL_COUNT],4);
+const blackKnightMoves=Array.from(cpu2.memory.slice(ABI.MOVE_BUFFER,ABI.MOVE_BUFFER+4)).sort((a,b)=>a-b);
+const expectedBlackKnightMoves=[
+  ((57&63)<<10)|((40&63)<<4), ((57&63)<<10)|((42&63)<<4),
+  ((62&63)<<10)|((45&63)<<4), ((62&63)<<10)|((47&63)<<4)
+].sort((a,b)=>a-b);
+assert.deepEqual(blackKnightMoves,expectedBlackKnightMoves);
+
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
