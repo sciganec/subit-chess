@@ -1,7 +1,7 @@
 {
   "name": "subit-chess",
-  "version": "1.9.1",
-  "description": "Browser chess engine with S₀ morphological grammar (I×Z×Φ=48) and ρ_s policy vector on 8 signal cells",
+  "version": "2.2.0",
+  "description": "Browser chess engine with 64-state SUBIT grammar, ρ_s policy, teacher telemetry, and diffusion study generation",
   "keywords": [
     "chess",
     "chess-engine",
@@ -15,16 +15,16 @@
   ],
   "license": "MIT",
   "author": "SUBIT",
-  "homepage": "https://github.com/USER/subit-chess",
+  "homepage": "https://github.com/sciganec/subit-chess",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/USER/subit-chess.git"
+    "url": "git+https://github.com/sciganec/subit-chess.git"
   },
   "bugs": {
     "url": "https://github.com/USER/subit-chess/issues"
   },
-  "main": "src/subit_chess_v1.9.1.html",
-  "browser": "src/subit_chess_v1.9.1.html",
+  "main": "index.html",
+  "browser": "index.html",
   "files": [
     "src/",
     "runners/",
@@ -40,6 +40,8 @@
   },
   "scripts": {
     "test": "node tests/test.js",
+    "test:cpu": "node tests/cpu.test.js",
+    "test:all": "node tests/cpu.test.js && node tests/test.js",
     "test:perft": "node tests/test.js --only-perft",
     "test:policy": "node tests/test.js --only-policy",
 
