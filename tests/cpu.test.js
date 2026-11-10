@@ -177,4 +177,16 @@ assert.equal(fillCell(FOUR.B),0xFFFF);
   assert.equal(c.clock,0);
 }
 
+
+{
+  const c=new CPU();
+  c.SRF[0]=2147483647;c.SRF[1]=1;
+  c.loadProgram([...CPU.encodeExtended(CPU.XOP.SADD,2,0,1),encode(O.HALT)]);
+  const result=c.run();
+  assert.equal(result.status,'HALTED');
+  assert.equal(c.SRF[2],-2147483648);
+  assert.ok(c.FLAGS&CPU.FLAG.V);
+  assert.equal(c.FLAGS&CPU.FLAG.C,0);
+}
+
 console.log('SUBIT-CPU Core v0.2 extension tests: all tests passed');
