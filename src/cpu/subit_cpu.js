@@ -167,9 +167,10 @@ class SubitCPU {
       return {status:this.halted?'HALTED':'COMMITTED',...record};
     } catch(err) {
       for(let i=writes.length-1;i>=0;i--) this.memory[writes[i][0]]=writes[i][1];
+      const failedIR=this.IR;
       this.restore(before);
       this.halted=true;
-      this.trap={code:String(err.message||err),pc:pc0,ir:this.IR};
+      this.trap={code:String(err.message||err),pc:pc0,ir:failedIR};
       // Trap evidence is deliberately retained outside the rolled-back instruction state.
       this._record({clock:this.clock,pc:pc0,ir:this.IR,status:'ABORTED',trap:this.trap.code});
       return {status:'TRAP',pc:pc0,trap:this.trap};
