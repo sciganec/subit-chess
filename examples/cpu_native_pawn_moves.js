@@ -121,7 +121,6 @@ function buildNativePawnMovesProgram(CPU, options = {}) {
       ext(X.UADD,1,2,1); // C iff target code >= threshold
       if(side==='w'){
         skipIfNoCarry(capSkip);
-        jump(capSkip);
       }else{
         branchNoCarry(stem+'_cap_'+df+'_accept');
         jump(capSkip);
