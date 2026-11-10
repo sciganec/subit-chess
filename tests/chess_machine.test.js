@@ -416,3 +416,56 @@ const captureApply=runNativeMoveApply(27,36,1,9);
 assert.equal(((captureApply.staged[36>>>2]>>>((3-(36&3))*4))&15),1);
 
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
+
+
+// Composed CPU-native king-safety pipeline: moving a shielding rook exposes
+// the white king to a black rook; a move that preserves the blocker is safe.
+// The expected result is independently checked by a simple file-ray oracle.
+const {runNativeKingSafetyPipeline,PIPELINE_STATUS}=require('../examples/cpu_native_king_safety_pipeline.js');
+function setPipelinePosition(){
+  cpu2.reset();
+  cpu2.memory.fill(0,0x0000,0x0600);
+  setKingTestPiece(cpu2.memory,4,6);   // White king e1.
+  setKingTestPiece(cpu2.memory,12,4);  // White rook e2, shielding the king.
+  setKingTestPiece(cpu2.memory,60,12); // Black rook e8.
+  setKingTestPiece(cpu2.memory,56,14); // Black king a8.
+  cpu2.memory[ABI.FLAGS]=0;
+}
+function independentWhiteKingInCheck(boardWords){
+  const pieceAt=sq=>(boardWords[sq>>>2]>>>((3-(sq&3))*4))&15;
+  // Black rook e8 attacks e1 iff every intervening square e2..e7 is empty.
+  for(let sq=12;sq<60;sq+=8)if(pieceAt(sq)!==0)return false;
+  return true;
+}
+setPipelinePosition();
+cpu2.memory[ABI.MOVE_DATA]=(12<<10)|(13<<4); // Re2-f2 uncovers the e-file.
+const exposed=runNativeKingSafetyPipeline(cpu2,{side:'w'});
+assert.equal(exposed.status,PIPELINE_STATUS.ILLEGAL_CHECK);
+assert.equal(exposed.legal,false);
+assert.equal(exposed.reason,'KING_IN_CHECK');
+assert.equal(exposed.kingSquare,4);
+const exposedBoard=cpu2.memory.slice(0x0500,0x0510);
+assert.equal(independentWhiteKingInCheck(exposedBoard),true);
+assert.equal(cpu2.memory[ABI.BOARD+3]!==exposedBoard[3],true,
+  'staged move must not mutate the original board');
+
+setPipelinePosition();
+cpu2.memory[ABI.MOVE_DATA]=(12<<10)|(20<<4); // Re2-e3 keeps the e-file blocked.
+const shielded=runNativeKingSafetyPipeline(cpu2,{side:'w'});
+assert.equal(shielded.status,PIPELINE_STATUS.LEGAL);
+assert.equal(shielded.legal,true);
+assert.equal(shielded.reason,'KING_SAFE');
+assert.equal(shielded.kingSquare,4);
+const shieldedBoard=cpu2.memory.slice(0x0500,0x0510);
+assert.equal(independentWhiteKingInCheck(shieldedBoard),false);
+assert.deepEqual(shielded.stages.map(x=>x.name),[
+  'MOVE_APPLY','ATTACK_PAWN','ATTACK_KNIGHT','ATTACK_KING',
+  'ATTACK_DIAGONAL','ATTACK_ORTHOGONAL','KING_SAFETY'
+]);
+
+// The pipeline refuses to interpret a move for the wrong side to move.
+setPipelinePosition();
+cpu2.memory[ABI.FLAGS]=1;
+const wrongPipelineSide=runNativeKingSafetyPipeline(cpu2,{side:'w'});
+assert.equal(wrongPipelineSide.legal,false);
+assert.equal(wrongPipelineSide.reason,'WRONG_SIDE_TO_MOVE');
