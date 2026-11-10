@@ -469,3 +469,26 @@ cpu2.memory[ABI.FLAGS]=1;
 const wrongPipelineSide=runNativeKingSafetyPipeline(cpu2,{side:'w'});
 assert.equal(wrongPipelineSide.safe,false);
 assert.equal(wrongPipelineSide.reason,'WRONG_SIDE_TO_MOVE');
+
+
+// CPU-native Move Preflight checks source presence/ownership and rejects a
+// friendly occupied destination before the staged move-apply stage can run.
+const {buildNativeMovePreflightProgram}=require('../examples/cpu_native_move_preflight.js');
+function runPreflight(from,to,pieces,side='w',reserved=0){
+  cpu2.reset();cpu2.memory.fill(0,0x0000,0x0600);
+  for(const [sq,code] of pieces)setKingTestPiece(cpu2.memory,sq,code);
+  cpu2.memory[ABI.FLAGS]=side==='w'?0:1;
+  cpu2.memory[ABI.MOVE_DATA]=((from&63)<<10)|((to&63)<<4)|(reserved&1);
+  const program=buildNativeMovePreflightProgram(SubitCPU,{start:0x9000});
+  cpu2.loadProgram(program.words,program.start);
+  const run=cpu2.run({maxSteps:10000});
+  assert.equal(run.status,'HALTED',JSON.stringify({run,trap:cpu2.trap}));
+  return {status:cpu2.memory[program.statusAddress],steps:run.steps,programWords:program.words.length};
+}
+assert.equal(runPreflight(12,13,[[12,4]]).status,1); // valid white source, empty target
+assert.equal(runPreflight(12,13,[]).status,4); // empty source
+assert.equal(runPreflight(12,13,[[12,12]],'w').status,5); // black piece, white to move
+assert.equal(runPreflight(12,13,[[12,4],[13,1]],'w').status,6); // friendly target
+assert.equal(runPreflight(12,12,[[12,4]]).status,3); // same square
+assert.equal(runPreflight(12,13,[[12,4]],'w',1).status,2); // reserved bit
+assert.equal(runPreflight(12,13,[[12,12]],'b').status,1); // black source
