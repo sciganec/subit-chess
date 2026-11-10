@@ -40,8 +40,8 @@ Each stage is loaded and executed by the SUBIT-CPU interpreter. JavaScript curre
 
 ## Result
 
-- `1 LEGAL`: exactly one moving-side king is present and not attacked.
-- `2 ILLEGAL_CHECK`: exactly one king is present but attacked.
+- `1 SAFE`: exactly one moving-side king is present and not attacked; this certifies only the king-safety condition.
+- `2 CHECK`: exactly one king is present but attacked.
 - `3 INVALID_KING_STATE`: missing, duplicate, or side-mismatched king state.
 - `4 EXECUTION_ERROR`: a stage traps, reaches its step limit, or the requested side does not match the runtime side-to-move flag.
 
