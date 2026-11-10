@@ -87,7 +87,7 @@ function buildNativeAttackMapProgram(CPU, options = {}) {
           mark(to);
           readPiece(to);load(2,0);cmp(0,2);
           // Empty continues; any occupied square terminates this ray.
-          branch(1,ray+'_continue_'+to);
+          branch(0,ray+'_continue_'+to);
           jump(skip);
           label('ray_'+from+'_'+d+'_continue_'+to);
         }
