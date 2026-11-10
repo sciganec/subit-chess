@@ -2444,10 +2444,33 @@ if (mySearchId !== state.currentSearchId || state.over) return;
 updateStatus();
 if (result && result.best){ state.hintMove = result.best.move; renderBoard(); updateSearchOmegaPanel(result); }
 }
-function exportPGN(){
+function buildPGN(){
 const date = new Date().toISOString().slice(0,10).replace(/-/g,'.');
 let pgn = '[Event "SUBIT-CHESS v3.0.0-alpha"]\n[Site "Browser"]\n[Date "' + date + '"]\n[White "Player"]\n[Black "SUBIT Engine"]\n[Result "*"]\n\n';
 for (let i=0;i<state.moveHistory.length;i++){ if (i%2 === 0) pgn += (Math.floor(i/2)+1) + '. '; pgn += state.moveHistory[i].san + ' '; }
+return pgn;
+}
+// Artifact viewers block blob-anchor downloads; the `downloads` capability
+// asks the viewer to save instead. Outside a viewer (plain browser) fall back
+// to the classic blob download. Capability namespace may resolve late or null.
+async function exportPGN(){
+const pgn = buildPGN();
+let dl = null;
+try {
+  if (window.claude && typeof window.claude.use === 'function'){
+    dl = await Promise.race([window.claude.use('downloads'), new Promise(function(r){ setTimeout(function(){ r(null); }, 1500); })]);
+  }
+} catch(e){ dl = null; }
+if (dl){
+  try {
+    await dl.save({ filename: 'subit-game.txt', data: pgn });
+    return;
+  } catch(e){
+    // declined / unavailable: the viewer already saw the prompt; do not retry
+    if (e && e.code && e.code !== 'unavailable' && e.code !== 'not_granted' && e.code !== 'capability_disabled' && e.code !== 'capability_removed') console.warn('[SUBIT] PGN save:', e.code);
+    if (e && e.code !== 'unavailable' && e.code !== 'not_granted' && e.code !== 'capability_disabled' && e.code !== 'capability_removed') return;
+  }
+}
 const blob = new Blob([pgn], {type: 'text/plain'}); const url = URL.createObjectURL(blob);
 const a = document.createElement('a'); a.href = url; a.download = 'subit-game.pgn'; a.click(); URL.revokeObjectURL(url);
 }
