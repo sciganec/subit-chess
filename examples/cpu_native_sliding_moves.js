@@ -14,6 +14,9 @@ function buildNativeSlidingMovesProgram(CPU, options = {}) {
   const side = options.side ?? 'w';
   if (side !== 'w' && side !== 'b') throw new RangeError("side must be 'w' or 'b'");
   const start = options.start ?? 0x1000;
+  const family = options.family ?? 'diagonal';
+  const resetCount = options.resetCount !== false;
+  if (family !== 'diagonal' && family !== 'orthogonal') throw new RangeError('family must be diagonal or orthogonal');
   const boardAddress = options.boardAddress ?? 0;
   const flagsAddress = options.flagsAddress ?? 0x10;
   const countAddress = options.countAddress ?? 0x22;
@@ -43,13 +46,14 @@ function buildNativeSlidingMovesProgram(CPU, options = {}) {
     ext(X.UADDI,3,3,0,1);
   };
 
-  // Clear result before checking the runtime side.
-  load(1,countAddress);load(2,0);mem(M.USTORE,0,1,2);
+  // The first family clears the count; the second resumes it.
+  if (resetCount) { load(1,countAddress);load(2,0);mem(M.USTORE,0,1,2); }
   load(1,flagsAddress);mem(M.ULOAD,0,1);
   load(2,1);ext(X.UAND,0,0,2);
   load(1,side==='w'?0:1);cmp(0,1);
   branch(1,'wrong_side');
-  load(3,0);
+  if (resetCount) load(3,0);
+  else { load(1,countAddress);mem(M.ULOAD,3,1); }
 
   const dirs=[
     {name:'NE',df:1,dr:1,kind:'B'},{name:'NW',df:-1,dr:1,kind:'B'},
@@ -60,9 +64,10 @@ function buildNativeSlidingMovesProgram(CPU, options = {}) {
   const bishop=side==='w'?3:11, rook=side==='w'?4:12, queen=side==='w'?5:13;
   const threshold=side==='w'?9:8;
 
+  const selectedDirs=dirs.filter(d=>family==='diagonal'?d.kind==='B':d.kind==='R');
   for(let from=0;from<64;from++){
     const file=from&7,rank=from>>>3;
-    for(const dir of dirs){
+    for(const dir of selectedDirs){
       const ray=from+'_'+dir.name, end=ray+'_end';
       let targets=[],f=file+dir.df,r=rank+dir.dr;
       while(f>=0&&f<8&&r>=0&&r<8){targets.push(r*8+f);f+=dir.df;r+=dir.dr;}
@@ -104,8 +109,8 @@ function buildNativeSlidingMovesProgram(CPU, options = {}) {
     words[f.at]=start+labels.get(f.target);
   }
   if(start+words.length>65536)throw new RangeError('generated program exceeds CPU address space');
-  return Object.freeze({start,end:start+words.length,words,side,moveCapacity:256,
-    moveCountAddress:countAddress,moveBufferAddress,scope:'SLIDING_PSEUDO_LEGAL'});
+  return Object.freeze({start,end:start+words.length,words,side,family,resetCount,moveCapacity:256,
+    moveCountAddress:countAddress,moveBufferAddress,scope:'SLIDING_PSEUDO_LEGAL',requiresTwoPasses:true});
 }
 
 module.exports={buildNativeSlidingMovesProgram};
