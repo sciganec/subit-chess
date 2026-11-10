@@ -1,6 +1,6 @@
 'use strict';
 const assert=require('node:assert/strict');
-const {SubitCPU}=require('../src/cpu/subit_cpu.js');
+const SubitCPU=require('../src/cpu/subit_cpu.js');
 const {ABI,COMMAND,STATUS,ERROR,encodeMove,decodeMove,SubitChessUnit}=require('../src/chess/chess_unit.js');
 
 function pos0(){
@@ -29,7 +29,7 @@ const api={
 function command(unit,c){unit.cpu.memory[ABI.COMMAND]=c;return unit.dispatch();}
 const cpu=new SubitCPU(), unit=new SubitChessUnit(cpu,api);
 assert.equal(command(unit,COMMAND.INIT).ok,true);
-assert.equal(cpu.memory[ABI.BOARD],0x4823); // a1..d1: R,N,B,Q
+assert.equal(cpu.memory[ABI.BOARD],0x4235); // a1..d1: R,N,B,Q
 assert.equal(cpu.memory[ABI.FLAGS],30);
 assert.equal(cpu.memory[ABI.EP],0xFFFF);
 assert.equal(command(unit,COMMAND.GEN_LEGAL).moves,1);
