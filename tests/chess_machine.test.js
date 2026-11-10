@@ -22,4 +22,16 @@ assert.ok(unit.position);
 assert.equal(cpu.memory[ABI.STATUS],1);
 assert.equal(machine.peripheralLog.length,1);
 assert.equal(machine.peripheralLog[0].result.ok,true);
+
+const cpu2=new SubitCPU(),unit2=new SubitChessUnit(cpu2,api),machine2=new SubitChessMachine(cpu2,unit2);
+const nativeProgram=machine2.loadNativeCommandProgram(COMMAND.INIT);
+assert.equal(nativeProgram.words.length,7);
+const nativeRun=machine2.run();
+assert.equal(nativeRun.status,'HALTED');
+assert.equal(nativeRun.steps,4);
+assert.ok(unit2.position);
+assert.equal(cpu2.memory[ABI.STATUS],1);
+assert.equal(machine2.peripheralLog.length,1);
+assert.equal(machine2.peripheralLog[0].result.ok,true);
+
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
