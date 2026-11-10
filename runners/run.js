@@ -58,7 +58,7 @@ function cfgFromArgs(args){
     topK:        +args['top-k'] || 3,
     chunk:       +args.chunk || 50,
     policy:      args.policy || 'on',
-    html:        args.html || path.join(projectRoot, 'src', 'subit_chess_v1.9.1.html'),
+    html:        args.html || path.join(projectRoot, 'index.html'),
     out:         args.out || 'results/report.json',
     baseline:    args.baseline || null,
     rhoSnapshot: args['rho-snapshot'] || null,
