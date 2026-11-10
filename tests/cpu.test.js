@@ -67,16 +67,51 @@ assert.equal(fillCell(FOUR.B),0xFFFF);
   assert.equal(c.RF[1],0xAAAA);
 }
 
-// Unknown opcodes trap without advancing the committed clock.
+// POP underflow is an atomic trap and leaves the stack pointer unchanged.
 {
   const c=new CPU();
-  c.loadProgram([encode(0x1E)]);
+  c.loadProgram([encode(O.POP,0)]);
   const r=c.step();
   assert.equal(r.status,'TRAP');
   assert.equal(c.clock,0);
-  assert.equal(c.halted,true);
-  assert.match(c.trap.code,/ILLEGAL_OPCODE/);
+  assert.equal(c.SP,0xFFFF);
+  assert.equal(c.trap.code,'STACK_UNDERFLOW');
   assert.equal(c.journal.at(-1).status,'ABORTED');
+}
+
+// CALL/RET and PUSH/POP share a descending, transactional memory stack.
+{
+  const p=[
+    encode(O.FILL,0,0,0,FOUR.B),
+    encode(O.PUSH,0,0),
+    encode(O.FILL,0,0,0,FOUR.F),
+    encode(O.POP,1),
+    encode(O.CALL),7,
+    encode(O.HALT),
+    encode(O.FILL,2,0,0,FOUR.T),
+    encode(O.RET)
+  ];
+  const {c,result}=run(p);
+  assert.equal(result.status,'HALTED');
+  assert.equal(c.RF[1],0xFFFF);
+  assert.equal(c.RF[2],0xAAAA);
+  assert.equal(c.memory[0xFFFF],6);
+  assert.equal(c.SP,0xFFFF);
+  assert.equal(result.steps,8);
+}
+
+// A failed stack write rolls back both the memory cell and SP.
+{
+  const c=new CPU();
+  c.SP=-1;
+  c.memory[0xFFFF]=0xBEEF;
+  c.loadProgram([encode(O.PUSH,0,0)]);
+  c.SP=-1;
+  const r=c.step();
+  assert.equal(r.status,'TRAP');
+  assert.equal(c.trap.code,'STACK_OVERFLOW');
+  assert.equal(c.SP,-1);
+  assert.equal(c.memory[0xFFFF],0xBEEF);
 }
 
 // An immediate instruction at the final address must not wrap and read address zero.
