@@ -42,3 +42,9 @@ ERROR: NONE=0, BAD_COMMAND=1, BAD_MOVE=2, NO_UNDO=3, NO_POSITION=4, CAPACITY=5.
 - This is an ABI/peripheral adapter, not an instruction-level chess accelerator.
 - Search, evaluation beyond material, repetition-history ABI, clocks, draw claims, and CPU-native move generation are not part of v0.1.
 - 32-bit hash is exposed as two 16-bit words; the underlying engine may internally use a wider numeric hash.
+
+## CPU-to-peripheral doorbell bridge
+
+`src/chess/chess_machine.js` supplies the v0.1 host bridge. A CPU instruction that commits a STORE to address 0x0020 (COMMAND) triggers `ChessUnit.dispatch()`. The bridge does not dispatch on an aborted instruction and records each peripheral event with the committed CPU clock. `loadCommandProgram(command)` emits a small CPU program that loads a command value from scratch memory and stores it to COMMAND; this is a smoke-test transport, not yet a general assembler or interrupt model.
+
+The browser entry exposes `__subit.cpu.createChessUnit(cpu)` and `__subit.cpu.createMachine(cpu, unit)`. The machine remains a deterministic software integration layer; it is not hardware and does not yet execute chess move generation inside the CPU instruction set.
