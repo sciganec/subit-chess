@@ -41,6 +41,7 @@ function buildGeometryTable(side){
       for(let type=0;type<6;type++)if(pieceTypes[type](f,r,tf,tr))mask|=1<<type;
       words[base]=mask;
       let path=[];
+      if((mask&(1<<PIECE_TYPE.PAWN))&&df===0&&Math.abs(dr)===2)path.push((r+sign)*8+f);
       if(mask&(1<<PIECE_TYPE.BISHOP|1<<PIECE_TYPE.ROOK|1<<PIECE_TYPE.QUEEN)){
         const diagonal=Math.abs(df)===Math.abs(dr);
         const stepF=Math.sign(df),stepR=Math.sign(dr);
@@ -123,7 +124,6 @@ function buildNativeMoveGeometryProgram(CPU,options={}){
     load(0,squareSlot);mem(M.ULOAD,0,0);load(2,4);ext(X.UDIV,2,0,2);
     load(3,board);ext(X.UADD,2,2,3);mem(M.ULOAD,3,2);
     load(2,3);ext(X.UAND,2,0,2);
-    for(let n=0;n<4;n++){load(2,n);cmp(2,2);/* replaced below */}
     // The nibble index is dispatched without changing the saved packed word.
     load(2,squareSlot);mem(M.ULOAD,2,2);load(1,3);ext(X.UAND,2,2,1);
     for(let n=0;n<4;n++){load(1,n);cmp(2,1);branchZ('path_'+i+'_nib_'+n);}
