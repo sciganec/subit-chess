@@ -39,7 +39,7 @@ class SubitChessMachine {
     const words=[
       enc(OP.LOADI,0),command&0xFFFF,
       enc(OP.LOADI,1),ABI.COMMAND,
-      CPU.MEM_PREFIX,...CPU.encodeExtended(CPU.MOP.USTORE,0,1,0),
+      CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.USTORE,0,1,0)[1],
       enc(OP.HALT)
     ];
     this.cpu.loadProgram(words,start);
