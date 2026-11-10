@@ -53,6 +53,9 @@ function buildNativeKnightMovesProgram(CPU, options = {}) {
     jump(target);
   };
 
+  // Clear published count first, including on a side-mismatch early exit.
+  load(1,countAddress); load(2,0); mem(M.USTORE,0,1,2);
+
   // Guard: ABI.FLAGS bit 0 is 0 for White and 1 for Black.
   label('entry');
   load(1,flagsAddress); mem(M.ULOAD,0,1);
