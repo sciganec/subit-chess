@@ -41,13 +41,8 @@ function buildNativePawnMovesProgram(CPU, options = {}) {
     ext(X.XBR,condition===0?1:0,0,0,2); jump(target);
   };
   const branchWhenFalse=(condition,target)=>{ext(X.XBR,condition,0,0,2);jump(target);};
-  const branchWhenTrue=(condition,target)=>{ext(X.XBR,condition,0,0,2);jump(''); /* replaced below */};
-  // Explicit carry branch: skip the absolute jump when C is set.
-  const branchCarry=(target)=>{
-    ext(X.XBR,3,0,0,2);
-    emit(CPU.encode(O.JMP),0);
-    fixups.push({at:words.length-1,target});
-  };
+  // Jump to skip only when C=0; with C=1 execution falls through.
+  const skipIfNoCarry=target=>{ext(X.XBR,3,0,0,2);jump(target);};
   const branchNoCarry=target=>branchWhenFalse(3,target);
 
   // Reset the published count before checking the side guard.
@@ -93,15 +88,6 @@ function buildNativePawnMovesProgram(CPU, options = {}) {
     if((to>>>3)===promotionRank)emitPromotionSet(from,to);
     else emitMove(from,to,0);
   }
-  function captureIfOpponent(from,to,skip){
-    readSquare(to,2);
-    load(1,0);cmp(2,1);
-    branch(0,''); // placeholder replaced immediately below
-    // If target is empty, UCMP sets Z. XBR NZ skips the jump; Z executes it.
-    // Emit a direct Z branch to this candidate's skip label.
-    // (The preceding no-op placeholder is removed by construction.)
-  }
-
   for(let from=0;from<64;from++){
     const rank=from>>>3,file=from&7;
     if(rank===promotionRank || (side==='w'&&rank===7) || (side==='b'&&rank===0))continue;
@@ -134,7 +120,7 @@ function buildNativePawnMovesProgram(CPU, options = {}) {
       load(1,0x10000-friendlyThreshold);
       ext(X.UADD,1,2,1); // C iff target code >= threshold
       if(side==='w'){
-        branchCarry(stem+'_cap_'+df+'_accept');
+        skipIfNoCarry(capSkip);
         jump(capSkip);
       }else{
         branchNoCarry(stem+'_cap_'+df+'_accept');
