@@ -52,14 +52,14 @@ function buildNativeEnPassantProgram(CPU,options={}){
   load(1,board);ext(X.UADD,2,2,1);mem(M.ULOAD,3,2);
   load(2,toSlot);mem(M.ULOAD,2,2);load(1,3);ext(X.UAND,2,2,1);
   for(let i=0;i<4;i++){load(1,i);cmp(2,1);bz('dest_nib_'+i);}
-  jump('not_pawn');
+  jump('no_op');
   for(let i=0;i<4;i++){
     label('dest_nib_'+i);mem(M.UEXTRACT4,0,3,0,i);
     load(1,flags);mem(M.ULOAD,1,1);load(2,1);ext(X.UAND,1,1,2);
     load(2,0);cmp(1,2);bnz('moving_black_'+i);
-    load(1,1);cmp(0,1);bnz('not_pawn');jump('compute_capture');
+    load(1,1);cmp(0,1);bnz('no_op');jump('compute_capture');
     label('moving_black_'+i);
-    load(1,9);cmp(0,1);bnz('not_pawn');jump('compute_capture');
+    load(1,9);cmp(0,1);bnz('no_op');jump('compute_capture');
   }
 
   label('compute_capture');
