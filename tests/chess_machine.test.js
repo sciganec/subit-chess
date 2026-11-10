@@ -6,6 +6,7 @@ const {SubitChessUnit}=require('../src/chess/chess_unit.js');
 const {SubitChessMachine}=require('../src/chess/chess_machine.js');
 const {buildNativePieceDecodeProgram}=require('../examples/cpu_native_piece_decode.js');
 const {buildNativePieceHistogramProgram}=require('../examples/cpu_native_piece_histogram.js');
+const {buildNativeKnightMovesProgram}=require('../examples/cpu_native_knight_moves.js');
 const board=Array.from({length:8},()=>Array(8).fill('.'));
 board[7]=['R','N','B','Q','K','B','N','R'];board[6]=Array(8).fill('P');
 board[0]=['r','n','b','q','k','b','n','r'];board[1]=Array(8).fill('p');
@@ -56,5 +57,27 @@ const histogramRun=cpu2.run({maxSteps:2000});
 assert.equal(histogramRun.status,'HALTED');
 assert.equal(cpu2.output.length,15);
 assert.deepEqual(cpu2.output,[32,8,2,2,2,1,1,0,0,8,2,2,2,1,1]);
+
+// CPU-native white-knight pseudo-legal generation on the initial board.
+cpu2.reset();
+const knightProgram=buildNativeKnightMovesProgram(SubitCPU,{side:'w',start:0x1000});
+cpu2.loadProgram(knightProgram.words,knightProgram.start);
+const knightRun=cpu2.run({maxSteps:50000});
+assert.equal(knightRun.status,'HALTED');
+assert.equal(cpu2.memory[ABI.LEGAL_COUNT],4);
+const knightMoves=Array.from(cpu2.memory.slice(ABI.MOVE_BUFFER,ABI.MOVE_BUFFER+4)).sort((a,b)=>a-b);
+const expectedKnightMoves=[
+  ((1&63)<<10)|((16&63)<<4), ((1&63)<<10)|((18&63)<<4),
+  ((6&63)<<10)|((21&63)<<4), ((6&63)<<10)|((23&63)<<4)
+].sort((a,b)=>a-b);
+assert.deepEqual(knightMoves,expectedKnightMoves);
+
+// Runtime side guard: a white generator must not run when black is to move.
+cpu2.reset(); cpu2.memory[ABI.FLAGS]=1;
+const wrongSideProgram=buildNativeKnightMovesProgram(SubitCPU,{side:'w',start:0x1000});
+cpu2.loadProgram(wrongSideProgram.words,wrongSideProgram.start);
+const wrongSideRun=cpu2.run({maxSteps:50000});
+assert.equal(wrongSideRun.status,'HALTED');
+assert.equal(cpu2.memory[ABI.LEGAL_COUNT],0);
 
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
