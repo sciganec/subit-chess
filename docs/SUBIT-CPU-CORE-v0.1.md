@@ -87,3 +87,26 @@ The legacy suite and runner now point to the current root `index.html` instead o
 3. Freeze and test instruction semantics (especially branches, CMP, shifts).
 4. Define the Chess Unit ABI and a deterministic host-call boundary.
 5. Demonstrate a CPU-executed chess command before claiming CPU-native search.
+
+## SUBIT-CPU extended integer page (v0.2 prototype)
+
+The all-ones word `0xFFFF` is the extended-instruction prefix. It is followed by one 16-bit extension word:
+
+`XOP[15:12] RD[11:10] RA[9:8] RB[7:6] IMM6[5:0]`
+
+The prefix is reserved and cannot be used as the ordinary `TRAP` encoding. Other TRAP words retain their v0.1 behavior.
+
+Extended operations use the typed integer banks (URF: four unsigned 16-bit registers; SRF: four signed 32-bit registers):
+
+- `UADD, USUB, UMUL, UDIV`: unsigned arithmetic; divide-by-zero traps.
+- `UAND, UOR, UXOR, UNOT`: unsigned bitwise operations.
+- `UADDI, USUBI`: signed 6-bit immediate arithmetic.
+- `UCMP`: compare URF[RA] and URF[RB], updating FLAGS.
+- `XBR`: conditional relative branch using the latest FLAGS; RD condition 0=Z, 1=NZ, 2=N, 3=C; IMM6 is signed displacement from the PC after the extension word.
+- `SADD, SSUB, SMUL, SDIV`: signed 32-bit arithmetic; divide-by-zero traps.
+
+FLAGS bits: Z=1, N=2, C=4, V=8. For unsigned add/multiply C indicates carry; for unsigned subtract C indicates borrow. V currently records overflow for signed add/subtract. These flag conventions are prototype semantics and require broader edge-case verification before ISA freeze.
+
+CALL/RET and PUSH/POP use a descending memory stack with SP initialized to 0xFFFF. CALL saves the return PC after its immediate extension word. Stack operations are transactional with memory and SP rollback on faults. Memory protection and stack/code collision detection remain future work.
+
+The extended page is a prototype extension, not yet a frozen ISA. In particular, instruction timing, signed immediate corner cases, and full flag semantics remain open for audit.
