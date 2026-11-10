@@ -16,7 +16,7 @@
      node tests/test.js --verbose        # print extra on pass
 
    Requires: jsdom
-   Engine:   src/subit_chess_v1.9.1.html  (single file, exposes window.__subit)
+   Engine:   index.html  (single file, exposes window.__subit)
    ========================================================================= */
 
 const fs   = require('fs');
