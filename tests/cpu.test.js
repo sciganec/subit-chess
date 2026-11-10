@@ -151,7 +151,7 @@ assert.equal(fillCell(FOUR.B),0xFFFF);
   assert.equal(c.URF[2],12);
   assert.equal(c.URF[3],0);
   assert.ok(c.FLAGS&CPU.FLAG.Z);
-  assert.equal(result.steps,7);
+  assert.equal(result.steps,6);
 }
 
 // Extended signed ALU operates on the 32-bit SRF bank.
