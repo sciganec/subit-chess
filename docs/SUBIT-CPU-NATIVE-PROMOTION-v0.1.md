@@ -12,10 +12,10 @@ Move word: `from[15:10] | to[9:4] | promotion[3:1] | reserved[0]`.
 
 Promotion codes:
 - 0 — no promotion;
-- 1 — queen;
-- 2 — rook;
-- 3 — bishop;
-- 4 — knight;
+- 1 — queen (piece code 5);
+- 2 — rook (piece code 4);
+- 3 — bishop (piece code 3);
+- 4 — knight (piece code 2);
 - 5–7 — invalid.
 
 The side-to-move bit is `FLAGS[0]`: 0 white, 1 black. The promotion program reads and writes the packed staged board, by default at 0x0500.
@@ -27,7 +27,7 @@ The side-to-move bit is `FLAGS[0]`: 0 white, 1 black. The promotion program read
 3. Reject codes outside 1–4.
 4. Require the destination to be rank 8 for white or rank 1 for black.
 5. Read the destination nibble and require the moving pawn code (white 1, black 9).
-6. Replace the nibble with the selected piece code; black promoted pieces add 8 to the type code.
+6. Replace the nibble with the selected piece code; The ABI choice is explicitly mapped to the Chess Unit piece ordering: Q→5, R→4, B→3, N→2. Black promoted pieces add 8 to the resulting piece code.
 
 The CPU performs destination decoding, rank checking, packed-board reads, nibble extraction, piece-code construction, nibble insertion, and memory write.
 
