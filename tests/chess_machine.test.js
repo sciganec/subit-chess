@@ -148,4 +148,25 @@ for(const to of [56,57])for(const promo of [1,2,3,4])
 expectedPromotionMoves.sort((a,b)=>a-b);
 assert.deepEqual(promotionMoves,expectedPromotionMoves);
 
+// Black promotion and capture use the inverse pawn direction and color test.
+cpu2.reset(); cpu2.memory.fill(0,ABI.BOARD,ABI.BOARD+ABI.BOARD_WORDS);
+function putBlackTestPiece(square,code){
+  const address=ABI.BOARD+(square>>>2), shift=(3-(square&3))*4;
+  cpu2.memory[address]=(cpu2.memory[address]&~(15<<shift))|((code&15)<<shift);
+}
+putBlackTestPiece(8,9); // Black pawn a2
+putBlackTestPiece(1,4); // White rook b1
+cpu2.memory[ABI.FLAGS]=1;
+const blackPromotionProgram=buildNativePawnMovesProgram(SubitCPU,{side:'b',start:0x2000});
+cpu2.loadProgram(blackPromotionProgram.words,blackPromotionProgram.start);
+const blackPromotionRun=cpu2.run({maxSteps:100000});
+assert.equal(blackPromotionRun.status,'HALTED');
+assert.equal(cpu2.memory[ABI.LEGAL_COUNT],8);
+const blackPromotionMoves=Array.from(cpu2.memory.slice(ABI.MOVE_BUFFER,ABI.MOVE_BUFFER+8)).sort((a,b)=>a-b);
+const expectedBlackPromotionMoves=[];
+for(const to of [0,1])for(const promo of [1,2,3,4])
+  expectedBlackPromotionMoves.push((8<<10)|(to<<4)|(promo<<1));
+expectedBlackPromotionMoves.sort((a,b)=>a-b);
+assert.deepEqual(blackPromotionMoves,expectedBlackPromotionMoves);
+
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
