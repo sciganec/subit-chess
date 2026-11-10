@@ -323,6 +323,18 @@ button:focus-visible,.icon-btn:focus-visible,.level-pill:focus-visible{outline:2
 .trace-type.state{color:var(--accent);font-weight:900}
 .trace-payload{color:var(--text-dim);margin-left:6px}
 .trace-mode-select{font-family:var(--font-mono);font-size:10px;padding:3px 6px;background:var(--bg-elev);color:var(--accent);border:1px solid var(--border);border-radius:3px;font-weight:800}
+
+/* v3.0.0-alpha.4: compact phone header so the board sits near the top of the screen */
+.hdr-toggle{display:none;background:none;border:1px solid var(--border);color:var(--ink,#e7e4dc);border-radius:8px;width:40px;height:36px;font-size:20px;line-height:1;cursor:pointer}
+@media (max-width:720px){
+  .header{flex-wrap:wrap;padding:8px 12px;gap:6px}
+  .header .logo small{display:none}
+  .hdr-toggle{display:inline-flex;align-items:center;justify-content:center}
+  .header-actions{display:none;width:100%;flex-wrap:wrap;gap:6px;padding-top:6px}
+  .header.open .header-actions{display:flex}
+  .game-col{max-width:none}
+  .main{padding:6px}
+}
 </style>
 </head>
 <body>
@@ -333,6 +345,7 @@ button:focus-visible,.icon-btn:focus-visible,.level-pill:focus-visible{outline:2
 <div><h1>SUBIT-CHESS v3.0.0-alpha</h1>
 <small>S₀=64 · 53-bit Zobrist · CPU Core · Numeric ALU · Event Journal · EXT-TX · Search ISA</small></div>
 </div>
+<button class="hdr-toggle" type="button" aria-label="Меню і статус" onclick="this.parentNode.classList.toggle('open')">⋯</button>
 <div class="header-actions">
 <span class="alu-status" id="alu-status">FOUR ALU: init…</span>
 <span class="st-status" id="st-status">S(τ): init…</span>
