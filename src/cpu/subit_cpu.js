@@ -24,6 +24,8 @@ const IMM_OPS = new Set([OPCODE.LOADI, OPCODE.SETAR, OPCODE.JMP,
   OPCODE.JN, OPCODE.JF, OPCODE.JT, OPCODE.JB, OPCODE.CALL]);
 const MASK16 = 0xFFFF;
 const EXT_PREFIX = 0xFFFF;
+const MEM_PREFIX = 0xFFFE;
+const MOP = Object.freeze({ULOAD:0,USTORE:1,FLOAD:2,FSTORE:3,FTOU:4,UTOF:5,SETARU:6,GETAR:7,UJMP:8,UEMIT:9,FEMIT:10});
 const XOP = Object.freeze({UADD:0,USUB:1,UMUL:2,UDIV:3,UAND:4,UOR:5,UXOR:6,UNOT:7,UADDI:8,USUBI:9,UCMP:10,XBR:11,SADD:12,SSUB:13,SMUL:14,SDIV:15});
 const FLAG = Object.freeze({Z:1,N:2,C:4,V:8});
 
@@ -195,10 +197,29 @@ class SubitCPU {
           break;
         }
         case OPCODE.TRAP: {
-          if(this.IR!==EXT_PREFIX) throw new Error('TRAP_'+d.aux);
+          if(this.IR!==EXT_PREFIX && this.IR!==MEM_PREFIX) throw new Error('TRAP_'+d.aux);
           if(this.PC>=65536) throw new Error('MISSING_EXTENDED_WORD');
           this.XIR=this.memory[this.PC++];
-          const x=decodeExtended(this.XIR), ua=this.URF[x.ra], ub=this.URF[x.rb];
+          const x=decodeExtended(this.XIR);
+          if(this.IR===MEM_PREFIX){
+            const address=this.URF[x.ra], valueU=this.URF[x.rb], valueF=this.RF[x.rb];
+            switch(x.op){
+              case MOP.ULOAD:this.URF[x.rd]=this.memory[address];break;
+              case MOP.USTORE:writes.push([address,this.memory[address]]);this.memory[address]=valueU;break;
+              case MOP.FLOAD:this.RF[x.rd]=this.memory[address];break;
+              case MOP.FSTORE:writes.push([address,this.memory[address]]);this.memory[address]=valueF;break;
+              case MOP.FTOU:this.URF[x.rd]=this.RF[x.ra];break;
+              case MOP.UTOF:this.RF[x.rd]=this.URF[x.ra];break;
+              case MOP.SETARU:this.AR=this.URF[x.ra];break;
+              case MOP.GETAR:this.URF[x.rd]=this.AR;break;
+              case MOP.UJMP:this.PC=this.URF[x.ra];break;
+              case MOP.UEMIT:this.output.push(this.URF[x.ra]);break;
+              case MOP.FEMIT:this.output.push(this.RF[x.ra]);break;
+              default:throw new Error('ILLEGAL_MEMORY_OPCODE');
+            }
+            break;
+          }
+          const ua=this.URF[x.ra], ub=this.URF[x.rb];
           const sa=this.SRF[x.ra], sb=this.SRF[x.rb];
           const setFlags=(value,carry=0,overflow=0)=>{
             this.FLAGS=(value===0?FLAG.Z:0)|(value<0?FLAG.N:0)|(carry?FLAG.C:0)|(overflow?FLAG.V:0);
@@ -263,6 +284,8 @@ SubitCPU.FOUR=FOUR;
 SubitCPU.OPCODE=OPCODE;
 SubitCPU.encode=encode;
 SubitCPU.EXT_PREFIX=EXT_PREFIX;
+SubitCPU.MEM_PREFIX=MEM_PREFIX;
+SubitCPU.MOP=MOP;
 SubitCPU.XOP=XOP;
 SubitCPU.FLAG=FLAG;
 SubitCPU.encodeExtended=encodeExtended;
