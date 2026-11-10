@@ -118,7 +118,7 @@ function buildNativeKnightMovesProgram(CPU, options = {}) {
 
   for(const f of fixups) {
     if(!labels.has(f.target)) throw new Error('unresolved label: '+f.target);
-    words[f.at]=labels.get(f.target);
+    words[f.at]=start+labels.get(f.target);
   }
   if(start+words.length>65536) throw new RangeError('generated program exceeds CPU address space');
   return Object.freeze({start,end:start+words.length,words,side,moveCapacity:256,
