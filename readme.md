@@ -352,3 +352,9 @@ git tag v2.2.0 && git push origin v2.2.0
 ## License
 
 MIT — see `LICENSE`.
+
+
+## CPU-native king pseudo-legal move generation
+
+`examples/cpu_native_king_moves.js` adds an unrolled SUBIT-CPU program for one selected side. At runtime it checks ABI.FLAGS, identifies the side's king on each candidate source square, enumerates the eight neighboring destinations, rejects friendly-occupied targets, and accepts empty or opponent-occupied targets. Moves are written directly to ABI.MOVE_BUFFER and ABI.LEGAL_COUNT is published after generation. Tests cover both colors, synthetic positions with a friendly blocker and a capturable opponent, and the initial position where neither king has an available adjacent move. This remains pseudo-legal generation: attacked-square filtering, check evasion, castling, and king-safety validation are not implemented.
+

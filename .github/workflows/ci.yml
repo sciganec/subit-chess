@@ -111,7 +111,7 @@ jobs:
               console.error('unexpected results:', r.results);
               process.exit(1);
             }
-            if (!r.telemetry || r.telemetry.cellCount !== 48) {
+            if (!r.telemetry || r.telemetry.cellCount !== 64) {
               console.error('unexpected telemetry:', r.telemetry);
               process.exit(1);
             }

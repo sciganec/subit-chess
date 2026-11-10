@@ -16,7 +16,7 @@
      node tests/test.js --verbose        # print extra on pass
 
    Requires: jsdom
-   Engine:   src/subit_chess_v1.9.1.html  (single file, exposes window.__subit)
+   Engine:   index.html  (single file, exposes window.__subit)
    ========================================================================= */
 
 const fs   = require('fs');
@@ -517,7 +517,7 @@ async function main(){
   const projectRoot = path.resolve(__dirname, '..');
   const defaultHtml = fs.existsSync(path.join(projectRoot, 'src', 'subit_chess_v2.2.0.html'))
     ? path.join(projectRoot, 'src', 'subit_chess_v2.2.0.html')
-    : path.join(projectRoot, 'src', 'subit_chess_v1.9.1.html');
+    : path.join(projectRoot, 'index.html');
   const html = ARGS.html || ARGS.engine || defaultHtml;
   console.log(`engine: ${html}`);
 

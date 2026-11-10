@@ -20,7 +20,7 @@
                                            --out results/rho.json --baseline results/base.json
 
    Requires: jsdom (npm install)
-   Engine:   src/subit_chess_v1.9.1.html (single file, exposes window.__subit)
+   Engine:   index.html (single file, exposes window.__subit)
    ========================================================================= */
 
 const fs = require('fs');
@@ -58,7 +58,7 @@ function cfgFromArgs(args){
     topK:        +args['top-k'] || 3,
     chunk:       +args.chunk || 50,
     policy:      args.policy || 'on',
-    html:        args.html || path.join(projectRoot, 'src', 'subit_chess_v1.9.1.html'),
+    html:        args.html || path.join(projectRoot, 'index.html'),
     out:         args.out || 'results/report.json',
     baseline:    args.baseline || null,
     rhoSnapshot: args['rho-snapshot'] || null,
@@ -452,7 +452,7 @@ async function main(){
   console.log(`[run] engine: ${cfg.html}`);
 
   if (!fs.existsSync(cfg.html)){
-    throw new Error(`engine HTML not found: ${cfg.html}\n  hint: expected src/subit_chess_v1.9.1.html`);
+    throw new Error(`engine HTML not found: ${cfg.html}\n  hint: expected index.html`);
   }
 
   const ctx = await loadEngine(cfg.html, { quiet: cfg.quiet, verbose: cfg.verbose });
