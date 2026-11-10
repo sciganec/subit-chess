@@ -84,7 +84,7 @@ class SubitCPU {
     this.journal = []; this.provenance = [];
     this.maxJournal = options.maxJournal || 10000;
     this.programStart = 0; this.programEnd = 0;
-    this.context = Object.freeze({ profile:'SUBIT-CPU/0.1', four:'Belnap-Dunn' });
+    this.context = Object.freeze({ profile:'SUBIT-CPU/0.2-prototype', four:'Belnap-Dunn' });
   }
   reset() {
     this.RF.fill(0); this.URF.fill(0); this.SRF.fill(0);
