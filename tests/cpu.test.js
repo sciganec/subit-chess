@@ -212,7 +212,7 @@ assert.equal(fillCell(FOUR.B),0xFFFF);
   const c=new CPU();
   c.URF[0]=0x0100;c.URF[1]=0x1234;c.RF[2]=0xBEEF;
   c.memory[0x0100]=0xABCD;
-  const mem=(op,rd=0,ra=0,rb=0)=>[CPU.MEM_PREFIX,...CPU.encodeExtended(op,rd,ra,rb)];
+  const mem=(op,rd=0,ra=0,rb=0)=>[CPU.MEM_PREFIX,CPU.encodeExtended(op,rd,ra,rb)[1]];
   const p=[
     ...mem(CPU.MOP.ULOAD,2,0),
     ...mem(CPU.MOP.USTORE,0,0,1),
