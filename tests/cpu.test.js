@@ -135,6 +135,27 @@ assert.equal(fillCell(FOUR.B),0xFFFF);
   assert.equal(c.trap.code,'TRAP_3');
 }
 
+// Typed memory page: extract each nibble from a packed 16-bit word in MS-nibble-first order.
+{
+  const c=new CPU();
+  c.URF[0]=0x1234;
+  const p=[
+    CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.UEXTRACT4,1,0,0,0)[1],
+    CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.UEMIT,0,1)[1],
+    CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.UEXTRACT4,1,0,0,1)[1],
+    CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.UEMIT,0,1)[1],
+    CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.UEXTRACT4,1,0,0,2)[1],
+    CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.UEMIT,0,1)[1],
+    CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.UEXTRACT4,1,0,0,3)[1],
+    CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.UEMIT,0,1)[1],
+    encode(O.HALT)
+  ];
+  c.loadProgram(p);
+  const result=c.run();
+  assert.equal(result.status,'HALTED');
+  assert.deepEqual(c.output,[1,2,3,4]);
+}
+
 // Extended integer page: U16 arithmetic, compare flags, and relative conditional branch.
 {
   const p=[
