@@ -18,10 +18,10 @@ const OPCODE = Object.freeze({
   SHL:0x0A, SHR:0x0B, ROTATE:0x0C, LOAD:0x0D, STORE:0x0E,
   LOADI:0x0F, SETAR:0x10, JMP:0x11, JN:0x12, JF:0x13,
   JT:0x14, JB:0x15, EMIT:0x16, HALT:0x17, CMP:0x18,
-  EQ:0x19, FILL:0x1A, TRAP:0x1F
+  EQ:0x19, FILL:0x1A, CALL:0x1B, RET:0x1C, PUSH:0x1D, POP:0x1E, TRAP:0x1F
 });
 const IMM_OPS = new Set([OPCODE.LOADI, OPCODE.SETAR, OPCODE.JMP,
-  OPCODE.JN, OPCODE.JF, OPCODE.JT, OPCODE.JB]);
+  OPCODE.JN, OPCODE.JF, OPCODE.JT, OPCODE.JB, OPCODE.CALL]);
 const MASK16 = 0xFFFF;
 
 function u16(n) { return Number(n) & MASK16; }
@@ -69,7 +69,7 @@ class SubitCPU {
     this.RF = new Uint16Array(8);       // eight FOUR_WORD registers
     this.URF = new Uint16Array(4);      // four unsigned 16-bit registers
     this.SRF = new Int32Array(4);       // four signed 32-bit registers
-    this.PC = 0; this.AR = 0; this.IR = 0;
+    this.PC = 0; this.AR = 0; this.IR = 0; this.SP = MASK16;
     this.halted = false; this.trap = null;
     this.clock = 0; this.output = [];
     this.journal = []; this.provenance = [];
@@ -79,7 +79,7 @@ class SubitCPU {
   }
   reset() {
     this.RF.fill(0); this.URF.fill(0); this.SRF.fill(0);
-    this.PC=0; this.AR=0; this.IR=0; this.halted=false; this.trap=null;
+    this.PC=0; this.AR=0; this.IR=0; this.SP=MASK16; this.halted=false; this.trap=null;
     this.clock=0; this.output=[]; this.journal=[]; this.provenance=[];
     return this;
   }
@@ -92,12 +92,12 @@ class SubitCPU {
     return {start,end:this.programEnd,words:words.length};
   }
   snapshot() {
-    return {PC:this.PC,AR:this.AR,IR:this.IR,RF:this.RF.slice(),URF:this.URF.slice(),
+    return {PC:this.PC,AR:this.AR,IR:this.IR,SP:this.SP,RF:this.RF.slice(),URF:this.URF.slice(),
       SRF:this.SRF.slice(),halted:this.halted,trap:this.trap,clock:this.clock,
       outputLength:this.output.length};
   }
   restore(s) {
-    this.PC=s.PC; this.AR=s.AR; this.IR=s.IR;
+    this.PC=s.PC; this.AR=s.AR; this.IR=s.IR; this.SP=s.SP;
     this.RF.set(s.RF); this.URF.set(s.URF); this.SRF.set(s.SRF);
     this.halted=s.halted; this.trap=s.trap; this.clock=s.clock;
     this.output.length=s.outputLength;
@@ -156,6 +156,35 @@ class SubitCPU {
         case OPCODE.CMP: this.RF[d.rd]=fillCell(a===b?FOUR.T:FOUR.F); break;
         case OPCODE.EQ: this.RF[d.rd]=fillCell(a===b?FOUR.T:FOUR.F); break;
         case OPCODE.FILL: this.RF[d.rd]=fillCell(d.aux); break;
+        case OPCODE.CALL: {
+          if(this.SP<0 || this.SP>MASK16) throw new Error('STACK_OVERFLOW');
+          writes.push([this.SP,this.memory[this.SP]]);
+          this.memory[this.SP]=this.PC;
+          this.SP--;
+          this.PC=imm;
+          break;
+        }
+        case OPCODE.RET: {
+          const next=this.SP+1;
+          if(next>MASK16) throw new Error('STACK_UNDERFLOW');
+          this.PC=this.memory[next];
+          this.SP=next;
+          break;
+        }
+        case OPCODE.PUSH: {
+          if(this.SP<0 || this.SP>MASK16) throw new Error('STACK_OVERFLOW');
+          writes.push([this.SP,this.memory[this.SP]]);
+          this.memory[this.SP]=a;
+          this.SP--;
+          break;
+        }
+        case OPCODE.POP: {
+          const next=this.SP+1;
+          if(next>MASK16) throw new Error('STACK_UNDERFLOW');
+          this.RF[d.rd]=this.memory[next];
+          this.SP=next;
+          break;
+        }
         case OPCODE.TRAP: throw new Error('TRAP_'+d.aux);
         default: throw new Error('ILLEGAL_OPCODE_'+d.op.toString(16).padStart(2,'0'));
       }
