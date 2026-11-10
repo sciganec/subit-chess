@@ -15,7 +15,7 @@ const {buildNativeKingSafetyProbeProgram}=require('./cpu_native_king_safety.js')
 
 const ATTACK_FAMILIES=Object.freeze(['pawn','knight','king','diagonal','orthogonal']);
 const PIPELINE_STATUS=Object.freeze({
-  LEGAL:1, ILLEGAL_CHECK:2, INVALID_KING_STATE:3, EXECUTION_ERROR:4
+  SAFE:1, CHECK:2, INVALID_KING_STATE:3, EXECUTION_ERROR:4
 });
 
 function runProgram(cpu,program,maxSteps){
@@ -42,7 +42,7 @@ function runNativeKingSafetyPipeline(cpu,options={}){
   const movingBit=side==='w'?0:1, opponentBit=movingBit^1;
   const originalFlags=cpu.memory[options.flagsAddress??0x0010];
   if((originalFlags&1)!==movingBit){
-    return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,legal:false,
+    return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,safe:false,
       reason:'WRONG_SIDE_TO_MOVE',side,stages:[]});
   }
 
@@ -55,7 +55,7 @@ function runNativeKingSafetyPipeline(cpu,options={}){
   });
   let stage=runProgram(cpu,apply,maxSteps); stages.push({name:'MOVE_APPLY',...stage});
   if(stage.run.status!=='HALTED'||cpu.memory[apply.stateAddress]!==1){
-    return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,legal:false,
+    return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,safe:false,
       reason:stage.run.trap?.code||'MOVE_APPLY_FAILED',side,stages});
   }
 
@@ -90,16 +90,16 @@ function runNativeKingSafetyPipeline(cpu,options={}){
   }
   const kingStatus=cpu.memory[resultAddress],kingSquare=cpu.memory[resultAddress+1];
   if(kingStatus===1){
-    return Object.freeze({status:PIPELINE_STATUS.LEGAL,legal:true,reason:'KING_SAFE',
+    return Object.freeze({status:PIPELINE_STATUS.SAFE,safe:true,reason:'KING_SAFE',
       side,kingSquare,stagedBoardAddress:scratchBoardAddress,attackMapAddress,
       stages});
   }
   if(kingStatus===2){
-    return Object.freeze({status:PIPELINE_STATUS.ILLEGAL_CHECK,legal:false,
+    return Object.freeze({status:PIPELINE_STATUS.CHECK,safe:false,
       reason:'KING_IN_CHECK',side,kingSquare,stagedBoardAddress:scratchBoardAddress,
       attackMapAddress,stages});
   }
-  return Object.freeze({status:PIPELINE_STATUS.INVALID_KING_STATE,legal:false,
+  return Object.freeze({status:PIPELINE_STATUS.INVALID_KING_STATE,safe:false,
     reason:({0:'NO_KING',3:'MULTIPLE_KINGS',4:'WRONG_SIDE_TO_MOVE'})[kingStatus]||'INVALID_PROBE_STATUS',
     side,kingStatus,kingSquare,stagedBoardAddress:scratchBoardAddress,attackMapAddress,
     stages});
