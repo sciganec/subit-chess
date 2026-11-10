@@ -154,7 +154,7 @@ if(require.main===module) {
   cpu.memory[14]=0x0000;
   cpu.memory[15]=0x0000;
   cpu.memory[0x10]=0;
-  const kingSquare=28, word=boardAddressPlaceholder;
+  const kingSquare=28;
   const addr=kingSquare>>>2, shift=(3-(kingSquare&3))*4;
   cpu.memory[addr]=(cpu.memory[addr]&~(15<<shift))|(6<<shift);
   const p=buildNativeKingMovesProgram(CPU,{side:'w'});
