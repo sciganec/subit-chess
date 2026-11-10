@@ -9,6 +9,7 @@
  * single self-orchestrating CPU program and not a complete chess legality
  * validator.
  */
+const {buildNativeMovePreflightProgram}=require('./cpu_native_move_preflight.js');
 const {buildNativeMoveApplyProgram}=require('./cpu_native_move_apply.js');
 const {buildNativeAttackMapProgram}=require('./cpu_native_attack_map.js');
 const {buildNativeKingSafetyProbeProgram}=require('./cpu_native_king_safety.js');
@@ -47,13 +48,29 @@ function runNativeKingSafetyPipeline(cpu,options={}){
   }
 
   const stages=[];
+  const preflight=buildNativeMovePreflightProgram(cpu.constructor,{
+    boardAddress,flagsAddress:options.flagsAddress??0x0010,moveAddress,
+    start:options.preflightStart??0x9000,
+    statusAddress:options.preflightStatusAddress??0x0346,
+    fromSlot:options.preflightFromSlot??0x0347,
+    toSlot:options.preflightToSlot??0x0348
+  });
+  let stage=runProgram(cpu,preflight,maxSteps); stages.push({name:'MOVE_PREFLIGHT',...stage});
+  const preflightStatus=cpu.memory[preflight.statusAddress];
+  if(stage.run.status!=='HALTED'||preflightStatus!==1){
+    const reasons={2:'RESERVED_MOVE_BIT',3:'SAME_SOURCE_DESTINATION',4:'EMPTY_SOURCE',
+      5:'WRONG_SOURCE_SIDE',6:'FRIENDLY_DESTINATION',7:'INVALID_SOURCE_PIECE',8:'INVALID_DESTINATION'};
+    return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,safe:false,
+      reason:reasons[preflightStatus]||stage.run.trap?.code||'PREFLIGHT_FAILED',
+      preflightStatus,side,stages});
+  }
   const apply=buildNativeMoveApplyProgram(cpu.constructor,{
     boardAddress,scratchBoardAddress,moveAddress,start:starts.apply,
     stateAddress:options.applyStateAddress??0x0342,
     pieceSlot:options.pieceSlot??0x0343,fromSlot:options.fromSlot??0x0344,
     toSlot:options.toSlot??0x0345
   });
-  let stage=runProgram(cpu,apply,maxSteps); stages.push({name:'MOVE_APPLY',...stage});
+  stage=runProgram(cpu,apply,maxSteps); stages.push({name:'MOVE_APPLY',...stage});
   if(stage.run.status!=='HALTED'||cpu.memory[apply.stateAddress]!==1){
     return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,safe:false,
       reason:stage.run.trap?.code||'MOVE_APPLY_FAILED',side,stages});
@@ -72,7 +89,7 @@ function runNativeKingSafetyPipeline(cpu,options={}){
     stage=runProgram(cpu,program,maxSteps);
     stages.push({name:'ATTACK_'+family.toUpperCase(),...stage});
     if(stage.run.status!=='HALTED'){
-      return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,legal:false,
+      return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,safe:false,
         reason:stage.run.trap?.code||'ATTACK_MAP_FAILED',side,stages});
     }
   }
