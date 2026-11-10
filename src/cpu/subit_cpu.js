@@ -23,6 +23,9 @@ const OPCODE = Object.freeze({
 const IMM_OPS = new Set([OPCODE.LOADI, OPCODE.SETAR, OPCODE.JMP,
   OPCODE.JN, OPCODE.JF, OPCODE.JT, OPCODE.JB, OPCODE.CALL]);
 const MASK16 = 0xFFFF;
+const EXT_PREFIX = 0xFFFF;
+const XOP = Object.freeze({UADD:0,USUB:1,UMUL:2,UDIV:3,UAND:4,UOR:5,UXOR:6,UNOT:7,UADDI:8,USUBI:9,UCMP:10,XBR:11,SADD:12,SSUB:13,SMUL:14,SDIV:15});
+const FLAG = Object.freeze({Z:1,N:2,C:4,V:8});
 
 function u16(n) { return Number(n) & MASK16; }
 function encode(op, rd=0, ra=0, rb=0, aux=0) {
@@ -33,6 +36,12 @@ function encode(op, rd=0, ra=0, rb=0, aux=0) {
   }
   return ((op & 31)<<11)|((rd&7)<<8)|((ra&7)<<5)|((rb&7)<<2)|(aux&3);
 }
+function encodeExtended(op,rd=0,ra=0,rb=0,imm=0) {
+  if(!Number.isInteger(op)||op<0||op>15||![rd,ra,rb].every(Number.isInteger)||rd<0||rd>3||ra<0||ra>3||rb<0||rb>3||!Number.isInteger(imm)||imm< -32||imm>63) throw new RangeError('extended instruction field out of range');
+  return [EXT_PREFIX,((op&15)<<12)|((rd&3)<<10)|((ra&3)<<8)|((rb&3)<<6)|(imm&63)];
+}
+function decodeExtended(word) { word=u16(word); return {op:(word>>>12)&15,rd:(word>>>10)&3,ra:(word>>>8)&3,rb:(word>>>6)&3,imm:word&63}; }
+function signed6(n){ return (n&32)?n-64:n; }
 function decode(word) {
   word = u16(word);
   return { word, op:(word>>>11)&31, rd:(word>>>8)&7,
@@ -69,7 +78,7 @@ class SubitCPU {
     this.RF = new Uint16Array(8);       // eight FOUR_WORD registers
     this.URF = new Uint16Array(4);      // four unsigned 16-bit registers
     this.SRF = new Int32Array(4);       // four signed 32-bit registers
-    this.PC = 0; this.AR = 0; this.IR = 0; this.SP = MASK16;
+    this.PC = 0; this.AR = 0; this.IR = 0; this.XIR = 0; this.SP = MASK16; this.FLAGS=0;
     this.halted = false; this.trap = null;
     this.clock = 0; this.output = [];
     this.journal = []; this.provenance = [];
@@ -79,7 +88,7 @@ class SubitCPU {
   }
   reset() {
     this.RF.fill(0); this.URF.fill(0); this.SRF.fill(0);
-    this.PC=0; this.AR=0; this.IR=0; this.SP=MASK16; this.halted=false; this.trap=null;
+    this.PC=0; this.AR=0; this.IR=0; this.XIR=0; this.SP=MASK16; this.FLAGS=0; this.halted=false; this.trap=null;
     this.clock=0; this.output=[]; this.journal=[]; this.provenance=[];
     return this;
   }
@@ -92,12 +101,12 @@ class SubitCPU {
     return {start,end:this.programEnd,words:words.length};
   }
   snapshot() {
-    return {PC:this.PC,AR:this.AR,IR:this.IR,SP:this.SP,RF:this.RF.slice(),URF:this.URF.slice(),
+    return {PC:this.PC,AR:this.AR,IR:this.IR,XIR:this.XIR,SP:this.SP,FLAGS:this.FLAGS,RF:this.RF.slice(),URF:this.URF.slice(),
       SRF:this.SRF.slice(),halted:this.halted,trap:this.trap,clock:this.clock,
       outputLength:this.output.length};
   }
   restore(s) {
-    this.PC=s.PC; this.AR=s.AR; this.IR=s.IR; this.SP=s.SP;
+    this.PC=s.PC; this.AR=s.AR; this.IR=s.IR; this.XIR=s.XIR; this.SP=s.SP; this.FLAGS=s.FLAGS;
     this.RF.set(s.RF); this.URF.set(s.URF); this.SRF.set(s.SRF);
     this.halted=s.halted; this.trap=s.trap; this.clock=s.clock;
     this.output.length=s.outputLength;
@@ -185,7 +194,40 @@ class SubitCPU {
           this.SP=next;
           break;
         }
-        case OPCODE.TRAP: throw new Error('TRAP_'+d.aux);
+        case OPCODE.TRAP: {
+          if(this.IR!==EXT_PREFIX) throw new Error('TRAP_'+d.aux);
+          if(this.PC>=65536) throw new Error('MISSING_EXTENDED_WORD');
+          this.XIR=this.memory[this.PC++];
+          const x=decodeExtended(this.XIR), ua=this.URF[x.ra], ub=this.URF[x.rb];
+          const sa=this.SRF[x.ra], sb=this.SRF[x.rb];
+          const setFlags=(value,carry=0,overflow=0)=>{
+            this.FLAGS=(value===0?FLAG.Z:0)|(value<0?FLAG.N:0)|(carry?FLAG.C:0)|(overflow?FLAG.V:0);
+          };
+          switch(x.op){
+            case XOP.UADD:{const raw=ua+ub,v=raw& MASK16;this.URF[x.rd]=v;setFlags(v,raw>MASK16);break;}
+            case XOP.USUB:{const v=(ua-ub)&MASK16;this.URF[x.rd]=v;setFlags(v,ua<ub);break;}
+            case XOP.UMUL:{const raw=ua*ub,v=raw&MASK16;this.URF[x.rd]=v;setFlags(v,raw>MASK16);break;}
+            case XOP.UDIV:if(ub===0)throw new Error('DIVIDE_BY_ZERO');else{const v=Math.floor(ua/ub);this.URF[x.rd]=v;setFlags(v);}break;
+            case XOP.UAND:{const v=ua&ub;this.URF[x.rd]=v;setFlags(v);break;}
+            case XOP.UOR:{const v=ua|ub;this.URF[x.rd]=v;setFlags(v);break;}
+            case XOP.UXOR:{const v=ua^ub;this.URF[x.rd]=v;setFlags(v);break;}
+            case XOP.UNOT:{const v=(~ua)&MASK16;this.URF[x.rd]=v;setFlags(v);break;}
+            case XOP.UADDI:{const raw=ua+signed6(x.imm),v=raw&MASK16;this.URF[x.rd]=v;setFlags(v,raw<0||raw>MASK16);break;}
+            case XOP.USUBI:{const n=signed6(x.imm),raw=ua-n,v=raw&MASK16;this.URF[x.rd]=v;setFlags(v,raw<0||raw>MASK16);break;}
+            case XOP.UCMP:{const delta=ua-ub;setFlags(delta,ua<ub);break;}
+            case XOP.XBR:{
+              const cond=x.rd,yes=cond===0?!!(this.FLAGS&FLAG.Z):cond===1?!(this.FLAGS&FLAG.Z):cond===2?!!(this.FLAGS&FLAG.N):!!(this.FLAGS&FLAG.C);
+              if(yes)this.PC=(this.PC+signed6(x.imm))&MASK16;
+              break;
+            }
+            case XOP.SADD:{const raw=sa+sb,v=raw|0;this.SRF[x.rd]=v;setFlags(v,raw>2147483647||raw< -2147483648);break;}
+            case XOP.SSUB:{const raw=sa-sb,v=raw|0;this.SRF[x.rd]=v;setFlags(v,raw>2147483647||raw< -2147483648);break;}
+            case XOP.SMUL:{const v=Math.imul(sa,sb);this.SRF[x.rd]=v;setFlags(v);break;}
+            case XOP.SDIV:if(sb===0)throw new Error('DIVIDE_BY_ZERO');else{const v=Math.trunc(sa/sb)|0;this.SRF[x.rd]=v;setFlags(v);}break;
+            default:throw new Error('ILLEGAL_EXTENDED_OPCODE');
+          }
+          break;
+        }
         default: throw new Error('ILLEGAL_OPCODE_'+d.op.toString(16).padStart(2,'0'));
       }
       this.clock++;
@@ -220,6 +262,11 @@ class SubitCPU {
 SubitCPU.FOUR=FOUR;
 SubitCPU.OPCODE=OPCODE;
 SubitCPU.encode=encode;
+SubitCPU.EXT_PREFIX=EXT_PREFIX;
+SubitCPU.XOP=XOP;
+SubitCPU.FLAG=FLAG;
+SubitCPU.encodeExtended=encodeExtended;
+SubitCPU.decodeExtended=decodeExtended;
 SubitCPU.decode=decode;
 SubitCPU.cell=cell;
 SubitCPU.fillCell=fillCell;
