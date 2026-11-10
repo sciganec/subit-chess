@@ -136,3 +136,10 @@ This is the first typed-memory path needed to traverse the Chess Unit board and 
 ## CPU-native board-memory scan
 
 `examples/cpu_native_board_scan.js` traverses 16 consecutive 16-bit words using a pointer in URF, dynamic ULOAD, a counter, and a conditional back-branch. It counts non-zero board words without calling the JavaScript chess rules API. This demonstrates native address iteration over the same memory model used by the Chess Unit. It is deliberately a memory traversal proof, not a piece-aware legal-move generator.
+
+
+## CPU-native piece decoding
+
+`examples/cpu_native_piece_decode.js` builds a straight-line CPU program that reads the 16 packed words at the Chess Unit BOARD address. The typed-memory operation `UEXTRACT4` extracts one 4-bit square code from a 16-bit word; IMM6 selects nibble 0–3 in most-significant-first order. The program emits 64 piece codes in ABI square order (a1 through h8). It performs the memory reads, nibble extraction, and output on the SUBIT-CPU interpreter; JavaScript only assembles the instruction stream and verifies the resulting output.
+
+The decoder is intentionally a board-representation primitive, not yet a move generator. It does not classify attack geometry, generate pseudo-legal moves, test king safety, or replace the reference chess rules API. Its acceptance test initializes the Chess Unit and compares all 64 CPU-emitted nibbles against the independently encoded board, including the expected 32 occupied squares in the initial position.
