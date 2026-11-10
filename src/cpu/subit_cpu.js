@@ -121,12 +121,12 @@ class SubitCPU {
       if(this.PC<0 || this.PC>=65536) throw new Error('PC_OUT_OF_RANGE');
       this.IR=this.memory[this.PC];
       const d=decode(this.IR);
-      this.PC=(this.PC+1)&MASK16;
+      this.PC=this.PC+1;
       let imm=null;
       if(IMM_OPS.has(d.op)) {
         if(this.PC>=65536) throw new Error('MISSING_EXTENSION');
         imm=this.memory[this.PC];
-        this.PC=(this.PC+1)&MASK16;
+        this.PC=this.PC+1;
       }
       const a=this.RF[d.ra], b=this.RF[d.rb];
       switch(d.op) {
