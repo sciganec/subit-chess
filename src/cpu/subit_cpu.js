@@ -255,7 +255,7 @@ class SubitCPU {
       const record={clock:this.clock,pc:pc0,nextPC:this.PC,ir:this.IR,opcode:d.op,
         status:'COMMITTED',writes:writes.map(w=>({address:w[0],before:w[1],after:this.memory[w[0]]}))};
       this._record(record);
-      this.provenance.push({clock:this.clock,pc:pc0,ir:this.IR,contextId:'SUBIT-CPU/0.1'});
+      this.provenance.push({clock:this.clock,pc:pc0,ir:this.IR,contextId:'SUBIT-CPU/0.2-prototype'});
       return {status:this.halted?'HALTED':'COMMITTED',...record};
     } catch(err) {
       for(let i=writes.length-1;i>=0;i--) this.memory[writes[i][0]]=writes[i][1];
