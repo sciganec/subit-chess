@@ -158,3 +158,9 @@ The decoder is intentionally a board-representation primitive, not yet a move ge
 ## CPU-native pawn pseudo-legal move generation
 
 `examples/cpu_native_pawn_moves.js` adds a generated SUBIT-CPU instruction program for pawn movement. It validates side-to-move against ABI.FLAGS; tests source piece identity; emits unobstructed single advances and initial double advances; checks diagonal occupancy and opponent color; and emits all four ABI promotion encodings (Q/R/B/N) on the final rank. The VM performs runtime board reads, comparisons, and move-buffer writes. Tests cover 16 initial-position pawn moves for each side and eight promotion outcomes per color (four quiet promotions plus four capture promotions), exercising both a7→a8 and a2→a1 directions. En passant, king safety, and check-evasion filtering are not included in this stage.
+
+
+## CPU-native king pseudo-legal move generation
+
+`examples/cpu_native_king_moves.js` adds an unrolled SUBIT-CPU program for one selected side. At runtime it checks ABI.FLAGS, identifies the side's king on each candidate source square, enumerates the eight neighboring destinations, rejects friendly-occupied targets, and accepts empty or opponent-occupied targets. Moves are written directly to ABI.MOVE_BUFFER and ABI.LEGAL_COUNT is published after generation. Tests cover both colors, synthetic positions with a friendly blocker and a capturable opponent, and the initial position where neither king has an available adjacent move. This remains pseudo-legal generation: attacked-square filtering, check evasion, castling, and king-safety validation are not implemented.
+
