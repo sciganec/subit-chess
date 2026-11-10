@@ -252,10 +252,16 @@ function verifySliding(side){
       }
     }
   }
-  const program=buildNativeSlidingMovesProgram(SubitCPU,{side,start:0x1000});
-  cpu2.loadProgram(program.words,program.start);
-  const result=cpu2.run({maxSteps:500000});
+  const diagonal=buildNativeSlidingMovesProgram(SubitCPU,{side,family:'diagonal',start:0x1000});
+  cpu2.loadProgram(diagonal.words,diagonal.start);
+  const first=cpu2.run({maxSteps:300000});
+  assert.equal(first.status,'HALTED');
+  const orthogonal=buildNativeSlidingMovesProgram(SubitCPU,{side,family:'orthogonal',resetCount:false,start:0x1000});
+  cpu2.loadProgram(orthogonal.words,orthogonal.start);
+  const result=cpu2.run({maxSteps:300000});
   assert.equal(result.status,'HALTED');
+  assert.ok(diagonal.words.length<0x7000);
+  assert.ok(orthogonal.words.length<0x7000);
   const count=cpu2.memory[ABI.LEGAL_COUNT];
   const actual=Array.from(cpu2.memory.slice(ABI.MOVE_BUFFER,ABI.MOVE_BUFFER+count)).sort((a,b)=>a-b);
   expected.sort((a,b)=>a-b);
