@@ -146,7 +146,7 @@ function buildNativeMoveGeometryProgram(CPU,options={}){
 
   for(const f of fixups){if(!labels.has(f.target))throw Error('unresolved label '+f.target);words[f.at]=start+labels.get(f.target);}
   if(start+words.length>65536)throw new RangeError('geometry program exceeds CPU address space');
-  const oneHotWords=new Uint16Array(16);for(let i=0;i<16;i++)oneHotWords[i]=1<<i;
+  const oneHotWords=new Uint16Array(16);\n  for(let code=1;code<=6;code++)oneHotWords[code]=1<<(code-1);\n  for(let code=9;code<=14;code++)oneHotWords[code]=1<<(code-9);
   return Object.freeze({start,end:start+words.length,words,tableBase,tableWords:buildGeometryTable(side),
     oneHotBase,oneHotWords,statusAddress:status,side,scope:'PIECE_GEOMETRY_AND_SLIDING_PATH'});
 }
