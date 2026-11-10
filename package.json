@@ -1,6 +1,6 @@
 {
   "name": "subit-chess",
-  "version": "3.0.0-alpha.2",
+  "version": "3.0.0-alpha.5",
   "description": "Browser chess engine: SUBIT morphology (S₀ = I×Z×Φ), 53-bit Zobrist key, FOUR logic module (v3.0 alpha)",
   "keywords": [
     "chess",
@@ -39,7 +39,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node tests/four.test.js && node tests/engine-v3.test.js",
+    "test": "node tests/four.test.js && node tests/s0.test.js && node tests/engine-v3.test.js",
     "test:perft": "node tests/test.js --only-perft",
     "test:policy": "node tests/test.js --only-policy",
     "selfplay": "node runners/run.js --mode selfplay --games 100 --depth 2",
@@ -52,7 +52,8 @@
     "clean": "node -e \"require('fs').rmSync('results',{recursive:true,force:true});require('fs').mkdirSync('results',{recursive:true});require('fs').writeFileSync('results/.gitkeep','')\"",
     "release": "npm run test && git tag v$npm_package_version && git push origin v$npm_package_version",
     "test:engine": "node tests/engine-v3.test.js",
-    "test:four": "node tests/four.test.js"
+    "test:four": "node tests/four.test.js",
+    "test:s0": "node tests/s0.test.js"
   },
   "devDependencies": {
     "jsdom": "^24.1.0"

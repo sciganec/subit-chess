@@ -32,6 +32,29 @@ Major milestone. Controlled generation of chess studies via discrete latent diff
 - **Tests**: Groups [v6_13] + [diffusion] added. Total: **128 passed, 0 failed** (v2.2.0); backward-compat **100/100** (v1.9.1).
 
 ---
+## [3.0.0-alpha.5] — 2026-11-10
+
+Spec basis: SUBIT-∞ v6.14.0 (draft). Implements §1 and §0.1 only.
+
+### Added
+
+- `src/subit/s0.js`: S₀ = A₀³ ≅ {0,1}⁶ ≅ Z₄³ encoding (spec §1): T→0, B→1,
+  F→2, N→3, bijection onto 64 states, Gray adjacency. `tests/s0.test.js`
+  checks all 64 states exhaustively (7 checks).
+
+### Changed
+
+- Header badge `∞ v6.14.0-DRAFT` tooltip lists the §0.1 flag statuses as
+  reported by the spec. Conformance (IMPLEMENTED) and reproducible build are
+  marked not claimed: there is no Lean/Rust proof or conformant reference here.
+
+### Not implemented (spec v6.14.0)
+
+- §3/§10 trajectory classes beyond the v2.9 classifier, S⁺ = S₀ × R_fin rules,
+  §8 Tree∞ and WARP geometry, §9 grafting, §11–§12 boundary spectral theory,
+  §13 reconstruction. Each is a separate milestone.
+
+---
 ## [3.0.0-alpha.2] — 2026-11-10
 
 ### Changed
