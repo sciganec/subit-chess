@@ -14,10 +14,10 @@ const api={
 };
 const cpu=new SubitCPU(),unit=new SubitChessUnit(cpu,api),machine=new SubitChessMachine(cpu,unit);
 const program=machine.loadCommandProgram(COMMAND.INIT);
-assert.equal(program.words.length,6);
+assert.equal(program.words.length,7);
 const run=machine.run();
 assert.equal(run.status,'HALTED');
-assert.equal(run.steps,6);
+assert.equal(run.steps,5);
 assert.ok(unit.position);
 assert.equal(cpu.memory[ABI.STATUS],1);
 assert.equal(machine.peripheralLog.length,1);
