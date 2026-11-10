@@ -36,7 +36,7 @@ Base instruction word:
 
 `OP[15:11] RD[10:8] RA[7:5] RB[4:2] AUX[1:0]`
 
-An immediate instruction consumes the next 16-bit word. The current immediate set is LOADI, SETAR, JMP, JN, JF, JT, JB.
+An immediate instruction consumes the next 16-bit word. The current immediate set is LOADI, SETAR, JMP, JN, JF, JT, JB, CALL.
 
 Implemented opcodes:
 
@@ -58,13 +58,17 @@ Implemented opcodes:
 | HALT | stop | successful halt |
 | CMP / EQ | equality | all eight output cells become T if RF[RA] = RF[RB], otherwise F |
 | FILL | RF[RD] ← repeated AUX cell | AUX selects N/F/T/B |
+| CALL | push return PC; jump to imm16 | immediate absolute target |
+| RET | pop PC | returns to saved word address |
+| PUSH | push RF[RA] | descending 16-bit memory stack |
+| POP | RF[RD] ← pop | descending 16-bit memory stack |
 | TRAP | abort | AUX is the trap code |
 
 TRAP retains opcode `0x1F`. The branch predicate and CMP/EQ alias are provisional v0.1 semantics and must be reviewed before freezing the ISA.
 
 ## Execution and fault model
 
-Each `step()` performs fetch → decode → execute → commit. A committed instruction increments the instruction clock and appends a journal/provenance record. On a fault, architectural registers and any memory writes made by the instruction are restored, the instruction clock does not advance, and an ABORTED trap record is retained.
+The stack pointer (SP) initializes to 0xFFFF and grows downward. PUSH/CALL write at SP then decrement; POP/RET increment SP then read. CALL saves the PC after its extension word. Stack writes are journaled and rolled back on an aborted instruction. Stack bounds are checked, but stack/code collision protection is not yet implemented.\n\nEach `step()` performs fetch → decode → execute → commit. A committed instruction increments the instruction clock and appends a journal/provenance record. On a fault, architectural registers and any memory writes made by the instruction are restored, the instruction clock does not advance, and an ABORTED trap record is retained.
 
 The interpreter rejects out-of-range PC and missing immediate words. Sequential execution does not silently wrap past address `0xFFFF`. Immediate targets remain 16-bit absolute addresses.
 
