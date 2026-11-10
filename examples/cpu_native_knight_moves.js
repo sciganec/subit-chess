@@ -48,8 +48,15 @@ function buildNativeKnightMovesProgram(CPU, options = {}) {
   // Conditional far branch. If the condition is true, execute JMP target.
   // XBR with the inverse condition skips the two-word absolute JMP.
   const branch = (condition,target) => {
-    const inverse = condition===0 ? 1 : condition===1 ? 0 : condition===2 ? 3 : 2;
+    if(condition!==0 && condition!==1) throw new RangeError('branch helper supports only Z/NZ complements');
+    const inverse = condition===0 ? 1 : 0;
     ext(X.XBR,inverse,0,0,2);
+    jump(target);
+  };
+  // Execute the absolute jump only when the selected flag is false.
+  // Useful for carry tests: XBR C skips JMP when C=1, otherwise JMP executes.
+  const branchWhenFalse = (condition,target) => {
+    ext(X.XBR,condition,0,0,2);
     jump(target);
   };
 
@@ -92,12 +99,13 @@ function buildNativeKnightMovesProgram(CPU, options = {}) {
       branch(0,accept); // empty target
 
       // Non-empty target: accept only an opponent piece.
-      load(1,friendlyThreshold); cmp(2,1);
+      load(1,0x10000-friendlyThreshold);
+      ext(X.UADD,1,2,1); // C=1 iff target >= friendlyThreshold
       if(side==='w') {
-        branch(3,skip); // target < 9 is friendly (valid codes)
+        branchWhenFalse(3,skip); // C=0 => target < 9 => friendly
       } else {
-        branch(3,accept); // target < 8 is opponent (or empty)
-        jump(skip);       // >= 8 is friendly
+        branchWhenFalse(3,accept); // C=0 => target < 8 => opponent
+        jump(skip);                // >= 8 => friendly
       }
 
       label(accept);
