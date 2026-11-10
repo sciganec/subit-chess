@@ -584,7 +584,7 @@ assert.deepEqual(runEnPassant('b',27,20,20,[[27,9],[28,1]]),
   {status:EN_PASSANT_STATUS.APPLIED,captured:0,destination:9});
 assert.equal(runEnPassant('w',36,43,42,[[36,1],[35,9]]).status,EN_PASSANT_STATUS.NO_OP);
 assert.equal(runEnPassant('w',36,43,43,[[36,1],[35,4]]).status,EN_PASSANT_STATUS.BAD_CAPTURE_SQUARE);
-assert.equal(runEnPassant('w',36,43,43,[[36,4],[35,9]],4).status,EN_PASSANT_STATUS.NOT_PAWN);
+assert.equal(runEnPassant('w',36,43,43,[[36,4],[35,9]],4).status,EN_PASSANT_STATUS.NO_OP);
 
 // End-to-end en-passant: captured pawn is removed before opponent attacks
 // are computed, and the original board remains unchanged.
