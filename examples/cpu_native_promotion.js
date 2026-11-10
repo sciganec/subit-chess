@@ -71,6 +71,16 @@ function buildNativePromotionProgram(CPU,options={}){
   load(2,0);cmp(1,2);bnz('not_pawn');
   label('insert_promotion');
   load(0,promoSlot);mem(M.ULOAD,0,0);
+  // ABI promotion code order Q,R,B,N differs from piece type order P,N,B,R,Q.
+  for(const [code,name] of [[1,'queen'],[2,'rook'],[3,'bishop'],[4,'knight']]){
+    load(1,code);cmp(0,1);bz('map_'+name);
+  }
+  jump('bad_code');
+  label('map_queen');load(0,5);jump('piece_code_ready');
+  label('map_rook');load(0,4);jump('piece_code_ready');
+  label('map_bishop');load(0,3);jump('piece_code_ready');
+  label('map_knight');load(0,2);
+  label('piece_code_ready');
   load(1,flags);mem(M.ULOAD,1,1);load(2,1);ext(X.UAND,1,1,2);
   load(2,0);cmp(1,2);bz('white_piece');
   load(2,8);ext(X.UADD,0,0,2);
