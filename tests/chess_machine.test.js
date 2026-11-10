@@ -9,6 +9,7 @@ const {buildNativePieceHistogramProgram}=require('../examples/cpu_native_piece_h
 const {buildNativeKnightMovesProgram}=require('../examples/cpu_native_knight_moves.js');
 const {buildNativePawnMovesProgram}=require('../examples/cpu_native_pawn_moves.js');
 const {buildNativeKingMovesProgram}=require('../examples/cpu_native_king_moves.js');
+const {buildNativeAttackMapProgram}=require('../examples/cpu_native_attack_map.js');
 const board=Array.from({length:8},()=>Array(8).fill('.'));
 board[7]=['R','N','B','Q','K','B','N','R'];board[6]=Array(8).fill('P');
 board[0]=['r','n','b','q','k','b','n','r'];board[1]=Array(8).fill('p');
@@ -271,5 +272,72 @@ function verifySliding(side){
 const whiteSliding=verifySliding('w');
 const blackSliding=verifySliding('b');
 assert.ok(whiteSliding.count>0&&blackSliding.count>0);
+
+
+
+// CPU-native Attack Map: five bounded passes accumulate attacked squares.
+// Pawn diagonals are attacks even when empty; sliding rays include the first
+// occupied square and stop there. Compare against an independent oracle.
+function verifyAttackMap(side){
+  cpu2.reset();
+  cpu2.memory.fill(0,ABI.BOARD,ABI.BOARD+ABI.BOARD_WORDS);
+  const pieces=side==='w'
+    ? [[8,1],[18,2],[27,3],[28,4],[29,5],[36,6],[35,9],[19,12],[30,1],[44,12],[20,9],[52,14]]
+    : [[48,9],[45,10],[27,11],[28,12],[29,13],[36,14],[35,1],[19,4],[30,9],[44,4],[20,1],[12,6]];
+  for(const [sq,code] of pieces)setKingTestPiece(cpu2.memory,sq,code);
+  cpu2.memory[ABI.FLAGS]=side==='w'?0:1;
+  const expected=new Set();
+  const own=side==='w'?code=>code>=1&&code<=6:code=>code>=9&&code<=14;
+  const enemyOffset=side==='w'?0:8;
+  const add=(sq)=>expected.add(sq);
+  const dirsDiag=[[1,1],[-1,1],[1,-1],[-1,-1]];
+  const dirsOrth=[[0,1],[0,-1],[1,0],[-1,0]];
+  for(const [from,code] of pieces){
+    if(!own(code))continue;
+    const type=code-enemyOffset, file=from&7,rank=from>>>3;
+    if(type===1){
+      const dr=side==='w'?1:-1;
+      for(const df of [-1,1]){const f=file+df,r=rank+dr;if(f>=0&&f<8&&r>=0&&r<8)add(r*8+f);}
+    } else if(type===2||type===6){
+      const offsets=type===2?[[1,2],[2,1],[2,-1],[1,-2],[-1,-2],[-2,-1],[-2,1],[-1,2]]
+        :[[1,1],[1,0],[1,-1],[0,1],[0,-1],[-1,1],[-1,0],[-1,-1]];
+      for(const [df,dr] of offsets){const f=file+df,r=rank+dr;if(f>=0&&f<8&&r>=0&&r<8)add(r*8+f);}
+    } else {
+      const rays=[];
+      if(type===3||type===5)rays.push(...dirsDiag);
+      if(type===4||type===5)rays.push(...dirsOrth);
+      for(const [df,dr] of rays){
+        let f=file+df,r=rank+dr;
+        while(f>=0&&f<8&&r>=0&&r<8){
+          const to=r*8+f;add(to);
+          const blocker=pieces.find(x=>x[0]===to);
+          if(blocker)break;
+          f+=df;r+=dr;
+        }
+      }
+    }
+  }
+  const families=['pawn','knight','king','diagonal','orthogonal'];
+  for(let i=0;i<families.length;i++){
+    const p=buildNativeAttackMapProgram(SubitCPU,{side,family:families[i],clearMap:i===0,start:0x5000});
+    assert.ok(p.words.length<0xb000);
+    cpu2.reset();cpu2.loadProgram(p.words,p.start);
+    const result=cpu2.run({maxSteps:350000});
+    assert.equal(result.status,'HALTED',families[i]+' attack pass');
+  }
+  const actual=new Set();
+  for(let sq=0;sq<64;sq++)if(cpu2.memory[0x400+sq]===1)actual.add(sq);
+  assert.deepEqual([...actual].sort((a,b)=>a-b),[...expected].sort((a,b)=>a-b));
+  return actual.size;
+}
+assert.ok(verifyAttackMap('w')>0);
+assert.ok(verifyAttackMap('b')>0);
+
+// Runtime side guard must not overwrite the accumulated attack map.
+cpu2.reset();cpu2.memory[ABI.FLAGS]=1;cpu2.memory[0x400+17]=1;
+const wrongAttack=buildNativeAttackMapProgram(SubitCPU,{side:'w',family:'knight',clearMap:false,start:0x5000});
+cpu2.loadProgram(wrongAttack.words,wrongAttack.start);
+assert.equal(cpu2.run({maxSteps:100000}).status,'HALTED');
+assert.equal(cpu2.memory[0x400+17],1);
 
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
