@@ -13,6 +13,7 @@ const {buildNativeMovePreflightProgram}=require('./cpu_native_move_preflight.js'
 const {buildNativeMoveGeometryProgram,GEOMETRY_STATUS}=require('./cpu_native_move_geometry.js');
 const {buildNativeMoveApplyProgram}=require('./cpu_native_move_apply.js');
 const {buildNativePromotionProgram,PROMOTION_STATUS}=require('./cpu_native_promotion.js');
+const {buildNativeEnPassantProgram,EN_PASSANT_STATUS}=require('./cpu_native_en_passant.js');
 const {buildNativeAttackMapProgram}=require('./cpu_native_attack_map.js');
 const {buildNativeKingSafetyProbeProgram}=require('./cpu_native_king_safety.js');
 
@@ -93,6 +94,22 @@ function runNativeKingSafetyPipeline(cpu,options={}){
   if(stage.run.status!=='HALTED'||cpu.memory[apply.stateAddress]!==1){
     return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,safe:false,
       reason:stage.run.trap?.code||'MOVE_APPLY_FAILED',side,stages});
+  }
+
+  const enPassant=buildNativeEnPassantProgram(cpu.constructor,{
+    boardAddress:scratchBoardAddress,moveAddress,flagsAddress:options.flagsAddress??0x0010,
+    epAddress:options.epAddress??0x0011,start:options.enPassantStart??0xA000,
+    statusAddress:options.enPassantStatusAddress??0x0351,
+    fromSlot:options.enPassantFromSlot??0x0352,toSlot:options.enPassantToSlot??0x0353,
+    captureSlot:options.enPassantCaptureSlot??0x0354
+  });
+  stage=runProgram(cpu,enPassant,maxSteps); stages.push({name:'EN_PASSANT',...stage});
+  const enPassantStatus=cpu.memory[enPassant.statusAddress];
+  if(stage.run.status!=='HALTED'||![EN_PASSANT_STATUS.NO_OP,EN_PASSANT_STATUS.APPLIED].includes(enPassantStatus)){
+    const reasons={3:'BAD_EN_PASSANT_CAPTURE_SQUARE',4:'EN_PASSANT_SOURCE_NOT_PAWN'};
+    return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,safe:false,
+      reason:reasons[enPassantStatus]||stage.run.trap?.code||'EN_PASSANT_FAILED',
+      enPassantStatus,side,stages});
   }
 
   const promotion=buildNativePromotionProgram(cpu.constructor,{
