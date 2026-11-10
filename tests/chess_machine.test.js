@@ -4,6 +4,7 @@ const SubitCPU=require('../src/cpu/subit_cpu.js');
 const {COMMAND,ABI}=require('../src/chess/chess_unit.js');
 const {SubitChessUnit}=require('../src/chess/chess_unit.js');
 const {SubitChessMachine}=require('../src/chess/chess_machine.js');
+const {buildNativePieceDecodeProgram}=require('../examples/cpu_native_piece_decode.js');
 const board=Array.from({length:8},()=>Array(8).fill('.'));
 board[7]=['R','N','B','Q','K','B','N','R'];board[6]=Array(8).fill('P');
 board[0]=['r','n','b','q','k','b','n','r'];board[1]=Array(8).fill('p');
@@ -33,5 +34,17 @@ assert.ok(unit2.position);
 assert.equal(cpu2.memory[ABI.STATUS],1);
 assert.equal(machine2.peripheralLog.length,1);
 assert.equal(machine2.peripheralLog[0].result.ok,true);
+
+// CPU-native piece decoder reads all 64 squares from the ABI board region.
+const decodeProgram=buildNativePieceDecodeProgram(SubitCPU,{start:0x0600});
+cpu2.reset();
+cpu2.loadProgram(decodeProgram.words,decodeProgram.start);
+const decodeRun=cpu2.run({maxSteps:500});
+assert.equal(decodeRun.status,'HALTED');
+assert.equal(cpu2.output.length,64);
+const expected=[];
+for(let sq=0;sq<64;sq++) expected.push(require('../src/chess/chess_unit.js').encodePiece(unit2.position.board[7-(sq>>>3)][sq&7]));
+assert.deepEqual(cpu2.output,expected);
+assert.equal(cpu2.output.filter(x=>x!==0).length,32);
 
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
