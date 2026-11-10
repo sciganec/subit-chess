@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to **subit-chess** are documented here.
 
@@ -32,6 +32,21 @@ Major milestone. Controlled generation of chess studies via discrete latent diff
 - **Tests**: Groups [v6_13] + [diffusion] added. Total: **128 passed, 0 failed** (v2.2.0); backward-compat **100/100** (v1.9.1).
 
 ---
+## [3.0.0-alpha.8] — 2026-11-10
+
+### Added
+- Ported SUBIT-CHESS v2.10.0 search primitives into the v3 engine: STTGET/STTPUT (TT, 512 entries at 0x3000), SORDER (TT move → promotions → captures → rest), SPV (PV buffer at 0x4000 + length 0x4100), SCHECKSTOP (node/time budget). Search ISA sub-ops 0x2B–0x2F; the CPU hook now receives MEM.
+- Six v2.10 conformance checks (SCH_7–SCH_12): TT roundtrip, TT miss, SORDER, SPV, SCHECKSTOP, TT age invalidation. Search ISA suite is now 12 checks.
+- Three CPU demos from v2.10: tt_demo, order_demo, pv_demo.
+
+### Fixed
+- PGN export works inside the artifact viewer via the `downloads` capability (saved as `.txt`, since `.pgn` is not on the allowlist); plain browsers keep the blob download.
+- Search ISA log line now reports the real check count instead of a hard-coded 6.
+
+### Notes
+- TT and SORDER are primitives only; alpha-beta does not yet probe the TT (same as v2.10).
+- v2.10 `SCH_3` expected SEVAL = 0 at the start position, but white to move adds the +10 tempo term; v3 keeps the corrected expectation (10).
+
 ## [3.0.0-alpha.7] — 2026-11-10
 
 Spec basis: SUBIT-∞ v6.14.0 §2.1.

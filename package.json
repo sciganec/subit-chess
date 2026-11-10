@@ -1,6 +1,6 @@
 {
   "name": "subit-chess",
-  "version": "3.0.0-alpha.7",
+  "version": "3.0.0-alpha.8",
   "description": "Browser chess engine: SUBIT morphology (S₀ = I×Z×Φ), 53-bit Zobrist key, FOUR logic module (v3.0 alpha)",
   "keywords": [
     "chess",
