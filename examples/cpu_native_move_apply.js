@@ -86,7 +86,8 @@ function buildNativeMoveApplyProgram(CPU, options = {}) {
   for(let i=0;i<4;i++){load(0,i);compare(2,0);branchEq(2,0,'source_nibble_'+i);}
   for(let i=0;i<4;i++){
     label('source_nibble_'+i);
-    load(0,pieceSlot);mem(M.USTORE,0,0,3);
+    mem(M.UEXTRACT4,0,3,0,i);
+    load(1,pieceSlot);mem(M.USTORE,0,1,0);
     load(0,0);mem(M.UINSERT4,3,3,0,i);
     load(0,fromSlot);mem(M.ULOAD,0,0);
     load(1,4);ext(X.UDIV,0,0,1);
