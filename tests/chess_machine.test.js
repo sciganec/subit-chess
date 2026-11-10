@@ -340,4 +340,44 @@ cpu2.loadProgram(wrongAttack.words,wrongAttack.start);
 assert.equal(cpu2.run({maxSteps:100000}).status,'HALTED');
 assert.equal(cpu2.memory[0x400+17],1);
 
+
+ 
+// CPU-native King Safety Probe scans the packed board and checks the king's
+// square against a precomputed opponent attack map.
+const {buildNativeKingSafetyProbeProgram}=require('../examples/cpu_native_king_safety.js');
+const KING_PROBE_RESULT=0x0340;
+function runKingProbe(side,kingSquares,attackedSquares=[],runtimeSide=side){
+  cpu2.reset();
+  cpu2.memory.fill(0,ABI.BOARD,ABI.BOARD+ABI.BOARD_WORDS);
+  for(const sq of kingSquares)setKingTestPiece(cpu2.memory,sq,side==='w'?6:14);
+  for(const sq of attackedSquares)cpu2.memory[0x0400+sq]=1;
+  cpu2.memory[ABI.FLAGS]=runtimeSide==='w'?0:1;
+  const probe=buildNativeKingSafetyProbeProgram(SubitCPU,{side,start:0x7000,resultAddress:KING_PROBE_RESULT});
+  cpu2.loadProgram(probe.words,probe.start);
+  const run=cpu2.run({maxSteps:10000});
+  assert.equal(run.status,'HALTED');
+  return {status:cpu2.memory[KING_PROBE_RESULT],square:cpu2.memory[KING_PROBE_RESULT+1],steps:run.steps};
+}
+assert.equal(runKingProbe('w',[4],[]).status,1); // SAFE
+assert.deepEqual(
+  (({status,square})=>({status,square}))(runKingProbe('w',[4],[4])),
+  {status:2,square:4}
+); // CHECK
+assert.deepEqual(
+  (({status,square})=>({status,square}))(runKingProbe('b',[60],[60])),
+  {status:2,square:60}
+);
+assert.deepEqual(
+  (({status,square})=>({status,square}))(runKingProbe('w',[],[])),
+  {status:0,square:0xffff}
+); // NO_KING
+assert.deepEqual(
+  (({status,square})=>({status,square}))(runKingProbe('w',[4,60],[])),
+  {status:3,square:0xffff}
+); // MULTIPLE_KINGS
+assert.deepEqual(
+  (({status,square})=>({status,square}))(runKingProbe('w',[4],[],'b')),
+  {status:4,square:0xffff}
+); // WRONG_SIDE
+
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
