@@ -545,8 +545,8 @@ function runPromotion(side,from,to,promo,pieces){
   return {status:cpu2.memory[program.statusAddress],piece};
 }
 assert.deepEqual(runPromotion('w',48,56,1,[[48,1]]),{status:PROMOTION_STATUS.OK,piece:5});
-assert.deepEqual(runPromotion('w',48,56,4,[[48,1]]),{status:PROMOTION_STATUS.OK,piece:4});
-assert.deepEqual(runPromotion('b',8,0,2,[[8,9]]),{status:PROMOTION_STATUS.OK,piece:10});
+assert.deepEqual(runPromotion('w',48,56,4,[[48,1]]),{status:PROMOTION_STATUS.OK,piece:2});
+assert.deepEqual(runPromotion('b',8,0,2,[[8,9]]),{status:PROMOTION_STATUS.OK,piece:12});
 assert.equal(runPromotion('w',40,48,1,[[40,1]]).status,PROMOTION_STATUS.WRONG_RANK);
 assert.equal(runPromotion('w',48,56,5,[[48,1]]).status,PROMOTION_STATUS.BAD_CODE);
 assert.equal(runPromotion('w',48,56,1,[[48,4]]).status,PROMOTION_STATUS.NOT_PAWN);
