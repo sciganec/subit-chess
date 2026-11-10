@@ -32,6 +32,12 @@ Major milestone. Controlled generation of chess studies via discrete latent diff
 - **Tests**: Groups [v6_13] + [diffusion] added. Total: **128 passed, 0 failed** (v2.2.0); backward-compat **100/100** (v1.9.1).
 
 ---
+## [Unreleased]
+
+### Notes
+- Search configuration decision: pruned search (LMR, LMP, futility, null-move, extensions on) stays the default. Chosen for speed: at equal depth it uses about 3x fewer nodes at depth 4 and about 8x fewer at depth 5. Self-play strength is not established: depth 5 pruned vs depth 4 unpruned scored 64% in one run (32 games) and 48% in a replication (32 games); pooled 57% over 64 games, not significant.
+- Test hooks `useTT`, `noPrune`, `benchTT`, `playMatch` stay opt-in and do not change default behaviour.
+
 ## [3.0.0-alpha.8] — 2026-11-10
 
 ### Added
