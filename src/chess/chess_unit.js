@@ -153,7 +153,7 @@ class SubitChessUnit {
       this.syncStatus(STATUS.ERROR,ERROR.BAD_COMMAND);
       return {ok:false,error:ERROR.BAD_COMMAND};
     } catch(e){
-      this.syncStatus(STATUS.ERROR,ERROR.BAD_MOVE);
+      this.syncStatus(STATUS.ILLEGAL,ERROR.BAD_MOVE);
       return {ok:false,error:ERROR.BAD_MOVE,message:String(e&&e.message||e)};
     }
   }
