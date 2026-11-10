@@ -232,4 +232,31 @@ assert.equal(fillCell(FOUR.B),0xFFFF);
   assert.equal(c.RF[2],0xBEEF);
 }
 
+
+{
+  const c=new CPU();
+  const board=[0x4235,0x0000,0x6789,0x0000,0x1234,0x0000,0xABCD,0x0000,
+    0x1111,0x0000,0x2222,0x0000,0x3333,0x0000,0x4444,0x0000];
+  board.forEach((v,i)=>c.memory[i]=v);
+  const p=[
+    encode(O.LOADI,0),0,
+    encode(O.LOADI,1),0,
+    encode(O.LOADI,2),16,
+    CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.ULOAD,3,0,0)[1],
+    ...CPU.encodeExtended(CPU.XOP.UADDI,3,3,0,0),
+    ...CPU.encodeExtended(CPU.XOP.XBR,0,0,0,2),
+    ...CPU.encodeExtended(CPU.XOP.UADDI,1,1,0,1),
+    ...CPU.encodeExtended(CPU.XOP.UADDI,0,0,0,1),
+    ...CPU.encodeExtended(CPU.XOP.UADDI,2,2,0,-1),
+    ...CPU.encodeExtended(CPU.XOP.XBR,1,0,0,-14),
+    encode(O.HALT)
+  ];
+  c.loadProgram(p,0x0500);
+  const result=c.run({maxSteps:200});
+  assert.equal(result.status,'HALTED');
+  assert.equal(c.URF[0],16);
+  assert.equal(c.URF[1],8);
+  assert.equal(c.URF[2],0);
+}
+
 console.log('SUBIT-CPU Core v0.2 extension tests: all tests passed');
