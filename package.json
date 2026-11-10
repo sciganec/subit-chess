@@ -21,9 +21,9 @@
     "url": "git+https://github.com/sciganec/subit-chess.git"
   },
   "bugs": {
-    "url": "https://github.com/USER/subit-chess/issues"
+    "url": "https://github.com/sciganec/subit-chess/issues"
   },
-  "main": "index.html",
+  "main": "src/cpu/subit_cpu.js",
   "browser": "index.html",
   "files": [
     "src/",
