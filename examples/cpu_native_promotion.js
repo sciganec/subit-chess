@@ -33,7 +33,9 @@ function buildNativePromotionProgram(CPU,options={}){
   load(1,0x000E);ext(X.UAND,0,0,1);
   load(1,2);ext(X.UDIV,0,0,1);
   load(1,0);cmp(0,1);bz('no_promotion');
-  load(1,4);cmp(0,1);bnz('bad_code');
+  for(let p=1;p<=4;p++){load(1,p);cmp(0,1);bz('promo_code_valid');}
+  jump('bad_code');
+  label('promo_code_valid');
   load(0,promoSlot);mem(M.USTORE,0,0,0);
 
   // Decode and retain destination square.
