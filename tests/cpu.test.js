@@ -134,4 +134,47 @@ assert.equal(fillCell(FOUR.B),0xFFFF);
   assert.equal(c.clock,0);
   assert.equal(c.trap.code,'TRAP_3');
 }
-console.log('SUBIT-CPU Core v0.1: all tests passed');
+
+// Extended integer page: U16 arithmetic, compare flags, and relative conditional branch.
+{
+  const p=[
+    encode(O.LOADI,0),7,
+    encode(O.LOADI,1),5,
+    ...CPU.encodeExtended(CPU.XOP.UADD,2,0,1),
+    ...CPU.encodeExtended(CPU.XOP.UCMP,0,2,2),
+    ...CPU.encodeExtended(CPU.XOP.XBR,0,0,0,2),
+    encode(O.LOADI,3),99,
+    encode(O.HALT)
+  ];
+  const {c,result}=run(p);
+  assert.equal(result.status,'HALTED');
+  assert.equal(c.URF[2],12);
+  assert.equal(c.URF[3],0);
+  assert.ok(c.FLAGS&CPU.FLAG.Z);
+  assert.equal(result.steps,7);
+}
+
+// Extended signed ALU operates on the 32-bit SRF bank.
+{
+  const c=new CPU();
+  c.SRF[0]=-7;c.SRF[1]=3;
+  c.loadProgram([...CPU.encodeExtended(CPU.XOP.SDIV,2,0,1),encode(O.HALT)]);
+  const result=c.run();
+  assert.equal(result.status,'HALTED');
+  assert.equal(c.SRF[2],-2);
+  assert.ok(c.FLAGS&CPU.FLAG.N);
+}
+
+// Division by zero aborts atomically and preserves destination register.
+{
+  const c=new CPU();
+  c.URF[0]=42;c.URF[1]=0;c.URF[2]=0xBEEF;
+  c.loadProgram([...CPU.encodeExtended(CPU.XOP.UDIV,2,0,1)]);
+  const result=c.step();
+  assert.equal(result.status,'TRAP');
+  assert.equal(c.trap.code,'DIVIDE_BY_ZERO');
+  assert.equal(c.URF[2],0xBEEF);
+  assert.equal(c.clock,0);
+}
+
+console.log('SUBIT-CPU Core v0.2 extension tests: all tests passed');
