@@ -107,9 +107,8 @@ function buildNativeMoveGeometryProgram(CPU,options={}){
   load(0,pieceSlot);mem(M.ULOAD,0,0);load(2,oneHotBase);ext(X.UADD,2,2,0);
   mem(M.ULOAD,0,2);ext(X.UAND,0,0,1);load(1,0);cmp(0,1);branchZ('invalid_geometry');
 
-  // Promotion is deliberately rejected until a promotion-aware apply exists.
-  load(0,move);mem(M.ULOAD,0,0);load(1,0x000E);ext(X.UAND,0,0,1);
-  load(1,0);cmp(0,1);branchNZ('unsupported_promotion');
+  // Promotion is validated and applied by the dedicated CPU-native
+  // promotion stage after the source piece has been staged on the board.
 
   // routePtr currently points at record word 0; advance to path count + first square.
   load(0,routePtrSlot);mem(M.ULOAD,0,0);load(1,2);ext(X.UADD,0,0,1);
