@@ -1817,8 +1817,8 @@ if (alpha >= beta){ if (!killers[ply]) killers[ply] = [null, null]; var k = kill
 if (aborted) break;
 }
 var flag = bestScore <= origAlpha ? 'upper' : bestScore >= beta ? 'lower' : 'exact';
-if (TT.size > 300000) TT.delete(TT.keys().next().value);
-TT.set(h, {depth:depth, score:bestScore, flag:flag, best:bestMove});
+if (!aborted){ if (TT.size > 300000) TT.delete(TT.keys().next().value);
+TT.set(h, {depth:depth, score:bestScore, flag:flag, best:bestMove}); }
 return bestScore;
 }
 function searchRoot(pos, depth, ttPrevMove, extBudget, prevScore){
