@@ -90,7 +90,7 @@ function buildNativePawnMovesProgram(CPU, options = {}) {
   }
   for(let from=0;from<64;from++){
     const rank=from>>>3,file=from&7;
-    if(rank===promotionRank || (side==='w'&&rank===7) || (side==='b'&&rank===0))continue;
+    if(rank===promotionRank || (side==='w'&&rank===0) || (side==='b'&&rank===7))continue;
     const forwardTo=from+forward;
     const stem='p'+from;
     const skip=stem+'_skip';
