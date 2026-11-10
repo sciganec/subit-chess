@@ -32,6 +32,23 @@ Major milestone. Controlled generation of chess studies via discrete latent diff
 - **Tests**: Groups [v6_13] + [diffusion] added. Total: **128 passed, 0 failed** (v2.2.0); backward-compat **100/100** (v1.9.1).
 
 ---
+## [3.0.0-alpha.6] — 2026-11-10
+
+Spec basis: SUBIT-∞ v6.14.0 §3.1.
+
+### Added
+
+- `src/subit/trajectory.js`: trajectory classes FIXED (μ=0, λ=1), PERIODIC
+  (μ=0, λ>1), TRANSIENT (μ>0) for a deterministic map on a finite state space,
+  via Brent's cycle detection. Checked against brute-force simulation on 2000
+  random 64-state maps and an invariant f^(μ+λ)(x) = f^μ(x) (6 checks).
+
+### Not implemented
+
+- §10.1 classes MIN_ZERO, MIN_POS, NONMIN_ZERO, NONMIN_POS: the spec does not
+  state the entropy h_top or minimality tests formally. Left open until defined.
+
+---
 ## [3.0.0-alpha.5] — 2026-11-10
 
 Spec basis: SUBIT-∞ v6.14.0 (draft). Implements §1 and §0.1 only.
