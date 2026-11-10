@@ -201,8 +201,8 @@ function verifyKingMoves(side,kingSquare,ownSquare,enemySquare){
   assert.deepEqual(moves,expected);
   return count;
 }
-assert.equal(verifyKingMoves('w',28,36,27),6);
-assert.equal(verifyKingMoves('b',36,28,43),6);
+assert.equal(verifyKingMoves('w',28,36,27),7);
+assert.equal(verifyKingMoves('b',36,28,43),7);
 
 // In the initial position both kings are blocked by friendly pieces.
 cpu2.reset();
