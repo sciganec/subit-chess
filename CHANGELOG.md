@@ -32,6 +32,36 @@ Major milestone. Controlled generation of chess studies via discrete latent diff
 - **Tests**: Groups [v6_13] + [diffusion] added. Total: **128 passed, 0 failed** (v2.2.0); backward-compat **100/100** (v1.9.1).
 
 ---
+## [3.0.0-alpha.2] — 2026-11-10
+
+### Changed
+
+- **Base switched to SUBIT-CHESS v2.9.0** (the user-supplied file). It already
+  contains the dual-word 53-bit Zobrist key that alpha.1 implemented, so the
+  alpha.1 hash patch is superseded and not carried forward.
+- Version labels (`<title>`, header, PGN, `__subit.version`) read `3.0.0-alpha`.
+- `tests/test.js` moved to `tests/legacy/test-v1.9-v2.2.js`: it targets the
+  pre-v2.9 API and no longer runs. Replaced by `tests/engine-v3.test.js`.
+
+### Fixed
+
+- Console error at boot: `[Search ISA] ✗ FAILED`, shown in the header as
+  `SEARCH: FAIL`. Two in-page expectations were wrong, not the engine:
+  - `SCH_3`: SEVAL of the start position with White to move is +10 (side-to-move
+    tempo term), not 0.
+  - `SCH_6`: the test program issues one SEVAL, so the node counter is 1, not ≥2.
+- Phone layout at 390 px: the v2.9 base renders the board, controls and bottom
+  level selector without clipping (checked by measuring and by screenshot).
+
+### Tests
+
+- `tests/engine-v3.test.js`: 11 checks — boot without console errors,
+  `searchConformance()`, perft(1..3) (perft(4) with `--full`), and the 53-bit
+  key invariant (incremental == recompute on castling, en passant, promotion and
+  random playouts; make/unmake restores).
+- `tests/four.test.js`: 22 exhaustive FOUR checks (unchanged).
+
+---
 ## [3.0.0-alpha.1] — 2026-11-10
 
 First v3.0 milestone: foundation only. Full SUBIT-CHESS v3.0 (CPU-native search,
