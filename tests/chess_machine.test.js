@@ -397,7 +397,7 @@ function runNativeMoveApply(from,to,piece,targetPiece=0){
   cpu2.loadProgram(apply.words,apply.start);
   const result=cpu2.run({maxSteps:10000});
   assert.equal(result.status,'HALTED');
-  assert.equal(cpu2.memory[0x0342],1);
+  assert.equal(cpu2.memory[0x0342],1,JSON.stringify({run,pc:cpu2.PC,trap:cpu2.trap,from:cpu2.memory[0x0344],to:cpu2.memory[0x0345],piece:cpu2.memory[0x0343],scratch:Array.from(cpu2.memory.slice(0x0500,0x0510))}));
   assert.equal(cpu2.memory[ABI.BOARD+(from>>>2)]===0, false,
     'original board must remain intact');
   const staged=cpu2.memory.slice(0x0500,0x0510);
