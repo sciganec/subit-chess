@@ -32,6 +32,17 @@ Major milestone. Controlled generation of chess studies via discrete latent diff
 - **Tests**: Groups [v6_13] + [diffusion] added. Total: **128 passed, 0 failed** (v2.2.0); backward-compat **100/100** (v1.9.1).
 
 ---
+## [3.0.0-alpha.7] — 2026-11-10
+
+Spec basis: SUBIT-∞ v6.14.0 §2.1.
+
+### Added
+
+- `src/subit/splus.js`: S⁺ = S₀ × R_fin with the literal dynamics (s, ρ) ↦ (ρ(s), ρ)
+  and classification via the §3.1 classifier. The spec gives no further structure
+  for S⁺; nothing beyond this reading is implemented. `tests/splus.test.js` (4 checks).
+
+---
 ## [3.0.0-alpha.6] — 2026-11-10
 
 Spec basis: SUBIT-∞ v6.14.0 §3.1.

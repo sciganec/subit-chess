@@ -1,6 +1,6 @@
 {
   "name": "subit-chess",
-  "version": "3.0.0-alpha.6",
+  "version": "3.0.0-alpha.7",
   "description": "Browser chess engine: SUBIT morphology (S₀ = I×Z×Φ), 53-bit Zobrist key, FOUR logic module (v3.0 alpha)",
   "keywords": [
     "chess",
@@ -39,7 +39,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node tests/four.test.js && node tests/s0.test.js && node tests/trajectory.test.js && node tests/engine-v3.test.js",
+    "test": "node tests/four.test.js && node tests/s0.test.js && node tests/trajectory.test.js && node tests/splus.test.js && node tests/engine-v3.test.js",
     "test:perft": "node tests/test.js --only-perft",
     "test:policy": "node tests/test.js --only-policy",
     "selfplay": "node runners/run.js --mode selfplay --games 100 --depth 2",
