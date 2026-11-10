@@ -509,9 +509,11 @@ function runGeometry(from,to,pieces,side='w',promotion=0){
   cpu2.loadProgram(geometry.words,geometry.start);
   const result=cpu2.run({maxSteps:10000});
   assert.equal(result.status,'HALTED',JSON.stringify({result,trap:cpu2.trap}));
-  const ptr=cpu2.memory[0x034A],piece=cpu2.memory[0x0349];\n  return {status:cpu2.memory[geometry.statusAddress],steps:result.steps,words:geometry.words.length,piece,ptr,mask:cpu2.memory[ptr-2],onehot:cpu2.memory[geometry.oneHotBase+piece]};
+  const ptr=cpu2.memory[0x034A],piece=cpu2.memory[0x0349];
+  return {status:cpu2.memory[geometry.statusAddress],steps:result.steps,words:geometry.words.length,piece,ptr,mask:cpu2.memory[ptr-2],onehot:cpu2.memory[geometry.oneHotBase+piece]};
 }
-const knightGeometry=runGeometry(1,18,[[1,2]]);\nassert.equal(knightGeometry.status,GEOMETRY_STATUS.VALID,JSON.stringify(knightGeometry)); // Nb1-c3
+const knightGeometry=runGeometry(1,18,[[1,2]]);
+assert.equal(knightGeometry.status,GEOMETRY_STATUS.VALID,JSON.stringify(knightGeometry)); // Nb1-c3
 assert.equal(runGeometry(1,17,[[1,2]]).status,GEOMETRY_STATUS.INVALID_GEOMETRY); // Nb1-b3
 assert.equal(runGeometry(12,28,[[12,4]]).status,GEOMETRY_STATUS.VALID); // Re2-e4
 assert.equal(runGeometry(12,28,[[12,4],[20,1]]).status,GEOMETRY_STATUS.BLOCKED_PATH); // pawn blocks rook
