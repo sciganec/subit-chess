@@ -503,6 +503,7 @@ function runGeometry(from,to,pieces,side='w',promotion=0){
   for(const [sq,code] of pieces)setKingTestPiece(cpu2.memory,sq,code);
   cpu2.memory[ABI.FLAGS]=side==='w'?0:1;
   cpu2.memory[ABI.MOVE_DATA]=((from&63)<<10)|((to&63)<<4)|((promotion&7)<<1);
+  cpu2.memory[0x0347]=from;cpu2.memory[0x0348]=to;
   const geometry=buildNativeMoveGeometryProgram(SubitCPU,{side,start:0xD000});
   cpu2.memory.set(geometry.tableWords,geometry.tableBase);
   cpu2.memory.set(geometry.oneHotWords,geometry.oneHotBase);
