@@ -148,3 +148,8 @@ The decoder is intentionally a board-representation primitive, not yet a move ge
 ## CPU-native piece histogram
 
 `examples/cpu_native_piece_histogram.js` builds an executable CPU program that clears 15 histogram bins, visits all 64 board squares, extracts each packed 4-bit piece code, increments the corresponding bin in memory, and emits the histogram in code order. Bin 0 counts empty squares; bins 1–6 are white P/N/B/R/Q/K; bins 9–14 are black P/N/B/R/Q/K. The program uses only existing general-purpose U16 arithmetic and typed-memory operations. It deliberately reloads each packed board word for each nibble, avoiding an implicit fifth temporary register in the current four-register U16 file. The initial-position regression expects [32,8,2,2,2,1,1,0,0,8,2,2,2,1,1].
+
+
+## CPU-native knight pseudo-legal move generation
+
+`examples/cpu_native_knight_moves.js` assembles an unrolled instruction stream that generates knight moves for one selected side. At runtime it validates the requested side against ABI.FLAGS, reads packed source and destination square codes, checks that each source contains the side's knight, rejects friendly-occupied destinations, and writes encoded moves directly to ABI.MOVE_BUFFER before publishing ABI.LEGAL_COUNT. The CPU performs all runtime board inspection and move-buffer writes; JavaScript only emits the instruction stream. The current stage is deliberately limited to knight pseudo-legal moves: it does not test attacked squares, king safety, pins, or check evasion. A differential/known-position test confirms the four white knight moves from the initial position; a runtime side-guard test confirms the generator does not run for the wrong side.
