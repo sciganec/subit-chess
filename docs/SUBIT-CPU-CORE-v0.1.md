@@ -153,3 +153,8 @@ The decoder is intentionally a board-representation primitive, not yet a move ge
 ## CPU-native knight pseudo-legal move generation
 
 `examples/cpu_native_knight_moves.js` assembles an unrolled instruction stream that generates knight moves for one selected side. At runtime it validates the requested side against ABI.FLAGS, reads packed source and destination square codes, checks that each source contains the side's knight, rejects friendly-occupied destinations, and writes encoded moves directly to ABI.MOVE_BUFFER before publishing ABI.LEGAL_COUNT. The CPU performs all runtime board inspection and move-buffer writes; JavaScript only emits the instruction stream. The current stage is deliberately limited to knight pseudo-legal moves: it does not test attacked squares, king safety, pins, or check evasion. A differential/known-position test confirms the four white knight moves from the initial position; a runtime side-guard test confirms the generator does not run for the wrong side.
+
+
+## CPU-native pawn pseudo-legal move generation
+
+`examples/cpu_native_pawn_moves.js` adds a generated SUBIT-CPU instruction program for pawn movement. It validates side-to-move against ABI.FLAGS; tests source piece identity; emits unobstructed single advances and initial double advances; checks diagonal occupancy and opponent color; and emits all four ABI promotion encodings (Q/R/B/N) on the final rank. The VM performs runtime board reads, comparisons, and move-buffer writes. Tests cover 16 initial-position pawn moves for each side and eight promotion outcomes (four quiet promotions plus four capture promotions) from a7. En passant, king safety, and check-evasion filtering are not included in this stage.
