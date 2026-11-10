@@ -966,6 +966,7 @@ outline:2px solid var(--accent);outline-offset:2px}
 
 <script src="./src/cpu/subit_cpu.js"></script>
 <script src="./src/chess/chess_unit.js"></script>
+<script src="./src/chess/chess_machine.js"></script>
 <script>
 "use strict";
 /* ═══════════════════════════════════════════════════════════════════
@@ -5388,7 +5389,7 @@ catch(e){ return false; }
 }
 
 window.__subit = {
-cpu: { Core: window.SubitCPU, create: function(options){ if (!window.SubitCPU) throw new Error("SUBIT-CPU core not loaded"); return new window.SubitCPU(options || {}); }, ChessUnit: window.SubitChessUnit, createChessUnit: function(cpu, options){ if (!window.SubitChessUnit) throw new Error("SUBIT-CHESS ABI not loaded"); return new window.SubitChessUnit.SubitChessUnit(cpu, chess, options || {}); } },
+cpu: { Core: window.SubitCPU, create: function(options){ if (!window.SubitCPU) throw new Error("SUBIT-CPU core not loaded"); return new window.SubitCPU(options || {}); }, ChessUnit: window.SubitChessUnit, createChessUnit: function(cpu, options){ if (!window.SubitChessUnit) throw new Error("SUBIT-CHESS ABI not loaded"); return new window.SubitChessUnit.SubitChessUnit(cpu, chess, options || {}); }, Machine: window.SubitChessMachine, createMachine: function(cpu, unit, options){ if (!window.SubitChessMachine) throw new Error("SUBIT-CHESS machine bridge not loaded"); return new window.SubitChessMachine.SubitChessMachine(cpu, unit, options || {}); } },
 chess: chess, subit: subit,
 
 diffusion: diffusion,
