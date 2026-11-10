@@ -143,3 +143,8 @@ This is the first typed-memory path needed to traverse the Chess Unit board and 
 `examples/cpu_native_piece_decode.js` builds a straight-line CPU program that reads the 16 packed words at the Chess Unit BOARD address. The typed-memory operation `UEXTRACT4` extracts one 4-bit square code from a 16-bit word; IMM6 selects nibble 0–3 in most-significant-first order. The program emits 64 piece codes in ABI square order (a1 through h8). It performs the memory reads, nibble extraction, and output on the SUBIT-CPU interpreter; JavaScript only assembles the instruction stream and verifies the resulting output.
 
 The decoder is intentionally a board-representation primitive, not yet a move generator. It does not classify attack geometry, generate pseudo-legal moves, test king safety, or replace the reference chess rules API. Its acceptance test initializes the Chess Unit and compares all 64 CPU-emitted nibbles against the independently encoded board, including the expected 32 occupied squares in the initial position.
+
+
+## CPU-native piece histogram
+
+`examples/cpu_native_piece_histogram.js` builds an executable CPU program that clears 15 histogram bins, visits all 64 board squares, extracts each packed 4-bit piece code, increments the corresponding bin in memory, and emits the histogram in code order. Bin 0 counts empty squares; bins 1–6 are white P/N/B/R/Q/K; bins 9–14 are black P/N/B/R/Q/K. The program uses only existing general-purpose U16 arithmetic and typed-memory operations. It deliberately reloads each packed board word for each nibble, avoiding an implicit fifth temporary register in the current four-register U16 file. The initial-position regression expects [32,8,2,2,2,1,1,0,0,8,2,2,2,1,1].
