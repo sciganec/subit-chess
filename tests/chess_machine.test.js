@@ -221,4 +221,49 @@ cpu2.loadProgram(kingInitial.words,kingInitial.start);
 assert.equal(cpu2.run({maxSteps:50000}).status,'HALTED');
 assert.equal(cpu2.memory[ABI.LEGAL_COUNT],0);
 
+
+
+// CPU-native bishop/rook/queen rays stop at the first blocker and capture only
+// the first enemy piece. Compare both colors against a small independent oracle.
+const {buildNativeSlidingMovesProgram}=require('../examples/cpu_native_sliding_moves.js');
+function verifySliding(side){
+  cpu2.reset();
+  cpu2.memory.fill(0,ABI.BOARD,ABI.BOARD+ABI.BOARD_WORDS);
+  const pieces=side==='w'
+    ? [[27,3],[28,4],[29,5],[35,1],[19,9],[30,1],[44,12],[20,9]]
+    : [[27,11],[28,12],[29,13],[35,9],[19,1],[30,9],[44,4],[20,1]];
+  for(const [sq,code] of pieces)setKingTestPiece(cpu2.memory,sq,code);
+  cpu2.memory[ABI.FLAGS]=side==='w'?0:1;
+  const expected=[];
+  const dirs=[[1,1],[-1,1],[1,-1],[-1,-1],[0,1],[0,-1],[1,0],[-1,0]];
+  const own=side==='w'?code=>code>=1&&code<=6:code=>code>=9&&code<=14;
+  for(const [from,code] of pieces){
+    if(side==='w' ? code<3||code>5 : code<11||code>13)continue;
+    for(let d=0;d<dirs.length;d++){
+      const [df,dr]=dirs[d],diag=d<4;
+      if(diag ? (code!==3+(side==='w'?0:8)&&code!==5+(side==='w'?0:8))
+              : (code!==4+(side==='w'?0:8)&&code!==5+(side==='w'?0:8)))continue;
+      let f=(from&7)+df,r=(from>>>3)+dr;
+      while(f>=0&&f<8&&r>=0&&r<8){
+        const to=r*8+f, target=pieces.find(x=>x[0]===to)?.[1]||0;
+        if(target===0)expected.push((from<<10)|(to<<4));
+        else {if(!own(target))expected.push((from<<10)|(to<<4));break;}
+        f+=df;r+=dr;
+      }
+    }
+  }
+  const program=buildNativeSlidingMovesProgram(SubitCPU,{side,start:0x1000});
+  cpu2.loadProgram(program.words,program.start);
+  const result=cpu2.run({maxSteps:500000});
+  assert.equal(result.status,'HALTED');
+  const count=cpu2.memory[ABI.LEGAL_COUNT];
+  const actual=Array.from(cpu2.memory.slice(ABI.MOVE_BUFFER,ABI.MOVE_BUFFER+count)).sort((a,b)=>a-b);
+  expected.sort((a,b)=>a-b);
+  assert.deepEqual(actual,expected);
+  return {count,programWords:program.words.length,steps:result.steps};
+}
+const whiteSliding=verifySliding('w');
+const blackSliding=verifySliding('b');
+assert.ok(whiteSliding.count>0&&blackSliding.count>0);
+
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
