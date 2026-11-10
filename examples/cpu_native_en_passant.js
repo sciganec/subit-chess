@@ -56,9 +56,9 @@ function buildNativeEnPassantProgram(CPU,options={}){
   for(let i=0;i<4;i++){
     label('dest_nib_'+i);mem(M.UEXTRACT4,0,3,0,i);
     load(1,flags);mem(M.ULOAD,1,1);load(2,1);ext(X.UAND,1,1,2);
-    load(2,0);cmp(1,2);bnz('moving_black');
+    load(2,0);cmp(1,2);bnz('moving_black_'+i);
     load(1,1);cmp(0,1);bnz('not_pawn');jump('compute_capture');
-    label('moving_black');
+    label('moving_black_'+i);
     load(1,9);cmp(0,1);bnz('not_pawn');jump('compute_capture');
   }
 
@@ -82,9 +82,9 @@ function buildNativeEnPassantProgram(CPU,options={}){
   for(let i=0;i<4;i++){
     label('cap_nib_'+i);mem(M.UEXTRACT4,0,3,0,i);
     load(1,flags);mem(M.ULOAD,1,1);load(2,1);ext(X.UAND,1,1,2);
-    load(2,0);cmp(1,2);bnz('expect_white_pawn');
+    load(2,0);cmp(1,2);bnz('expect_white_pawn_'+i);
     load(1,9);cmp(0,1);bnz('bad_capture');jump('clear_capture');
-    label('expect_white_pawn');
+    label('expect_white_pawn_'+i);
     load(1,1);cmp(0,1);bnz('bad_capture');jump('clear_capture');
   }
 
