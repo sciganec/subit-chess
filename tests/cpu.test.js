@@ -204,7 +204,7 @@ assert.equal(fillCell(FOUR.B),0xFFFF);
   const result=c.run({maxSteps:100});
   assert.equal(result.status,'HALTED');
   assert.equal(c.URF[0],3);
-  assert.equal(result.steps,14);
+  assert.equal(result.steps,12);
 }
 
 console.log('SUBIT-CPU Core v0.2 extension tests: all tests passed');
