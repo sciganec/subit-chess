@@ -12,6 +12,7 @@
 const {buildNativeMovePreflightProgram}=require('./cpu_native_move_preflight.js');
 const {buildNativeMoveGeometryProgram,GEOMETRY_STATUS}=require('./cpu_native_move_geometry.js');
 const {buildNativeMoveApplyProgram}=require('./cpu_native_move_apply.js');
+const {buildNativePromotionProgram,PROMOTION_STATUS}=require('./cpu_native_promotion.js');
 const {buildNativeAttackMapProgram}=require('./cpu_native_attack_map.js');
 const {buildNativeKingSafetyProbeProgram}=require('./cpu_native_king_safety.js');
 
@@ -92,6 +93,21 @@ function runNativeKingSafetyPipeline(cpu,options={}){
   if(stage.run.status!=='HALTED'||cpu.memory[apply.stateAddress]!==1){
     return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,safe:false,
       reason:stage.run.trap?.code||'MOVE_APPLY_FAILED',side,stages});
+  }
+
+  const promotion=buildNativePromotionProgram(cpu.constructor,{
+    boardAddress:scratchBoardAddress,moveAddress,flagsAddress:options.flagsAddress??0x0010,
+    start:options.promotionStart??0xB000,
+    statusAddress:options.promotionStatusAddress??0x034D,
+    toSlot:options.promotionToSlot??0x034E,promoSlot:options.promoSlot??0x034F
+  });
+  stage=runProgram(cpu,promotion,maxSteps); stages.push({name:'PROMOTION',...stage});
+  const promotionStatus=cpu.memory[promotion.statusAddress];
+  if(stage.run.status!=='HALTED'||promotionStatus!==PROMOTION_STATUS.OK){
+    const reasons={2:'BAD_PROMOTION_CODE',3:'PROMOTION_WRONG_RANK',4:'PROMOTION_SOURCE_NOT_PAWN'};
+    return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,safe:false,
+      reason:reasons[promotionStatus]||stage.run.trap?.code||'PROMOTION_FAILED',
+      promotionStatus,side,stages});
   }
 
   // The attack-map generator and king probe intentionally use different
