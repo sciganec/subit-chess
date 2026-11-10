@@ -2092,7 +2092,7 @@ const blob = new Blob([workerSrc], {type: 'application/javascript'});
 const url = URL.createObjectURL(blob);
 const worker = new Worker(url);
 worker.onmessage = function(e){ const data = e.data; const cb = workerCallbacks.get(data.id); if (!cb) return; workerCallbacks.delete(data.id); if (data.error) cb.reject(new Error(data.error)); else cb.resolve(data.result); };
-worker.onerror = function(err){ console.error('[SUBIT] Worker crashed:', err); workerCallbacks.forEach(function(cb){ try { cb.reject(new Error('Worker crashed')); } catch(e){} }); workerCallbacks.clear(); searchWorker = null; try { updateWorkerStatus(); } catch(e){} };
+worker.onerror = function(err){ console.warn('[SUBIT] Worker crashed, falling back to main thread:', err && err.message || err); workerCallbacks.forEach(function(cb){ try { cb.reject(new Error('Worker crashed')); } catch(e){} }); workerCallbacks.clear(); searchWorker = null; try { updateWorkerStatus(); } catch(e){} };
 return worker;
 } catch (e){ console.warn('Worker creation failed:', e); return null; }
 }
@@ -2117,7 +2117,14 @@ const id = ++workerSearchId;
 const timeoutMs = (opts.timeLimit || 5000) + 3000;
 const timeoutHandle = setTimeout(function(){ if (workerCallbacks.has(id)){ workerCallbacks.delete(id); reject(new Error('timeout')); } }, timeoutMs);
 const wrappedResolve = function(v){ clearTimeout(timeoutHandle); resolve(v); };
-const wrappedReject = function(e){ clearTimeout(timeoutHandle); reject(e); };
+const wrappedReject = function(e){ clearTimeout(timeoutHandle);
+  if (e && e.message === 'Worker crashed'){
+    /* Worker died mid-search (seen on mobile WebViews): rerun this search on the main thread. */
+    console.warn('[SUBIT] worker lost — retrying this search on the main thread');
+    searchAsync(pos, depth, weights, opts).then(resolve, reject);
+    return;
+  }
+  reject(e); };
 workerCallbacks.set(id, {resolve: wrappedResolve, reject: wrappedReject});
 const posHistoryArr = []; if (opts.positionHistory instanceof Map) opts.positionHistory.forEach(function(v, k){ posHistoryArr.push([k, v]); });
 try { searchWorker.postMessage({ id: id, pos: pos, depth: depth, weights: weights, maxNodes: opts.maxNodes, repeatPenalty: opts.repeatPenalty || 0, widenQuiescence: !!opts.widenQuiescence, earlyStop: !!opts.earlyStop, positionHistory: posHistoryArr, timeLimit: opts.timeLimit || 0, extBudget: (typeof opts.extBudget === 'number') ? opts.extBudget : 4, lmrThreshold: (typeof opts.lmrThreshold === 'number') ? opts.lmrThreshold : 4, policyLmrMult: (typeof opts.policyLmrMult === 'number') ? opts.policyLmrMult : 0, policyNullEnable: (typeof opts.policyNullEnable === 'boolean') ? opts.policyNullEnable : true, policyFutility: (typeof opts.policyFutility === 'number') ? opts.policyFutility : 0, policyNullR: (typeof opts.policyNullR === 'number') ? opts.policyNullR : 2, policyFutMargin: (typeof opts.policyFutMargin === 'number') ? opts.policyFutMargin : null }); } catch(err){ clearTimeout(timeoutHandle); workerCallbacks.delete(id); reject(err); }
