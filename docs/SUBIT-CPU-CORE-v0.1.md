@@ -132,3 +132,7 @@ The exact word `0xFFFE` selects the typed memory page, followed by the same 16-b
 Dynamic stores participate in the same instruction transaction journal as base STORE. Consequently, a CPU-native USTORE to the Chess Unit COMMAND address is recognized by the machine bridge after commit and dispatches the peripheral command. The bridge includes `loadNativeCommandProgram()` as a minimal executable example.
 
 This is the first typed-memory path needed to traverse the Chess Unit board and move-buffer regions from CPU code. It does not yet implement a chess-specific instruction or move generator.
+
+## CPU-native board-memory scan
+
+`examples/cpu_native_board_scan.js` traverses 16 consecutive 16-bit words using a pointer in URF, dynamic ULOAD, a counter, and a conditional back-branch. It counts non-zero board words without calling the JavaScript chess rules API. This demonstrates native address iteration over the same memory model used by the Chess Unit. It is deliberately a memory traversal proof, not a piece-aware legal-move generator.
