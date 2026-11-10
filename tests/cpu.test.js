@@ -49,7 +49,7 @@ assert.equal(fillCell(FOUR.B),0xFFFF);
   assert.equal(c.RF[2],0xAAAA);
   assert.equal(c.RF[3],0xAAAA);
   assert.deepEqual(c.output,[0xAAAA]);
-  assert.equal(result.steps,9);
+  assert.equal(result.steps,8);
 }
 
 // Conditional branch tests existential matching across eight FOUR cells.
