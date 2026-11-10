@@ -204,8 +204,13 @@ function verifyKingMoves(side,kingSquare,ownSquare,enemySquare){
 assert.equal(verifyKingMoves('w',28,36,27),7);
 assert.equal(verifyKingMoves('b',36,28,43),7);
 
-// In the initial position both kings are blocked by friendly pieces.
+// In a minimal blocked position both kings have no adjacent destination.
 cpu2.reset();
+cpu2.memory.fill(0,ABI.BOARD,ABI.BOARD+ABI.BOARD_WORDS);
+setKingTestPiece(cpu2.memory,4,6);
+for(const sq of [3,5,11,12,13])setKingTestPiece(cpu2.memory,sq,1);
+setKingTestPiece(cpu2.memory,60,14);
+for(const sq of [51,52,53,59,61])setKingTestPiece(cpu2.memory,sq,9);
 let kingInitial=buildNativeKingMovesProgram(SubitCPU,{side:'w',start:0x3000});
 cpu2.loadProgram(kingInitial.words,kingInitial.start);
 assert.equal(cpu2.run({maxSteps:50000}).status,'HALTED');
