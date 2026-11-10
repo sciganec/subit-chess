@@ -27,6 +27,13 @@ function ok(name, cond, detail) { if (cond) { passed++; console.log('  ✓ ' + n
   console.log('[search]');
   const sc = E.searchConformance();
   ok('searchConformance: all checks pass', sc.ok === true, JSON.stringify((sc.results || []).filter(r => !r.ok).map(r => r.name)));
+  {
+    /* TT must not change the result when ordering-dependent pruning is off (noPrune) */
+    const fens = ['rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3', '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1'];
+    const rows = E.benchTT(fens, 3, true);
+    let same = 0; for (let i = 0; i < rows.length; i += 2){ const on = rows[i], off = rows[i+1]; if (on.score === off.score && JSON.stringify(on.move) === JSON.stringify(off.move)) same++; }
+    ok('TT on/off equal score+move (noPrune, depth 3, 3 positions)', same === fens.length, same + '/' + fens.length);
+  }
 
   console.log('[perft]');
   ok('perft(1) = 20', C.perft(C.initPosition(), 1) === 20);

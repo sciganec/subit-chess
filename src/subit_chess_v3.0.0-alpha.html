@@ -1747,6 +1747,7 @@ return {recordRaw:recordRaw, getRawEntries:getRawEntries, recordTeacherReward:re
 function makeSearchModule(chess, subit){
 function createSearch(weights, opts){
 opts = opts || {};
+var useTT = opts.useTT !== false; var noPrune = opts.noPrune === true;
 var maxNodes = opts.maxNodes || 2000000; var repeatPenalty = opts.repeatPenalty || 0; var widenQuiescence = !!opts.widenQuiescence; var qDepth = widenQuiescence ? 4 : 2;
 var extBudget = (typeof opts.extBudget === 'number') ? opts.extBudget : 4; var lmrThresholdBase = (typeof opts.lmrThreshold === 'number') ? opts.lmrThreshold : 4;
 var policyLmrMult = (typeof opts.policyLmrMult === 'number') ? opts.policyLmrMult : 0; var policyNullEnable = (typeof opts.policyNullEnable === 'boolean') ? opts.policyNullEnable : true;
@@ -1780,7 +1781,7 @@ return alpha;
 }
 function alphaBeta(pos, depth, alpha, beta, ply, allowNull, extLeft){
 if (checkAbort()) return evalSide(pos);
-var h = pos.hash; var entry = TT.get(h); var ttMove = null;
+var h = pos.hash; var entry = useTT ? TT.get(h) : undefined; var ttMove = null;
 if (entry){ if (entry.depth >= depth){ if (entry.flag === 'exact') return entry.score; if (entry.flag === 'lower' && entry.score >= beta) return entry.score; if (entry.flag === 'upper' && entry.score <= alpha) return entry.score; } ttMove = entry.best; }
 if (depth === 0) return quiescence(pos, alpha, beta, qDepth);
 var inCheck = chess.isInCheck(pos, pos.turn);
@@ -1791,11 +1792,11 @@ var nullScore = -alphaBeta(nullPos, depth-1-R, -beta, -beta+1, ply+1, false, ext
 var moves = chess.legalMoves(pos); if (moves.length === 0){ if (inCheck) return -100000 + ply; return 0; }
 moves.sort(function(a,b){ return scoreMove(b,pos,ply,ttMove) - scoreMove(a,pos,ply,ttMove); });
 var extension = 0; if (inCheck && extLeft > 0) extension = 1; var extLeftAfter = extLeft - extension;
-var futilityActive = (depth <= 2) && !inCheck && Math.abs(alpha) < 90000 && Math.abs(beta) < 90000;
+var futilityActive = !noPrune && (depth <= 2) && !inCheck && Math.abs(alpha) < 90000 && Math.abs(beta) < 90000;
 var futilityMargin = ((depth === 1) ? FUT_D1 : FUT_D2) + futilityShift;
 var staticEval = 0; if (futilityActive) staticEval = evalSide(pos);
 var lmpD1 = Math.max(3, 13 - lmrThreshold); var lmpD2 = Math.max(6, 22 - lmrThreshold * 2); var lmpLimit = 999;
-if (!inCheck && Math.abs(alpha) < 90000){ if (depth === 1) lmpLimit = lmpD1; else if (depth === 2) lmpLimit = lmpD2; }
+if (!noPrune && !inCheck && Math.abs(alpha) < 90000){ if (depth === 1) lmpLimit = lmpD1; else if (depth === 2) lmpLimit = lmpD2; }
 var bestScore = -Infinity, bestMove = null; var origAlpha = alpha; var searchedCount = 0;
 for (var i=0;i<moves.length;i++){
 var m = moves[i]; var target = pos.board[m.to[0]][m.to[1]]; var isQuiet = (target === '.' && !m.ep && !m.promo);
@@ -1803,7 +1804,7 @@ if (futilityActive && isQuiet && searchedCount > 0 && staticEval + futilityMargi
 if (isQuiet && searchedCount >= lmpLimit) continue;
 var u = chess.makeMove(pos, m); var sc;
 if (searchedCount === 0){ sc = -alphaBeta(pos, depth-1+extension, -beta, -alpha, ply+1, true, extLeftAfter); }
-else { var r = 0; if (isQuiet && depth >= 3 && searchedCount >= lmrThreshold && !inCheck){ var logD = Math.log(depth); var logI = Math.log(searchedCount); var rFormula = 0.75 + logD * logI / 2.25; r = Math.max(1, Math.min(depth - 1, Math.round(rFormula))); }
+else { var r = 0; if (!noPrune && isQuiet && depth >= 3 && searchedCount >= lmrThreshold && !inCheck){ var logD = Math.log(depth); var logI = Math.log(searchedCount); var rFormula = 0.75 + logD * logI / 2.25; r = Math.max(1, Math.min(depth - 1, Math.round(rFormula))); }
 sc = -alphaBeta(pos, depth-1+extension-r, -alpha-1, -alpha, ply+1, true, extLeftAfter);
 if (r > 0 && sc > alpha){ sc = -alphaBeta(pos, depth-1+extension, -alpha-1, -alpha, ply+1, true, extLeftAfter); }
 if (sc > alpha && sc < beta){ sc = -alphaBeta(pos, depth-1+extension, -beta, -alpha, ply+1, true, extLeftAfter); }
@@ -1817,7 +1818,7 @@ if (alpha >= beta){ if (!killers[ply]) killers[ply] = [null, null]; var k = kill
 if (aborted) break;
 }
 var flag = bestScore <= origAlpha ? 'upper' : bestScore >= beta ? 'lower' : 'exact';
-if (!aborted){ if (TT.size > 300000) TT.delete(TT.keys().next().value);
+if (useTT && !aborted){ if (TT.size > 300000) TT.delete(TT.keys().next().value);
 TT.set(h, {depth:depth, score:bestScore, flag:flag, best:bestMove}); }
 return bestScore;
 }
@@ -2913,6 +2914,20 @@ window.__subit = {
   numericALUConformance: function(){ return runNumericALUConformance(); },
   traceConformance: function(){ return runTraceConformance(); },
   searchConformance: function(){ return runSearchConformance(); },
+  benchTT: function(fens, depth, clean){
+    const out = [];
+    for (const fen of fens){
+      const pos = chess.fromFEN(fen); const w = subitState.weightsFor(pos);
+      for (const useTT of [true, false]){
+        const cfg = { maxNodes: 5000000, useTT: useTT }; if (clean) { cfg.policyNullEnable = false; cfg.policyFutMargin = 100000; cfg.extBudget = 0; cfg.noPrune = true; }
+        const s = searchMod.createSearch(w, cfg);
+        let last = null, prev = null, ps = null;
+        for (let d = 1; d <= depth; d++){ const r = s.searchRoot(pos, d, prev, clean ? 0 : 4, ps); if (!r) break; last = r; prev = r.best.move; ps = r.best.score; }
+        out.push({ fen: fen, useTT: useTT, score: last ? last.best.score : null, move: last ? last.best.move : null, nodes: s.getNodes() });
+      }
+    }
+    return out;
+  },
   evidenceWord: function(fen){ var pos = fen ? chess.fromFEN(fen) : state.pos; return computeEvidenceWord(pos); },
   gates: function(){ return state.lastTxResult; },
   journal: function(){ return { mode: txEngine.getJournalMode(), entries: txEngine.getJournal(), summary: txEngine.getSummary() }; },
