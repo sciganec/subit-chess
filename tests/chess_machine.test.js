@@ -529,13 +529,13 @@ assert.equal(runGeometry(48,56,[[48,1]],'w',1).status,GEOMETRY_STATUS.VALID); //
 
 // CPU-native promotion stage replaces a staged pawn on the final rank.
 const {buildNativePromotionProgram,PROMOTION_STATUS}=require('../examples/cpu_native_promotion.js');
-function runPromotion(side,from,to,promo,pieces){
+function runPromotion(side,from,to,promo,pieces,destinationPiece=null){
   cpu2.reset();cpu2.memory.fill(0,0x0000,0x0600);
   for(const [sq,code] of pieces)setKingTestPiece(cpu2.memory,sq,code);
   cpu2.memory[ABI.FLAGS]=side==='w'?0:1;
   cpu2.memory[ABI.MOVE_DATA]=((from&63)<<10)|((to&63)<<4)|((promo&7)<<1);
   // The preceding staged apply has moved the pawn to its destination.
-  setKingTestPiece(cpu2.memory,to,side==='w'?1:9);
+  setKingTestPiece(cpu2.memory,to,destinationPiece??(side==='w'?1:9));
   const program=buildNativePromotionProgram(SubitCPU,{boardAddress:0x0000,start:0xB000});
   cpu2.loadProgram(program.words,program.start);
   const run=cpu2.run({maxSteps:10000});
@@ -549,7 +549,7 @@ assert.deepEqual(runPromotion('w',48,56,4,[[48,1]]),{status:PROMOTION_STATUS.OK,
 assert.deepEqual(runPromotion('b',8,0,2,[[8,9]]),{status:PROMOTION_STATUS.OK,piece:12});
 assert.equal(runPromotion('w',40,48,1,[[40,1]]).status,PROMOTION_STATUS.WRONG_RANK);
 assert.equal(runPromotion('w',48,56,5,[[48,1]]).status,PROMOTION_STATUS.BAD_CODE);
-assert.equal(runPromotion('w',48,56,1,[[48,4]]).status,PROMOTION_STATUS.NOT_PAWN);
+assert.equal(runPromotion('w',48,56,1,[[48,4]],4).status,PROMOTION_STATUS.NOT_PAWN);
 
 // End-to-end promotion: a7-a8=Q is applied to the scratch board, then checked
 // against the opponent attack map; the original board remains untouched.
