@@ -459,7 +459,7 @@ assert.equal(shielded.kingSquare,4);
 const shieldedBoard=cpu2.memory.slice(0x0500,0x0510);
 assert.equal(independentWhiteKingInCheck(shieldedBoard),false);
 assert.deepEqual(shielded.stages.map(x=>x.name),[
-  'MOVE_APPLY','ATTACK_PAWN','ATTACK_KNIGHT','ATTACK_KING',
+  'MOVE_PREFLIGHT','MOVE_APPLY','ATTACK_PAWN','ATTACK_KNIGHT','ATTACK_KING',
   'ATTACK_DIAGONAL','ATTACK_ORTHOGONAL','KING_SAFETY'
 ]);
 
