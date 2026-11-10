@@ -403,7 +403,7 @@ function runNativeMoveApply(from,to,piece,targetPiece=0){
   const staged=cpu2.memory.slice(0x0500,0x0510);
   const pieceAt=(sq)=>((staged[sq>>>2]>>>((3-(sq&3))*4))&15);
   assert.equal(pieceAt(from),0);
-  assert.equal(pieceAt(to),piece);
+  assert.equal(pieceAt(to),piece,JSON.stringify({from,to,piece,fromSlot:cpu2.memory[0x0344],toSlot:cpu2.memory[0x0345],pieceSlot:cpu2.memory[0x0343],destWord:staged[to>>>2],destIndex:to&3,run:result}));
   assert.equal(cpu2.memory[ABI.BOARD+(from>>>2)]!==0,true,
     'source board is not modified');
   return {steps:result.steps,programWords:apply.words.length,staged:Array.from(staged)};
