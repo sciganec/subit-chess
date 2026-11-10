@@ -79,6 +79,17 @@ assert.equal(fillCell(FOUR.B),0xFFFF);
   assert.equal(c.journal.at(-1).status,'ABORTED');
 }
 
+// An immediate instruction at the final address must not wrap and read address zero.
+{
+  const c=new CPU();
+  c.memory[65535]=encode(O.LOADI,0);
+  c.PC=65535;
+  const r=c.step();
+  assert.equal(r.status,'TRAP');
+  assert.equal(c.trap.code,'MISSING_EXTENSION');
+  assert.equal(c.trap.pc,65535);
+}
+
 // Explicit TRAP is recorded; no instruction is committed.
 {
   const c=new CPU();
