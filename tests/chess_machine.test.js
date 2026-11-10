@@ -8,6 +8,7 @@ const {buildNativePieceDecodeProgram}=require('../examples/cpu_native_piece_deco
 const {buildNativePieceHistogramProgram}=require('../examples/cpu_native_piece_histogram.js');
 const {buildNativeKnightMovesProgram}=require('../examples/cpu_native_knight_moves.js');
 const {buildNativePawnMovesProgram}=require('../examples/cpu_native_pawn_moves.js');
+const {buildNativeKingMovesProgram}=require('../examples/cpu_native_king_moves.js');
 const board=Array.from({length:8},()=>Array(8).fill('.'));
 board[7]=['R','N','B','Q','K','B','N','R'];board[6]=Array(8).fill('P');
 board[0]=['r','n','b','q','k','b','n','r'];board[1]=Array(8).fill('p');
@@ -168,5 +169,51 @@ for(const to of [0,1])for(const promo of [1,2,3,4])
   expectedBlackPromotionMoves.push((8<<10)|(to<<4)|(promo<<1));
 expectedBlackPromotionMoves.sort((a,b)=>a-b);
 assert.deepEqual(blackPromotionMoves,expectedBlackPromotionMoves);
+
+
+ // CPU-native king pseudo-legal generation for both colors.
+function setKingTestPiece(memory,square,code){
+  const address=ABI.BOARD+(square>>>2), shift=(3-(square&3))*4;
+  memory[address]=(memory[address]&~(15<<shift))|((code&15)<<shift);
+}
+function verifyKingMoves(side,kingSquare,ownSquare,enemySquare){
+  cpu2.reset();
+  cpu2.memory.fill(0,ABI.BOARD,ABI.BOARD+ABI.BOARD_WORDS);
+  setKingTestPiece(cpu2.memory,kingSquare,side==='w'?6:14);
+  setKingTestPiece(cpu2.memory,ownSquare,side==='w'?1:9);
+  setKingTestPiece(cpu2.memory,enemySquare,side==='w'?12:4);
+  cpu2.memory[ABI.FLAGS]=side==='w'?0:1;
+  const program=buildNativeKingMovesProgram(SubitCPU,{side,start:0x3000});
+  cpu2.loadProgram(program.words,program.start);
+  const result=cpu2.run({maxSteps:50000});
+  assert.equal(result.status,'HALTED');
+  const count=cpu2.memory[ABI.LEGAL_COUNT];
+  const moves=Array.from(cpu2.memory.slice(ABI.MOVE_BUFFER,ABI.MOVE_BUFFER+count)).sort((a,b)=>a-b);
+  const expected=[];
+  const file=kingSquare&7, rank=kingSquare>>>3;
+  for(const [df,dr] of [[1,1],[1,0],[1,-1],[0,1],[0,-1],[-1,1],[-1,0],[-1,-1]]){
+    const f=file+df,r=rank+dr;
+    if(f<0||f>7||r<0||r>7)continue;
+    const to=r*8+f;
+    if(to!==ownSquare)expected.push((kingSquare<<10)|(to<<4));
+  }
+  expected.sort((a,b)=>a-b);
+  assert.deepEqual(moves,expected);
+  return count;
+}
+assert.equal(verifyKingMoves('w',28,36,27),6);
+assert.equal(verifyKingMoves('b',36,28,43),6);
+
+// In the initial position both kings are blocked by friendly pieces.
+cpu2.reset();
+let kingInitial=buildNativeKingMovesProgram(SubitCPU,{side:'w',start:0x3000});
+cpu2.loadProgram(kingInitial.words,kingInitial.start);
+assert.equal(cpu2.run({maxSteps:50000}).status,'HALTED');
+assert.equal(cpu2.memory[ABI.LEGAL_COUNT],0);
+cpu2.reset();cpu2.memory[ABI.FLAGS]=1;
+kingInitial=buildNativeKingMovesProgram(SubitCPU,{side:'b',start:0x3000});
+cpu2.loadProgram(kingInitial.words,kingInitial.start);
+assert.equal(cpu2.run({maxSteps:50000}).status,'HALTED');
+assert.equal(cpu2.memory[ABI.LEGAL_COUNT],0);
 
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
