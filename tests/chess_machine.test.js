@@ -561,3 +561,41 @@ const promoted=runNativeKingSafetyPipeline(cpu2,{side:'w'});
 assert.equal(promoted.status,PIPELINE_STATUS.SAFE,JSON.stringify(promoted));
 assert.equal((cpu2.memory[0x0500+(56>>>2)]>>>((3-(56&3))*4))&15,5);
 assert.equal((cpu2.memory[ABI.BOARD+(48>>>2)]>>>((3-(48&3))*4))&15,1);
+
+
+// CPU-native en-passant removes the captured pawn behind the destination.
+const {buildNativeEnPassantProgram,EN_PASSANT_STATUS}=require('../examples/cpu_native_en_passant.js');
+function runEnPassant(side,from,to,epSquare,pieces,destinationPiece=null){
+  cpu2.reset();cpu2.memory.fill(0,0x0000,0x0600);
+  for(const [sq,code] of pieces)setKingTestPiece(cpu2.memory,sq,code);
+  cpu2.memory[ABI.FLAGS]=side==='w'?0:1;cpu2.memory[ABI.EP]=epSquare;
+  cpu2.memory[ABI.MOVE_DATA]=((from&63)<<10)|((to&63)<<4);
+  setKingTestPiece(cpu2.memory,to,destinationPiece??(side==='w'?1:9));
+  const program=buildNativeEnPassantProgram(SubitCPU,{boardAddress:0x0000,start:0xA000});
+  cpu2.loadProgram(program.words,program.start);
+  const run=cpu2.run({maxSteps:10000});
+  assert.equal(run.status,'HALTED',JSON.stringify({run,trap:cpu2.trap}));
+  const at=sq=>(cpu2.memory[sq>>>2]>>>((3-(sq&3))*4))&15;
+  return {status:cpu2.memory[program.statusAddress],captured:at(side==='w'?to-8:to+8),destination:at(to)};
+}
+assert.deepEqual(runEnPassant('w',36,43,43,[[36,1],[35,9]]),
+  {status:EN_PASSANT_STATUS.APPLIED,captured:0,destination:1});
+assert.deepEqual(runEnPassant('b',27,20,20,[[27,9],[28,1]]),
+  {status:EN_PASSANT_STATUS.APPLIED,captured:0,destination:9});
+assert.equal(runEnPassant('w',36,43,42,[[36,1],[35,9]]).status,EN_PASSANT_STATUS.NO_OP);
+assert.equal(runEnPassant('w',36,43,43,[[36,1],[35,4]]).status,EN_PASSANT_STATUS.BAD_CAPTURE_SQUARE);
+assert.equal(runEnPassant('w',36,43,43,[[36,4],[35,9]],4).status,EN_PASSANT_STATUS.NOT_PAWN);
+
+// End-to-end en-passant: captured pawn is removed before opponent attacks
+// are computed, and the original board remains unchanged.
+cpu2.reset();cpu2.memory.fill(0,0x0000,0x0600);
+setKingTestPiece(cpu2.memory,0,6);setKingTestPiece(cpu2.memory,63,14);
+setKingTestPiece(cpu2.memory,36,1);setKingTestPiece(cpu2.memory,35,9);
+cpu2.memory[ABI.FLAGS]=0;cpu2.memory[ABI.EP]=43;
+cpu2.memory[ABI.MOVE_DATA]=(36<<10)|(43<<4);
+const epPipeline=runNativeKingSafetyPipeline(cpu2,{side:'w'});
+assert.equal(epPipeline.status,PIPELINE_STATUS.SAFE,JSON.stringify(epPipeline));
+const epBoard=cpu2.memory.slice(0x0500,0x0510);
+const epPieceAt=sq=>(epBoard[sq>>>2]>>>((3-(sq&3))*4))&15;
+assert.equal(epPieceAt(43),1);assert.equal(epPieceAt(35),0);
+assert.equal((cpu2.memory[ABI.BOARD+8]>>>((3-(35&3))*4))&15,9);
