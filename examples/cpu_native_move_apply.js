@@ -84,7 +84,6 @@ function buildNativeMoveApplyProgram(CPU, options = {}) {
 
   // Four statically selected UEXTRACT4/UINSERT4 operations.
   for(let i=0;i<4;i++){load(0,i);compare(2,0);branchEq(2,0,'source_nibble_'+i);}
-  throw new Error('unreachable source dispatch construction');
   for(let i=0;i<4;i++){
     label('source_nibble_'+i);
     load(0,pieceSlot);mem(M.USTORE,0,0,3);
@@ -103,7 +102,6 @@ function buildNativeMoveApplyProgram(CPU, options = {}) {
   mem(M.ULOAD,3,2);
   load(2,3);ext(X.UAND,2,0,2);
   for(let i=0;i<4;i++){load(1,i);compare(2,1);branchEq(2,1,'destination_nibble_'+i);}
-  throw new Error('unreachable destination dispatch construction');
   for(let i=0;i<4;i++){
     label('destination_nibble_'+i);
     load(1,pieceSlot);mem(M.ULOAD,0,1);
