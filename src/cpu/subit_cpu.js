@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * SUBIT-CPU Core v0.1
+ * SUBIT-CPU Core v0.1 + integer extension v0.2 prototype
  * Executable reference interpreter for the SUBIT-CHESS v3.0 integration path.
  *
  * FOUR cell encoding: N=00, F=01, T=10, B=11.
@@ -220,8 +220,8 @@ class SubitCPU {
               if(yes)this.PC=(this.PC+signed6(x.imm))&MASK16;
               break;
             }
-            case XOP.SADD:{const raw=sa+sb,v=raw|0;this.SRF[x.rd]=v;setFlags(v,raw>2147483647||raw< -2147483648);break;}
-            case XOP.SSUB:{const raw=sa-sb,v=raw|0;this.SRF[x.rd]=v;setFlags(v,raw>2147483647||raw< -2147483648);break;}
+            case XOP.SADD:{const raw=sa+sb,v=raw|0;this.SRF[x.rd]=v;setFlags(v,0,raw>2147483647||raw< -2147483648);break;}
+            case XOP.SSUB:{const raw=sa-sb,v=raw|0;this.SRF[x.rd]=v;setFlags(v,0,raw>2147483647||raw< -2147483648);break;}
             case XOP.SMUL:{const v=Math.imul(sa,sb);this.SRF[x.rd]=v;setFlags(v);break;}
             case XOP.SDIV:if(sb===0)throw new Error('DIVIDE_BY_ZERO');else{const v=Math.trunc(sa/sb)|0;this.SRF[x.rd]=v;setFlags(v);}break;
             default:throw new Error('ILLEGAL_EXTENDED_OPCODE');
