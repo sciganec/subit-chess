@@ -110,3 +110,7 @@ FLAGS bits: Z=1, N=2, C=4, V=8. For unsigned add/multiply C indicates carry; for
 CALL/RET and PUSH/POP use a descending memory stack with SP initialized to 0xFFFF. CALL saves the return PC after its immediate extension word. Stack operations are transactional with memory and SP rollback on faults. Memory protection and stack/code collision detection remain future work.
 
 The extended page is a prototype extension, not yet a frozen ISA. In particular, instruction timing, signed immediate corner cases, and full flag semantics remain open for audit.
+
+## Executable control-flow example
+
+`examples/cpu_native_loop.js` demonstrates a loop executed entirely by the CPU interpreter: initialize a counter, increment it with UADDI, compare with UCMP, and branch backward with XBR until the equality flag is set. It is a CPU-native integer-control-flow proof, not yet a chess-search program.
