@@ -25,7 +25,7 @@ const IMM_OPS = new Set([OPCODE.LOADI, OPCODE.SETAR, OPCODE.JMP,
 const MASK16 = 0xFFFF;
 const EXT_PREFIX = 0xFFFF;
 const MEM_PREFIX = 0xFFFE;
-const MOP = Object.freeze({ULOAD:0,USTORE:1,FLOAD:2,FSTORE:3,FTOU:4,UTOF:5,SETARU:6,GETAR:7,UJMP:8,UEMIT:9,FEMIT:10});
+const MOP = Object.freeze({ULOAD:0,USTORE:1,FLOAD:2,FSTORE:3,FTOU:4,UTOF:5,SETARU:6,GETAR:7,UJMP:8,UEMIT:9,FEMIT:10,UEXTRACT4:11});
 const XOP = Object.freeze({UADD:0,USUB:1,UMUL:2,UDIV:3,UAND:4,UOR:5,UXOR:6,UNOT:7,UADDI:8,USUBI:9,UCMP:10,XBR:11,SADD:12,SSUB:13,SMUL:14,SDIV:15});
 const FLAG = Object.freeze({Z:1,N:2,C:4,V:8});
 
@@ -214,6 +214,7 @@ class SubitCPU {
               case MOP.GETAR:this.URF[x.rd]=this.AR;break;
               case MOP.UJMP:this.PC=this.URF[x.ra];break;
               case MOP.UEMIT:this.output.push(this.URF[x.ra]);break;
+              case MOP.UEXTRACT4:{if(x.imm>3)throw new Error('NIBBLE_INDEX_OUT_OF_RANGE');const shift=(3-x.imm)*4;this.URF[x.rd]=(this.URF[x.ra]>>>shift)&0xF;break;}
               case MOP.FEMIT:this.output.push(this.RF[x.ra]);break;
               default:throw new Error('ILLEGAL_MEMORY_OPCODE');
             }
