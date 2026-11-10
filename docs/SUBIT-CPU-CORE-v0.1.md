@@ -114,3 +114,21 @@ The extended page is a prototype extension, not yet a frozen ISA. In particular,
 ## Executable control-flow example
 
 `examples/cpu_native_loop.js` demonstrates a loop executed entirely by the CPU interpreter: initialize a counter, increment it with UADDI, compare with UCMP, and branch backward with XBR until the equality flag is set. It is a CPU-native integer-control-flow proof, not yet a chess-search program.
+
+## Typed memory-access page (v0.2 prototype)
+
+The exact word `0xFFFE` selects the typed memory page, followed by the same 16-bit extension layout. It is reserved from the ordinary TRAP encoding.
+
+- `ULOAD rd, ra`: URF[rd] ← memory[URF[ra]]
+- `USTORE ra, rb`: memory[URF[ra]] ← URF[rb]
+- `FLOAD rd, ra`: RF[rd] ← memory[URF[ra]]
+- `FSTORE ra, rb`: memory[URF[ra]] ← RF[rb]
+- `FTOU rd, ra`: URF[rd] ← RF[ra]
+- `UTOF rd, ra`: RF[rd] ← URF[ra]
+- `SETARU ra` / `GETAR rd`: transfer between URF and AR
+- `UJMP ra`: absolute PC transfer from URF
+- `UEMIT ra` / `FEMIT ra`: append a typed register value to the output stream
+
+Dynamic stores participate in the same instruction transaction journal as base STORE. Consequently, a CPU-native USTORE to the Chess Unit COMMAND address is recognized by the machine bridge after commit and dispatches the peripheral command. The bridge includes `loadNativeCommandProgram()` as a minimal executable example.
+
+This is the first typed-memory path needed to traverse the Chess Unit board and move-buffer regions from CPU code. It does not yet implement a chess-specific instruction or move generator.
