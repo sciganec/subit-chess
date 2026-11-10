@@ -2914,6 +2914,40 @@ window.__subit = {
   numericALUConformance: function(){ return runNumericALUConformance(); },
   traceConformance: function(){ return runTraceConformance(); },
   searchConformance: function(){ return runSearchConformance(); },
+  playMatch: function(fens, cfgA, cfgB, maxPlies){
+    const limit = maxPlies || 160;
+    function pick(pos, cfg){
+      const c = { maxNodes: 5000000, useTT: true };
+      if (cfg.noPrune){ c.noPrune = true; c.policyNullEnable = false; c.policyFutMargin = 100000; c.extBudget = 0; }
+      const s = searchMod.createSearch(subitState.weightsFor(pos), c);
+      let last = null, prev = null, ps = null;
+      for (let d = 1; d <= cfg.depth; d++){ const r = s.searchRoot(pos, d, prev, cfg.noPrune ? 0 : 4, ps); if (!r) break; last = r; prev = r.best.move; ps = r.best.score; }
+      return last ? last.best.move : null;
+    }
+    function play(fen, wCfg, bCfg){
+      let pos = chess.fromFEN(fen);
+      for (let ply = 0; ply < limit; ply++){
+        if (chess.legalMoves(pos).length === 0) return chess.isInCheck(pos, pos.turn) ? (pos.turn === 'w' ? 'b' : 'w') : 'draw';
+        if (pos.halfmove >= 100) return 'draw';
+        const mv = pick(pos, pos.turn === 'w' ? wCfg : bCfg);
+        if (!mv) return 'draw';
+        pos = chess.makeMovePure(pos, mv);
+      }
+      return 'draw';
+    }
+    let score = 0, games = 0, wins = 0, losses = 0, draws = 0;
+    for (const fen of fens){
+      for (const aWhite of [true, false]){
+        const res = aWhite ? play(fen, cfgA, cfgB) : play(fen, cfgB, cfgA);
+        games++;
+        const aSide = aWhite ? 'w' : 'b';
+        if (res === 'draw'){ draws++; score += 0.5; }
+        else if (res === aSide){ wins++; score += 1; }
+        else { losses++; }
+      }
+    }
+    return { games: games, wins: wins, losses: losses, draws: draws, scoreA: score, pct: score / games };
+  },
   benchTT: function(fens, depth, clean){
     const out = [];
     for (const fen of fens){
