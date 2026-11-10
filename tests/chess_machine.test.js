@@ -5,6 +5,7 @@ const {COMMAND,ABI}=require('../src/chess/chess_unit.js');
 const {SubitChessUnit}=require('../src/chess/chess_unit.js');
 const {SubitChessMachine}=require('../src/chess/chess_machine.js');
 const {buildNativePieceDecodeProgram}=require('../examples/cpu_native_piece_decode.js');
+const {buildNativePieceHistogramProgram}=require('../examples/cpu_native_piece_histogram.js');
 const board=Array.from({length:8},()=>Array(8).fill('.'));
 board[7]=['R','N','B','Q','K','B','N','R'];board[6]=Array(8).fill('P');
 board[0]=['r','n','b','q','k','b','n','r'];board[1]=Array(8).fill('p');
@@ -46,5 +47,14 @@ const expected=[];
 for(let sq=0;sq<64;sq++) expected.push(require('../src/chess/chess_unit.js').encodePiece(unit2.position.board[7-(sq>>>3)][sq&7]));
 assert.deepEqual(cpu2.output,expected);
 assert.equal(cpu2.output.filter(x=>x!==0).length,32);
+
+// CPU-native histogram counts every exact piece code, not merely occupied words.
+cpu2.reset();
+const histogramProgram=buildNativePieceHistogramProgram(SubitCPU,{start:0x0800,histogramAddress:0x0300});
+cpu2.loadProgram(histogramProgram.words,histogramProgram.start);
+const histogramRun=cpu2.run({maxSteps:2000});
+assert.equal(histogramRun.status,'HALTED');
+assert.equal(cpu2.output.length,15);
+assert.deepEqual(cpu2.output,[32,8,2,2,2,1,1,0,0,8,2,2,2,1,1]);
 
 console.log('SUBIT-CHESS machine bridge v0.1 tests: OK');
