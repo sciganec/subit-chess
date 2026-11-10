@@ -459,7 +459,7 @@ assert.equal(shielded.kingSquare,4);
 const shieldedBoard=cpu2.memory.slice(0x0500,0x0510);
 assert.equal(independentWhiteKingInCheck(shieldedBoard),false);
 assert.deepEqual(shielded.stages.map(x=>x.name),[
-  'MOVE_PREFLIGHT','MOVE_GEOMETRY','MOVE_APPLY','ATTACK_PAWN','ATTACK_KNIGHT','ATTACK_KING',
+  'MOVE_PREFLIGHT','MOVE_GEOMETRY','MOVE_APPLY','PROMOTION','ATTACK_PAWN','ATTACK_KNIGHT','ATTACK_KING',
   'ATTACK_DIAGONAL','ATTACK_ORTHOGONAL','KING_SAFETY'
 ]);
 
@@ -524,4 +524,40 @@ assert.equal(runGeometry(12,28,[[12,1]]).status,GEOMETRY_STATUS.VALID); // e2-e4
 assert.equal(runGeometry(12,28,[[12,1],[20,9]]).status,GEOMETRY_STATUS.BLOCKED_PATH); // blocked double push
 assert.equal(runGeometry(52,36,[[52,9]],'b').status,GEOMETRY_STATUS.VALID); // black e7-e5
 assert.equal(runGeometry(12,36,[[12,1]]).status,GEOMETRY_STATUS.INVALID_GEOMETRY); // pawn cannot e2-e5
-assert.equal(runGeometry(8,16,[[8,1]],'w',1).status,GEOMETRY_STATUS.UNSUPPORTED_PROMOTION);
+assert.equal(runGeometry(48,56,[[48,1]],'w',1).status,GEOMETRY_STATUS.VALID); // a7-a8 geometry accepts promotion for dedicated stage
+
+
+// CPU-native promotion stage replaces a staged pawn on the final rank.
+const {buildNativePromotionProgram,PROMOTION_STATUS}=require('../examples/cpu_native_promotion.js');
+function runPromotion(side,from,to,promo,pieces){
+  cpu2.reset();cpu2.memory.fill(0,0x0000,0x0600);
+  for(const [sq,code] of pieces)setKingTestPiece(cpu2.memory,sq,code);
+  cpu2.memory[ABI.FLAGS]=side==='w'?0:1;
+  cpu2.memory[ABI.MOVE_DATA]=((from&63)<<10)|((to&63)<<4)|((promo&7)<<1);
+  // The preceding staged apply has moved the pawn to its destination.
+  setKingTestPiece(cpu2.memory,to,side==='w'?1:9);
+  const program=buildNativePromotionProgram(SubitCPU,{boardAddress:0x0000,start:0xB000});
+  cpu2.loadProgram(program.words,program.start);
+  const run=cpu2.run({maxSteps:10000});
+  assert.equal(run.status,'HALTED',JSON.stringify({run,trap:cpu2.trap}));
+  const word=cpu2.memory[ABI.BOARD+(to>>>2)];
+  const piece=(word>>>((3-(to&3))*4))&15;
+  return {status:cpu2.memory[program.statusAddress],piece};
+}
+assert.deepEqual(runPromotion('w',48,56,1,[[48,1]]),{status:PROMOTION_STATUS.OK,piece:5});
+assert.deepEqual(runPromotion('w',48,56,4,[[48,1]]),{status:PROMOTION_STATUS.OK,piece:4});
+assert.deepEqual(runPromotion('b',8,0,2,[[8,9]]),{status:PROMOTION_STATUS.OK,piece:10});
+assert.equal(runPromotion('w',40,48,1,[[40,1]]).status,PROMOTION_STATUS.WRONG_RANK);
+assert.equal(runPromotion('w',48,56,5,[[48,1]]).status,PROMOTION_STATUS.BAD_CODE);
+assert.equal(runPromotion('w',48,56,1,[[48,4]]).status,PROMOTION_STATUS.NOT_PAWN);
+
+// End-to-end promotion: a7-a8=Q is applied to the scratch board, then checked
+// against the opponent attack map; the original board remains untouched.
+cpu2.reset();cpu2.memory.fill(0,0x0000,0x0600);
+setKingTestPiece(cpu2.memory,4,6);setKingTestPiece(cpu2.memory,60,14);
+setKingTestPiece(cpu2.memory,48,1);cpu2.memory[ABI.FLAGS]=0;
+cpu2.memory[ABI.MOVE_DATA]=(48<<10)|(56<<4)|(1<<1);
+const promoted=runNativeKingSafetyPipeline(cpu2,{side:'w'});
+assert.equal(promoted.status,PIPELINE_STATUS.SAFE,JSON.stringify(promoted));
+assert.equal((cpu2.memory[0x0500+(56>>>2)]>>>((3-(56&3))*4))&15,5);
+assert.equal((cpu2.memory[ABI.BOARD+(48>>>2)]>>>((3-(48&3))*4))&15,1);
