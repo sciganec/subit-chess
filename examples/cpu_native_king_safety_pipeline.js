@@ -10,6 +10,7 @@
  * validator.
  */
 const {buildNativeMovePreflightProgram}=require('./cpu_native_move_preflight.js');
+const {buildNativeMoveGeometryProgram,GEOMETRY_STATUS}=require('./cpu_native_move_geometry.js');
 const {buildNativeMoveApplyProgram}=require('./cpu_native_move_apply.js');
 const {buildNativeAttackMapProgram}=require('./cpu_native_attack_map.js');
 const {buildNativeKingSafetyProbeProgram}=require('./cpu_native_king_safety.js');
@@ -63,6 +64,23 @@ function runNativeKingSafetyPipeline(cpu,options={}){
     return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,safe:false,
       reason:reasons[preflightStatus]||stage.run.trap?.code||'PREFLIGHT_FAILED',
       preflightStatus,side,stages});
+  }
+  const geometry=buildNativeMoveGeometryProgram(cpu.constructor,{
+    side,boardAddress,moveAddress,fromSlot:preflight.fromSlot,toSlot:preflight.toSlot,
+    start:options.geometryStart??0xD000,
+    statusAddress:options.geometryStatusAddress??0x034C,
+    pieceSlot:options.geometryPieceSlot??0x0349,
+    routePtrSlot:options.routePtrSlot??0x034A,squareSlot:options.squareSlot??0x034B
+  });
+  cpu.memory.set(geometry.tableWords,geometry.tableBase);
+  cpu.memory.set(geometry.oneHotWords,geometry.oneHotBase);
+  stage=runProgram(cpu,geometry,maxSteps); stages.push({name:'MOVE_GEOMETRY',...stage});
+  const geometryStatus=cpu.memory[geometry.statusAddress];
+  if(stage.run.status!=='HALTED'||geometryStatus!==GEOMETRY_STATUS.VALID){
+    const reasons={2:'INVALID_PIECE_GEOMETRY',3:'BLOCKED_SLIDING_OR_PAWN_PATH',4:'UNSUPPORTED_PROMOTION'};
+    return Object.freeze({status:PIPELINE_STATUS.EXECUTION_ERROR,safe:false,
+      reason:reasons[geometryStatus]||stage.run.trap?.code||'GEOMETRY_FAILED',
+      geometryStatus,side,stages});
   }
   const apply=buildNativeMoveApplyProgram(cpu.constructor,{
     boardAddress,scratchBoardAddress,moveAddress,start:starts.apply,
