@@ -280,4 +280,36 @@ assert.equal(fillCell(FOUR.B),0xFFFF);
   assert.equal(c.URF[2],0);
 }
 
+
+ 
+// UINSERT4 replaces exactly one MS-nibble-first packed square without
+// disturbing the other three nibbles; source and value registers remain intact.
+{
+  for(const [index,expected] of [[0,0xA234],[1,0x1A34],[2,0x12A4],[3,0x123A]]){
+    const c=new CPU();
+    c.URF[0]=0x1234;c.URF[1]=0x00FA;
+    c.loadProgram([
+      CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.UINSERT4,2,0,1,index)[1],
+      encode(O.HALT)
+    ]);
+    const result=c.run();
+    assert.equal(result.status,'HALTED');
+    assert.equal(c.URF[2],expected);
+    assert.equal(c.URF[0],0x1234);
+    assert.equal(c.URF[1],0x00FA);
+  }
+}
+
+// An invalid UINSERT4 nibble index traps atomically and preserves its destination.
+{
+  const c=new CPU();
+  c.URF[0]=0x1234;c.URF[1]=0x000A;c.URF[2]=0xBEEF;
+  c.loadProgram([CPU.MEM_PREFIX,CPU.encodeExtended(CPU.MOP.UINSERT4,2,0,1,4)[1]]);
+  const result=c.step();
+  assert.equal(result.status,'TRAP');
+  assert.equal(c.trap.code,'NIBBLE_INDEX_OUT_OF_RANGE');
+  assert.equal(c.URF[2],0xBEEF);
+  assert.equal(c.clock,0);
+}
+
 console.log('SUBIT-CPU Core v0.2 extension tests: all tests passed');
