@@ -1323,8 +1323,8 @@ for (var i=0;i<bPieces.length;i++){ var rec = bPieces[i]; var table = PST[rec.t]
 if (pos.kingPos.w) positional += PST.K[pos.kingPos.w[0]][pos.kingPos.w[1]];
 if (pos.kingPos.b) positional -= PST.K[7-pos.kingPos.b[0]][pos.kingPos.b[1]];
 var cs = [[3,3],[3,4],[4,3],[4,4]]; for (var ci=0;ci<4;ci++){ var p3 = pos.board[cs[ci][0]][cs[ci][1]]; if (p3 === '.' || p3.toUpperCase() === 'K') continue; positional += (p3 === p3.toUpperCase()) ? CENTER_BONUS : -CENTER_BONUS; }
-var wp = clonePos(pos); wp.turn = 'w'; var bp = clonePos(pos); bp.turn = 'b';
-var mobility = (legalMoves(wp).length - legalMoves(bp).length) * 2;
+var savedTurn = pos.turn; pos.turn = 'w'; var wMoves = legalMoves(pos).length; pos.turn = 'b'; var bMoves = legalMoves(pos).length; pos.turn = savedTurn;
+var mobility = (wMoves - bMoves) * 2;
 var king = 0; var wK = pos.kingPos.w, bK = pos.kingPos.b;
 if (wK && bK){
 var heavyMaterial = 0; for (var rh=0;rh<8;rh++) for (var ch=0;ch<8;ch++){ var ph = pos.board[rh][ch]; if (ph === '.') continue; var th = ph.toUpperCase(); if (th === 'K' || th === 'P') continue; heavyMaterial += PIECE_VALUES[th] || 0; }
