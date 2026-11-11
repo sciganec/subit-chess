@@ -1207,15 +1207,16 @@ function colorOf(p){ return p==='.'?null:(p.charCodeAt(0)<97?'w':'b'); }
 function upc(p){ return String.fromCharCode(p.charCodeAt(0) & 0xDF); }
 function isWhite(p){ return p!=='.' && p===p.toUpperCase(); }
 function posHash(pos){ return pos.hash; }
+var KNIGHT_OFFS = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+var SLIDE_DIRS = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
 function isAttacked(pos, r, c, byColor){
-var b = pos.board; var pd = byColor === 'w' ? 1 : -1;
-for (var dci=0; dci<2; dci++){ var dc = dci===0?-1:1; var rr = r+pd, cc = c+dc; if (rr>=0 && rr<8 && cc>=0 && cc<8){ var p = b[rr][cc]; if (p !== '.' && colorOf(p) === byColor && upc(p) === 'P') return true; } }
-var kn = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
-for (var ki=0; ki<kn.length; ki++){ rr = r+kn[ki][0]; cc = c+kn[ki][1]; if (rr>=0 && rr<8 && cc>=0 && cc<8){ p = b[rr][cc]; if (p !== '.' && colorOf(p) === byColor && upc(p) === 'N') return true; } }
-var sd = [[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]];
-for (var si=0; si<sd.length; si++){ var dr = sd[si][0], dc2 = sd[si][1]; rr = r+dr; cc = c+dc2;
-  while (rr>=0 && rr<8 && cc>=0 && cc<8){ p = b[rr][cc]; if (p !== '.'){ if (colorOf(p) === byColor){ var t = upc(p); var diag = dr !== 0 && dc2 !== 0; if (t === 'Q' || (t === 'R' && !diag) || (t === 'B' && diag)) return true; } break; } rr += dr; cc += dc2; } }
-for (var drk=-1; drk<=1; drk++) for (var dck=-1; dck<=1; dck++){ if (drk===0 && dck===0) continue; rr = r+drk; cc = c+dck; if (rr>=0 && rr<8 && cc>=0 && cc<8){ p = b[rr][cc]; if (p !== '.' && colorOf(p) === byColor && upc(p) === 'K') return true; } }
+var b = pos.board; var pd = byColor === 'w' ? 1 : -1; var wantW = byColor === 'w';
+for (var dci=0; dci<2; dci++){ var dc = dci===0?-1:1; var rr = r+pd, cc = c+dc; if (rr>=0 && rr<8 && cc>=0 && cc<8){ var p = b[rr][cc]; if (p !== '.' && (p.charCodeAt(0) < 97) === wantW && (p.charCodeAt(0) & 0xDF) === 80) return true; } }
+var kn = KNIGHT_OFFS;
+for (var ki=0; ki<8; ki++){ rr = r+kn[ki][0]; cc = c+kn[ki][1]; if (rr>=0 && rr<8 && cc>=0 && cc<8){ p = b[rr][cc]; if (p !== '.' && (p.charCodeAt(0) < 97) === wantW && (p.charCodeAt(0) & 0xDF) === 78) return true; } }
+for (var si=0; si<8; si++){ var dr = SLIDE_DIRS[si][0], dc2 = SLIDE_DIRS[si][1]; rr = r+dr; cc = c+dc2;
+  while (rr>=0 && rr<8 && cc>=0 && cc<8){ p = b[rr][cc]; if (p !== '.'){ if ((p.charCodeAt(0) < 97) === wantW){ var t = p.charCodeAt(0) & 0xDF; var diag = dr !== 0 && dc2 !== 0; if (t === 81 || (t === 82 && !diag) || (t === 66 && diag)) return true; } break; } rr += dr; cc += dc2; } }
+for (var drk=-1; drk<=1; drk++) for (var dck=-1; dck<=1; dck++){ if (drk===0 && dck===0) continue; rr = r+drk; cc = c+dck; if (rr>=0 && rr<8 && cc>=0 && cc<8){ p = b[rr][cc]; if (p !== '.' && (p.charCodeAt(0) < 97) === wantW && (p.charCodeAt(0) & 0xDF) === 75) return true; } }
 return false;
 }
 function findKing(pos, color){ var k = pos.kingPos[color]; if (k) return k; for (var r=0;r<8;r++) for (var c=0;c<8;c++){ var p = pos.board[r][c]; if (p !== '.' && p.toUpperCase() === 'K' && colorOf(p) === color) return [r,c]; } return null; }
