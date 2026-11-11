@@ -96,6 +96,24 @@ test('‖T_+‖²_HS = (b-1)/(b-t²) iff t² < b (series in closed-form terms, t
   assert.ok(hs(1.8, 400) > hs(1.8, 200) && hs(1.8, 400) > 1e10, 't=1.8 must diverge');
 });
 
+console.log('[T-010] L_q = T_q − c_q I ≤ 0');
+test('finite model: L_q has a simple zero (constants) and all other eigenvalues are negative', () => {
+  for (const b of [2, 3]) for (const q of [0.2, 0.5, 0.9]) for (let N = 1; N <= 4; N++) {
+    if (Math.pow(b, N) > 27) continue;
+    const { n, A } = S.kernelMatrix(b, q, N);
+    for (let i = 0; i < n; i++) A[i * n + i] -= S.cq(b, q);
+    const ev = S.symEigenvalues(n, A);
+    assert.ok(Math.abs(ev[n - 1]) < 1e-11, `b=${b} q=${q} N=${N}: top ${ev[n - 1]}`);
+    assert.ok(ev[n - 2] < -1e-9, `b=${b} q=${q} N=${N}: zero not simple`);
+  }
+});
+test('essential spectrum of L_q is {−c_q}: λ_j − c_q → −c_q as j grows', () => {
+  for (const b of [2, 3]) for (const q of [0.2, 0.5, 0.9]) {
+    const j = 80;
+    assert.ok(Math.abs((S.lam(b, q, j) - S.cq(b, q)) + S.cq(b, q)) < 1e-12, `b=${b} q=${q}`);
+  }
+});
+
 console.log('');
 console.log(`warp: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
