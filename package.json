@@ -39,7 +39,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node tests/four.test.js && node tests/s0.test.js && node tests/trajectory.test.js && node tests/splus.test.js && node tests/tree.test.js && node tests/warp.test.js && node tests/boundary.test.js && node tests/engine-v3.test.js",
+    "test": "node tests/four.test.js && node tests/s0.test.js && node tests/trajectory.test.js && node tests/splus.test.js && node tests/tree.test.js && node tests/warp.test.js && node tests/boundary.test.js && node tests/grafting.test.js && node tests/engine-v3.test.js",
     "test:perft": "node tests/test.js --only-perft",
     "test:policy": "node tests/test.js --only-policy",
     "selfplay": "node runners/run.js --mode selfplay --games 100 --depth 2",
@@ -56,7 +56,8 @@
     "test:s0": "node tests/s0.test.js",
     "test:tree": "node tests/tree.test.js",
     "test:warp": "node tests/warp.test.js",
-    "test:boundary": "node tests/boundary.test.js"
+    "test:boundary": "node tests/boundary.test.js",
+    "test:grafting": "node tests/grafting.test.js"
   },
   "devDependencies": {
     "jsdom": "^24.1.0"
