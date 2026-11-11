@@ -67,6 +67,35 @@ test('nuclear norm ‖T_q‖₁ = 2c_q (tol 1e-10)', () => {
   }
 });
 
+console.log('[T-012] growing kernel K_+ = t^ℓ, t > 1');
+test('finite model for t < b: eigenvalues match the predicted formulas (tol 1e-11)', () => {
+  for (const t of [1.3, 1.7, 2.5]) for (let N = 1; N <= 3; N++) {
+    const { n, A } = S.kernelMatrix(3, t, N);
+    const ev = S.symEigenvalues(n, A), pr = S.predictedSpectrum(3, t, N);
+    for (let i = 0; i < n; i++) assert.ok(Math.abs(ev[i] - pr[i]) < 1e-11, `t=${t} N=${N}`);
+  }
+});
+test('∫K dμ = Σ_m t^m (b-1)/b^{m+1} converges to (b-1)/(b-t) iff t < b', () => {
+  const partial = (t, M) => { let s = 0; for (let m = 0; m < M; m++) s += (2 / 3) * Math.pow(t / 3, m); return s; };
+  for (const t of [1.7, 2.5]) assert.ok(Math.abs(partial(t, 400) - (2) / (3 - t)) < 1e-9, `t=${t}`);
+  assert.ok(Math.abs(partial(2.9, 4000) - 2 / (3 - 2.9)) < 1e-6, 't=2.9');
+  const s100 = partial(3.2, 100), s200 = partial(3.2, 200), s400 = partial(3.2, 400);
+  assert.ok(s200 > 10 * s100 && s400 > 1e10, 'divergence for t ≥ b');
+});
+test('trace is not trace-class for any t > 1 (partial sums of m_j λ_j(t) grow)', () => {
+  for (const t of [1.2, 1.7, 2.5]) {
+    const part = (J) => { let p = 0; for (let j = 1; j <= J; j++) p += S.mult(3, j) * S.lam(3, t, j); return p; };
+    assert.ok(part(60) > part(30) && part(30) > part(10), `t=${t} not growing`);
+    assert.ok(part(60) > 1e3, `t=${t} partial sum too small`);
+  }
+});
+test('‖T_+‖²_HS = (b-1)/(b-t²) iff t² < b (series in closed-form terms, tol 1e-10)', () => {
+  const b = 3;
+  const hs = (t, J) => { let h = S.cq(b, t) ** 2; const c = (b - 1) * (t - 1) ** 2 / (b - t) ** 2; for (let j = 1; j <= J; j++) h += c * Math.pow(t * t / b, j - 1); return h; };
+  assert.ok(Math.abs(hs(1.7, 1500) - (b - 1) / (b - 1.7 * 1.7)) < 1e-10, 't=1.7');
+  assert.ok(hs(1.8, 400) > hs(1.8, 200) && hs(1.8, 400) > 1e10, 't=1.8 must diverge');
+});
+
 console.log('');
 console.log(`warp: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);
