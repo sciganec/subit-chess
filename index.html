@@ -695,6 +695,7 @@ outline:2px solid var(--accent);outline-offset:2px}
 <option value="on" selected>Увімкнено (ext + lmr + lmp)</option>
 <option value="off">Вимкнено (v1.4 behavior)</option>
 </select></div>
+<div class="setting-row"><label>SUBIT-QI move ordering</label><select id="qi-select"><option value="off">OFF — classical ordering</option><option value="on" selected>ON — experimental interference</option></select></div>
 <div class="setting-row"><label>ρ_s policy (hierarchical)</label>
 <select id="policy-select">
 <option value="off" selected>OFF — frozen baseline</option>
@@ -705,6 +706,7 @@ outline:2px solid var(--accent);outline-offset:2px}
 <option value="on" selected>13 компонентів</option>
 <option value="off">6 компонентів</option>
 </select></div>
+<div id="qi-diagnostics" class="storage-info">SUBIT-QI: очікує пошукового циклу</div>
 <div class="storage-info" id="storage-info">Завантаження...</div>
 <div style="display:flex;gap:8px;margin-top:16px">
 <button class="btn danger" id="grammar-reset" style="flex:1">Скинути граматику</button>
@@ -3181,8 +3183,9 @@ var DELTA_MARGIN = 200;
 var qiEnabled = !!opts.qiEnabled;
 var qiWeight = (typeof opts.qiWeight === 'number') ? Math.max(0,Math.min(0.25,opts.qiWeight)) : 0.08;
 var qiStrength = (typeof opts.qiStrength === 'number') ? Math.max(0,Math.min(0.25,opts.qiStrength)) : 0.06;
+var lastQiDiagnostics = {enabled:qiEnabled,candidates:0,changedTop:false,topBefore:null,topAfter:null,norm:1};
 function qiOrderRootMoves(moves,pos,ttMove){
- if(!qiEnabled||moves.length<2||qiWeight<=0||qiStrength<=0)return moves;
+ if(!qiEnabled||moves.length<2||qiWeight<=0||qiStrength<=0){lastQiDiagnostics={enabled:qiEnabled,candidates:moves.length,changedTop:false,topBefore:moves.length?chess.moveToUci(moves[0]):null,topAfter:moves.length?chess.moveToUci(moves[0]):null,norm:1};return moves;}
  try{
   var raw=moves.map(function(m){return scoreMove(m,pos,0,ttMove);}), mx=Math.max.apply(null,raw);
   var ex=raw.map(function(v){return Math.exp(Math.max(-40,Math.min(0,(v-mx)/180)));});
@@ -3211,7 +3214,9 @@ function qiOrderRootMoves(moves,pos,ttMove){
   var q=A.map(function(x){return x.re*x.re+x.im*x.im;}), n=q.reduce(function(a,b){return a+b;},0);
   if(!Number.isFinite(n)||Math.abs(n-1)>1e-8)return moves;
   var ranked=moves.map(function(m,i){return {m:m,i:i,s:(1-qiWeight)*p[i]+qiWeight*q[i],b:p[i]};});
+  var topBefore=ranked.slice().sort(function(x,y){return (y.b-x.b)||(x.i-y.i);})[0];
   ranked.sort(function(x,y){return (y.s-x.s)||(y.b-x.b)||(x.i-y.i);});
+  lastQiDiagnostics={enabled:true,candidates:moves.length,changedTop:ranked[0].i!==topBefore.i,topBefore:chess.moveToUci(topBefore.m),topAfter:chess.moveToUci(ranked[0].m),norm:n};
   return ranked.map(function(x){return x.m;});
  }catch(e){return moves;}
 }
@@ -3524,7 +3529,8 @@ wasAborted: function(){ return aborted; },
 getExtBudget: function(){ return extBudget; },
 getLmrThreshold: function(){ return lmrThresholdBase; },
 getPolicy: function(){ return {lmrMult: policyLmrMult, nullEnable: policyNullEnable,
-                         futility: policyFutility, nullR: policyNullR, futMargin: policyFutMargin}; }
+                         futility: policyFutility, nullR: policyNullR, futMargin: policyFutMargin}; },
+getQiDiagnostics: function(){ return lastQiDiagnostics; }
 };
 }
 return { createSearch: createSearch };
@@ -3622,7 +3628,7 @@ const workerSrc = [
 '      history: hist, omega: omegaResult, stoppedEarly: stoppedEarly,',
 '      aborted: s.wasAborted(), nodes: s.getNodes(),',
 '      extBudget: s.getExtBudget(), lmrThreshold: s.getLmrThreshold(),',
-'      policy: s.getPolicy()',
+'      policy: s.getPolicy(), qi: s.getQiDiagnostics()',
 '    }});',
 '  } catch (err) {',
 '    self.postMessage({id: data.id, error: String(err && err.message || err)});',
@@ -3691,7 +3697,7 @@ omegaResult = subit.classifyOmegaSearch(hist);
 if (!last) resolve(null);
 else resolve({best: last.best, all: last.all, depth: last.depth, history: hist, omega: omegaResult,
               stoppedEarly: stoppedEarly, aborted: s.wasAborted(), nodes: s.getNodes(),
-              extBudget: s.getExtBudget(), lmrThreshold: s.getLmrThreshold(), policy: s.getPolicy()});
+              extBudget: s.getExtBudget(), lmrThreshold: s.getLmrThreshold(), policy: s.getPolicy(), qi: s.getQiDiagnostics()});
 } catch(e){ reject(e); }
 return;
 }
@@ -3733,7 +3739,7 @@ captured: {byWhite: [], byBlack: []},
 hintMove: null, pendingPromo: null,
 flipped: false, over: false,
 settings: {theme:'classic', coords:'on', legal:'on', reg:'on', arrow:'on',
-           resourceBudget:'on', expandedEval:'on', policy:'off', level:'3'},
+           resourceBudget:'on', expandedEval:'on', policy:'off', qi:'on', level:'3'},
 lastSearchOmega: null, lastSearchResult: null,
 lastOmegaPolicy: null, lastExtBudget: null, lastLmrThreshold: null, lastTimeBudget: null,
 lastPolicy: null, lastNullR: null, lastFutMargin: null,
@@ -4371,7 +4377,7 @@ policyNullEnable: policy.null_enabled,
 policyFutility: policy.futility_mult,
 policyNullR: params.nullReduction,
 policyFutMargin: params.futilityMargin,
-qiEnabled: true, qiWeight: 0.08, qiStrength: 0.06,
+qiEnabled: state.settings.qi === 'on', qiWeight: 0.08, qiStrength: 0.06,
 timeLimit: timeBudget
 });
 } catch (e){ console.warn('[SUBIT] Search failed:', e && e.message || e); }
@@ -4385,6 +4391,10 @@ const legal = chess.legalMoves(state.pos);
 if (legal.length === 0){ updateStatus(); return; }
 result = { best: { move: legal[0], score: 0 }, depth: 1, omega: 'STABLE', nodes: 0 };
 }
+state.lastSearchResult = result;
+const qd = result.qi || {enabled:false,candidates:0,changedTop:false};
+const qel = $('qi-diagnostics');
+if(qel) qel.textContent = 'SUBIT-QI ' + (qd.enabled?'ON':'OFF') + ' · кандидатів: ' + (qd.candidates||0) + ' · зміна першого ходу: ' + (qd.changedTop?'так':'ні') + (qd.topBefore?' · до: '+qd.topBefore:'') + (qd.topAfter?' · після: '+qd.topAfter:'');
 const m = result.best.move;
 /* v2.1.2 FIX: snapshot BEFORE capture push */
 state.history.push(snapshotForHistory());
@@ -4985,6 +4995,7 @@ $('arrow-select').value = state.settings.arrow;
 $('resource-select').value = state.settings.resourceBudget;
 $('expanded-eval-select').value = state.settings.expandedEval;
 $('policy-select').value = state.settings.policy;
+$('qi-select').value = state.settings.qi;
 updateStorageInfo(); openModal('settings-modal');
 });
 $('settings-close').addEventListener('click', function(){
@@ -4996,6 +5007,7 @@ state.settings.arrow = $('arrow-select').value;
 state.settings.resourceBudget = $('resource-select').value;
 state.settings.expandedEval = $('expanded-eval-select').value;
 state.settings.policy = $('policy-select').value;
+state.settings.qi = $('qi-select').value;
 subitState.resourceBudgetEnabled = (state.settings.resourceBudget === 'on');
 subitState.regularizationEnabled = (state.settings.reg === 'on');
 subitState.policyEnabled = (state.settings.policy === 'on');
