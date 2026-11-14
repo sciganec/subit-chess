@@ -3728,7 +3728,8 @@ policyLmrMult: (typeof opts.policyLmrMult === 'number') ? opts.policyLmrMult : 0
 policyNullEnable: (typeof opts.policyNullEnable === 'boolean') ? opts.policyNullEnable : true,
 policyFutility: (typeof opts.policyFutility === 'number') ? opts.policyFutility : 0,
 policyNullR: (typeof opts.policyNullR === 'number') ? opts.policyNullR : 2,
-policyFutMargin: (typeof opts.policyFutMargin === 'number') ? opts.policyFutMargin : null
+policyFutMargin: (typeof opts.policyFutMargin === 'number') ? opts.policyFutMargin : null,
+qiEnabled: !!opts.qiEnabled, qiWeight: opts.qiWeight, qiStrength: opts.qiStrength
 });
 } catch(err){ clearTimeout(timeoutHandle); workerCallbacks.delete(id); reject(err); }
 });
