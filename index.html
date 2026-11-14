@@ -3203,16 +3203,16 @@ function qiOrderRootMoves(moves,pos,ttMove){
    var king=pc&&pc.toUpperCase()==='K'?1:0;
    var travel=(Math.abs(m.to[0]-m.from[0])+Math.abs(m.to[1]-m.from[1]))/7;
    var enemyNear=enemyKing?Math.max(0,1-(Math.abs(enemyKing[0]-m.to[0])+Math.abs(enemyKing[1]-m.to[1]))/7):0;
-   var whoFit=ctx.who==='ATTACK'?.7*tactical+.3*enemyNear:
-    ctx.who==='PRESSURE'?.55*center+.45*travel:
-    ctx.who==='DEFENCE'?.55*king+.45*(tactical?.5:1):
-    .7*(1-tactical)+.3*center;
-   var whereFit=ctx.where==='KING'?enemyNear:
-    ctx.where==='CENTER'?center:
-    ctx.where==='QUEENSIDE'?(m.to[1]<=2?1:(m.to[1]<=4?.35:0)):travel;
-   var whenFit=ctx.when==='TACTICAL'?tactical:
-    ctx.when==='OPENING'?((pc&&(pc.toUpperCase()==='N'||pc.toUpperCase()==='B')?.65:0)+.35*center):
-    ctx.when==='ENDGAME'?.55*advance+.45*king:.5*tactical+.5*center;
+   var whoFit = ctx.who === 'ATTACK' ? 0.7*tactical + 0.3*enemyNear :
+    ctx.who === 'PRESSURE' ? 0.55*center + 0.45*travel :
+    ctx.who === 'DEFENCE' ? 0.55*king + 0.45*(tactical ? 0.5 : 1) :
+    0.7*(1-tactical) + 0.3*center;
+   var whereFit = ctx.where === 'KING' ? enemyNear :
+    ctx.where === 'CENTER' ? center :
+    ctx.where === 'QUEENSIDE' ? (m.to[1] <= 2 ? 1 : (m.to[1] <= 4 ? 0.35 : 0)) : travel;
+   var whenFit = ctx.when === 'TACTICAL' ? tactical :
+    ctx.when === 'OPENING' ? ((pc && (pc.toUpperCase() === 'N' || pc.toUpperCase() === 'B') ? 0.65 : 0) + 0.35*center) :
+    ctx.when === 'ENDGAME' ? 0.55*advance + 0.45*king : 0.5*tactical + 0.5*center;
    return {t:tactical,c:center,a:advance,k:king,travel:travel,fit:(whoFit+whereFit+whenFit)/3};
   });
   var ph=f.map(function(x){return .7*x.t+.25*x.c+.15*x.a+.2*x.k+.35*x.fit;});
