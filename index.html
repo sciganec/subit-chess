@@ -3202,7 +3202,7 @@ function qiOrderRootMoves(moves,pos,ttMove){
   function sc(x,k){return {re:x.re*k,im:x.im*k};}
   function exi(x){return {re:Math.cos(x),im:Math.sin(x)};}
   for(var i=0;i<A.length;i++)for(var j=i+1;j<A.length;j++){
-   var coupling=(f[i].t===f[j].t?.25:-.15)+.35*f[i].c*f[j].c+.2*f[i].a*f[j].a;
+   var coupling=(f[i].t===f[j].t ? 0.25 : -0.15)+.35*f[i].c*f[j].c+.2*f[i].a*f[j].a;
    var th=Math.max(-.18,Math.min(.18,qiStrength*coupling)); if(Math.abs(th)<1e-8)continue;
    var d=ph[j]-ph[i],c=Math.cos(th),sn=Math.sin(th),ai=A[i],aj=A[j];
    A[i]=add(sc(ai,c),sc(mul(exi(-d),aj),-sn));
@@ -4371,6 +4371,7 @@ policyNullEnable: policy.null_enabled,
 policyFutility: policy.futility_mult,
 policyNullR: params.nullReduction,
 policyFutMargin: params.futilityMargin,
+qiEnabled: true, qiWeight: 0.08, qiStrength: 0.06,
 timeLimit: timeBudget
 });
 } catch (e){ console.warn('[SUBIT] Search failed:', e && e.message || e); }
