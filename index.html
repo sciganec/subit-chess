@@ -3193,21 +3193,36 @@ function qiOrderRootMoves(moves,pos,ttMove){
   var ex=raw.map(function(v){return Math.exp(Math.max(-40,Math.min(0,(v-mx)/180)));});
   var z=ex.reduce(function(a,b){return a+b;},0); if(!(z>0)||!Number.isFinite(z))return moves;
   var p=ex.map(function(v){return v/z;});
+  var ctx=subit.computeS(pos), ctxKey=subit.keyOfS(ctx);
+  var enemyKing=pos.kingPos[pos.turn==='w'?'b':'w'];
   var f=moves.map(function(m){
    var pc=pos.board[m.from[0]][m.from[1]], target=pos.board[m.to[0]][m.to[1]];
-   return {t:(target!=='.'||m.ep||m.promo)?1:0,
-    c:1-(Math.abs(3.5-m.to[0])+Math.abs(3.5-m.to[1]))/7,
-    a:Math.max(-1,Math.min(1,pos.turn==='w'?(6-m.to[0])/6:(m.to[0]-1)/6)),
-    k:pc&&pc.toUpperCase()==='K'?1:0};
+   var tactical=(target!=='.'||m.ep||m.promo)?1:0;
+   var center=Math.max(0,1-(Math.abs(3.5-m.to[0])+Math.abs(3.5-m.to[1]))/7);
+   var advance=Math.max(-1,Math.min(1,pos.turn==='w'?(6-m.to[0])/6:(m.to[0]-1)/6));
+   var king=pc&&pc.toUpperCase()==='K'?1:0;
+   var travel=(Math.abs(m.to[0]-m.from[0])+Math.abs(m.to[1]-m.from[1]))/7;
+   var enemyNear=enemyKing?Math.max(0,1-(Math.abs(enemyKing[0]-m.to[0])+Math.abs(enemyKing[1]-m.to[1]))/7):0;
+   var whoFit=ctx.who==='ATTACK'?.7*tactical+.3*enemyNear:
+    ctx.who==='PRESSURE'?.55*center+.45*travel:
+    ctx.who==='DEFENCE'?.55*king+.45*(tactical?.5:1):
+    .7*(1-tactical)+.3*center;
+   var whereFit=ctx.where==='KING'?enemyNear:
+    ctx.where==='CENTER'?center:
+    ctx.where==='QUEENSIDE'?(m.to[1]<=2?1:(m.to[1]<=4?.35:0)):travel;
+   var whenFit=ctx.when==='TACTICAL'?tactical:
+    ctx.when==='OPENING'?((pc&&(pc.toUpperCase()==='N'||pc.toUpperCase()==='B')?.65:0)+.35*center):
+    ctx.when==='ENDGAME'?.55*advance+.45*king:.5*tactical+.5*center;
+   return {t:tactical,c:center,a:advance,k:king,travel:travel,fit:(whoFit+whereFit+whenFit)/3};
   });
-  var ph=f.map(function(x){return .7*x.t+.25*x.c+.15*x.a+.2*x.k;});
+  var ph=f.map(function(x){return .7*x.t+.25*x.c+.15*x.a+.2*x.k+.35*x.fit;});
   var A=p.map(function(v,i){return {re:Math.sqrt(v)*Math.cos(ph[i]),im:Math.sqrt(v)*Math.sin(ph[i])};});
   function mul(x,y){return {re:x.re*y.re-x.im*y.im,im:x.re*y.im+x.im*y.re};}
   function add(x,y){return {re:x.re+y.re,im:x.im+y.im};}
   function sc(x,k){return {re:x.re*k,im:x.im*k};}
   function exi(x){return {re:Math.cos(x),im:Math.sin(x)};}
   for(var i=0;i<A.length;i++)for(var j=i+1;j<A.length;j++){
-   var coupling=(f[i].t===f[j].t ? 0.25 : -0.15)+.35*f[i].c*f[j].c+.2*f[i].a*f[j].a;
+   var coupling=(f[i].t===f[j].t ? 0.25 : -0.15)+.30*f[i].c*f[j].c+.15*f[i].a*f[j].a+.25*f[i].fit*f[j].fit;
    var th=Math.max(-.18,Math.min(.18,qiStrength*coupling)); if(Math.abs(th)<1e-8)continue;
    var d=ph[j]-ph[i],c=Math.cos(th),sn=Math.sin(th),ai=A[i],aj=A[j];
    A[i]=add(sc(ai,c),sc(mul(exi(-d),aj),-sn));
@@ -3218,7 +3233,7 @@ function qiOrderRootMoves(moves,pos,ttMove){
   var ranked=moves.map(function(m,i){return {m:m,i:i,s:(1-qiWeight)*p[i]+qiWeight*q[i],b:p[i]};});
   var topBefore=ranked.slice().sort(function(x,y){return (y.b-x.b)||(x.i-y.i);})[0];
   ranked.sort(function(x,y){return (y.s-x.s)||(y.b-x.b)||(x.i-y.i);});
-  lastQiDiagnostics={enabled:true,candidates:moves.length,changedTop:ranked[0].i!==topBefore.i,topBefore:chess.moveToUci(topBefore.m),topAfter:chess.moveToUci(ranked[0].m),norm:n};
+  lastQiDiagnostics={enabled:true,candidates:moves.length,changedTop:ranked[0].i!==topBefore.i,topBefore:chess.moveToUci(topBefore.m),topAfter:chess.moveToUci(ranked[0].m),norm:n,context:ctxKey};
   return ranked.map(function(x){return x.m;});
  }catch(e){return moves;}
 }
@@ -4397,7 +4412,7 @@ result = { best: { move: legal[0], score: 0 }, depth: 1, omega: 'STABLE', nodes:
 state.lastSearchResult = result;
 const qd = result.qi || {enabled:false,candidates:0,changedTop:false};
 const qel = $('qi-diagnostics');
-if(qel) qel.textContent = 'SUBIT-QI ' + (qd.enabled?'ON':'OFF') + ' · кандидатів: ' + (qd.candidates||0) + ' · зміна першого ходу: ' + (qd.changedTop?'так':'ні') + (qd.topBefore?' · до: '+qd.topBefore:'') + (qd.topAfter?' · після: '+qd.topAfter:'');
+if(qel) qel.textContent = 'SUBIT-QI ' + (qd.enabled?'ON':'OFF') + ' · кандидатів: ' + (qd.candidates||0) + ' · зміна першого ходу: ' + (qd.changedTop?'так':'ні') + (qd.topBefore?' · до: '+qd.topBefore:'') + (qd.topAfter?' · після: '+qd.topAfter:'')+(qd.context?' · контекст: '+qd.context:'');
 const m = result.best.move;
 /* v2.1.2 FIX: snapshot BEFORE capture push */
 state.history.push(snapshotForHistory());
