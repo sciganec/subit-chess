@@ -29,7 +29,7 @@ Candidates are sorted by UCI ID before pair construction. Every pair is visited 
 
 Edges with \`|wᵢⱼ| < 0.02\` are omitted. A destination collision is a simple same-destination conflict proxy, not a full chess tactical-conflict oracle.
 
-Initial amplitudes are derived from a stable softmax of classical ordering scores and deterministic UCI-based phases. Pair interactions use the SU(2)-type rotation:
+Initial amplitudes are derived from a rank-softmax of the classical ordering (πᵢ = exp(−rankᵢ/3) / Σⱼ exp(−rankⱼ/3)) and deterministic UCI-based phases. Rank-softmax avoids letting the engine's large sentinel score for a transposition-table move numerically saturate the entire distribution, while preserving the classical order as its anchor. Pair interactions use the SU(2)-type rotation:
 
 \`aᵢ′ = cos(θ)aᵢ − sin(θ)e^(−iδ)aⱼ\`
 
