@@ -707,6 +707,8 @@ outline:2px solid var(--accent);outline-offset:2px}
 <option value="off">6 компонентів</option>
 </select></div>
 <div id="qi-diagnostics" class="storage-info">SUBIT-QI: очікує пошукового циклу</div>
+<button class="btn" id="qi-ab-run" style="width:100%;margin-top:8px">A/B тест: класичний пошук проти SUBIT-QI</button>
+<div id="qi-ab-result" class="storage-info">A/B тест не запускався</div>
 <div class="storage-info" id="storage-info">Завантаження...</div>
 <div style="display:flex;gap:8px;margin-top:16px">
 <button class="btn danger" id="grammar-reset" style="flex:1">Скинути граматику</button>
@@ -4997,6 +4999,24 @@ $('expanded-eval-select').value = state.settings.expandedEval;
 $('policy-select').value = state.settings.policy;
 $('qi-select').value = state.settings.qi;
 updateStorageInfo(); openModal('settings-modal');
+});
+$('qi-ab-run').addEventListener('click', async function(){
+ var btn=$('qi-ab-run'), out=$('qi-ab-result');
+ if(!state.pos || state.thinking){out.textContent='A/B недоступний під час активного пошуку';return;}
+ btn.disabled=true; out.textContent='Виконується A/B тест на поточній позиції…';
+ var snapshot=chess.clonePos(state.pos), weights=subitState.weightsFor(state.pos);
+ var params=subitState.searchParamsFor(state.pos), started=performance.now();
+ var common={earlyStop:false,positionHistory:subitState.posCounts,extBudget:params.extBudget,
+  lmrThreshold:params.lmrThreshold,policyLmrMult:params.policy.lmr_mult,
+  policyNullEnable:params.policy.null_enabled,policyFutility:params.policy.futility_mult,
+  policyNullR:params.nullReduction,policyFutMargin:params.futilityMargin,timeLimit:1800};
+ try{
+  var a=await searchAsync(chess.clonePos(snapshot),3,weights,Object.assign({},common,{qiEnabled:false}));
+  var b=await searchAsync(chess.clonePos(snapshot),3,weights,Object.assign({},common,{qiEnabled:true,qiWeight:.08,qiStrength:.06}));
+  function fmt(x){return x&&x.best?chess.moveToUci(x.best.move)+' · score '+x.best.score+' · depth '+x.depth+' · nodes '+x.nodes+(x.aborted?' · aborted':''):'no result';}
+  out.textContent='CLASSICAL: '+fmt(a)+' | SUBIT-QI: '+fmt(b)+' | Δnodes: '+((b&&a)?(b.nodes-a.nodes):'n/a')+' | elapsed '+Math.round(performance.now()-started)+' ms. Один запуск не є статистично значущим.';
+ }catch(e){out.textContent='A/B помилка: '+String(e&&e.message||e);}
+ finally{btn.disabled=false;}
 });
 $('settings-close').addEventListener('click', function(){
 state.settings.theme = $('theme-select').value;
