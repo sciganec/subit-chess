@@ -148,7 +148,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - name: Install Playwright and Chromium
         run: |
-          npm install --no-save playwright@1.55.0
+          npm install --no-save playwright@1.65.1
           npx playwright install --with-deps chromium
       - name: Start local HTTP server
         run: |
