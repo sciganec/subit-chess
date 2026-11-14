@@ -3290,8 +3290,9 @@ function qiGraphOrderRootMoves(moves,pos,ttMove){
     context:[whoFit,whereFit,whenFit],tactical:tactical,to:m.to[0]+','+m.to[1]};
   });
   rows.sort(function(a,b){return a.id<b.id?-1:a.id>b.id?1:0;});
-  var maxScore=Math.max.apply(null,rows.map(function(x){return x.score;}));
-  var ex=rows.map(function(x){return Math.exp(clamp((x.score-maxScore)/180,-745,0));});
+  var classicalRank=Object.create(null);
+  rows.slice().sort(function(a,b){return b.score-a.score||(a.id<b.id?-1:a.id>b.id?1:0);}).forEach(function(x,i){classicalRank[x.id]=i;});
+  var ex=rows.map(function(x){return Math.exp(-classicalRank[x.id]/3);});
   var total=ex.reduce(function(a,b){return a+b;},0);
   if(!(total>0)||!Number.isFinite(total))throw new Error('QI graph softmax normalization failed');
   var base=ex.map(function(x){return x/total;});
