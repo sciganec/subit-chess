@@ -53,6 +53,9 @@ jobs:
       - name: UI DOM smoke (board and pieces)
         run: node tests/ui_dom_smoke.test.js
 
+      - name: SUBIT-QI graph runtime (real engine)
+        run: node tests/qi_graph_runtime.test.js
+
       - name: Upload test report on failure
         if: failure()
         uses: actions/upload-artifact@v4
