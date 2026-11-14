@@ -695,6 +695,8 @@ outline:2px solid var(--accent);outline-offset:2px}
 <option value="on" selected>Увімкнено (ext + lmr + lmp)</option>
 <option value="off">Вимкнено (v1.4 behavior)</option>
 </select></div>
+<div class="setting-row"><label>SUBIT-QI move ordering</label><select id="qi-select"><option value="off">OFF — classical ordering</option><option value="on" selected>ON — experimental interference</option></select></div>
+<div class="setting-row"><label>SUBIT-QI interaction graph v0.2.2</label><select id="qi-graph-select"><option value="off" selected>OFF — legacy/classical mode</option><option value="on">ON — graph interference (experimental)</option></select></div>
 <div class="setting-row"><label>ρ_s policy (hierarchical)</label>
 <select id="policy-select">
 <option value="off" selected>OFF — frozen baseline</option>
@@ -705,6 +707,9 @@ outline:2px solid var(--accent);outline-offset:2px}
 <option value="on" selected>13 компонентів</option>
 <option value="off">6 компонентів</option>
 </select></div>
+<div id="qi-diagnostics" class="storage-info">SUBIT-QI: очікує пошукового циклу</div>
+<button class="btn" id="qi-ab-run" style="width:100%;margin-top:8px">A/B/C тест: Classical vs QI vs Interaction Graph</button>
+<div id="qi-ab-result" class="storage-info">A/B тест не запускався</div>
 <div class="storage-info" id="storage-info">Завантаження...</div>
 <div style="display:flex;gap:8px;margin-top:16px">
 <button class="btn danger" id="grammar-reset" style="flex:1">Скинути граматику</button>
@@ -3178,6 +3183,167 @@ var TT = new Map(), histTable = new Map(), killers = [];
 var nodesSearched = 0, aborted = false, deadline = 0;
 var positionHistory = null;
 var DELTA_MARGIN = 200;
+var qiEnabled = !!opts.qiEnabled;
+var qiGraphEnabled = !!opts.qiGraphEnabled;
+var qiGraphStrength = (typeof opts.qiGraphStrength === 'number') ? Math.max(0,Math.min(0.25,opts.qiGraphStrength)) : 0.08;
+var qiWeight = (typeof opts.qiWeight === 'number') ? Math.max(0,Math.min(0.25,opts.qiWeight)) : 0.08;
+var qiStrength = (typeof opts.qiStrength === 'number') ? Math.max(0,Math.min(0.25,opts.qiStrength)) : 0.06;
+var lastQiDiagnostics = {enabled:qiEnabled,candidates:0,changedTop:false,topBefore:null,topAfter:null,norm:1,mode:'CLASSICAL'};
+var lastQiGraphDiagnostics = {enabled:false,candidates:0,edgeCount:0,graphDensity:0,normDrift:0,mode:'GRAPH-OFF'};
+function qiOrderRootMoves(moves,pos,ttMove){
+ if(!qiEnabled||moves.length<2||qiWeight<=0||qiStrength<=0){lastQiDiagnostics={enabled:qiEnabled,candidates:moves.length,changedTop:false,topBefore:moves.length?chess.moveToUci(moves[0]):null,topAfter:moves.length?chess.moveToUci(moves[0]):null,norm:1};return moves;}
+ try{
+  var raw=moves.map(function(m){return scoreMove(m,pos,0,ttMove);}), mx=Math.max.apply(null,raw);
+  var ex=raw.map(function(v){return Math.exp(Math.max(-40,Math.min(0,(v-mx)/180)));});
+  var z=ex.reduce(function(a,b){return a+b;},0); if(!(z>0)||!Number.isFinite(z))return moves;
+  var p=ex.map(function(v){return v/z;});
+  var ctx=subit.computeS(pos), ctxKey=subit.keyOfS(ctx);
+  var enemyKing=pos.kingPos[pos.turn==='w'?'b':'w'];
+  var f=moves.map(function(m){
+   var pc=pos.board[m.from[0]][m.from[1]], target=pos.board[m.to[0]][m.to[1]];
+   var tactical=(target!=='.'||m.ep||m.promo)?1:0;
+   var center=Math.max(0,1-(Math.abs(3.5-m.to[0])+Math.abs(3.5-m.to[1]))/7);
+   var advance=Math.max(-1,Math.min(1,pos.turn==='w'?(6-m.to[0])/6:(m.to[0]-1)/6));
+   var king=pc&&pc.toUpperCase()==='K'?1:0;
+   var travel=(Math.abs(m.to[0]-m.from[0])+Math.abs(m.to[1]-m.from[1]))/7;
+   var enemyNear=enemyKing?Math.max(0,1-(Math.abs(enemyKing[0]-m.to[0])+Math.abs(enemyKing[1]-m.to[1]))/7):0;
+   var whoFit = ctx.who === 'ATTACK' ? 0.7*tactical + 0.3*enemyNear :
+    ctx.who === 'PRESSURE' ? 0.55*center + 0.45*travel :
+    ctx.who === 'DEFENCE' ? 0.55*king + 0.45*(tactical ? 0.5 : 1) :
+    0.7*(1-tactical) + 0.3*center;
+   var whereFit = ctx.where === 'KING' ? enemyNear :
+    ctx.where === 'CENTER' ? center :
+    ctx.where === 'QUEENSIDE' ? (m.to[1] <= 2 ? 1 : (m.to[1] <= 4 ? 0.35 : 0)) : travel;
+   var whenFit = ctx.when === 'TACTICAL' ? tactical :
+    ctx.when === 'OPENING' ? ((pc && (pc.toUpperCase() === 'N' || pc.toUpperCase() === 'B') ? 0.65 : 0) + 0.35*center) :
+    ctx.when === 'ENDGAME' ? 0.55*advance + 0.45*king : 0.5*tactical + 0.5*center;
+   return {t:tactical,c:center,a:advance,k:king,travel:travel,fit:(whoFit+whereFit+whenFit)/3};
+  });
+  var ph=f.map(function(x){return .7*x.t+.25*x.c+.15*x.a+.2*x.k+.35*x.fit;});
+  var A=p.map(function(v,i){return {re:Math.sqrt(v)*Math.cos(ph[i]),im:Math.sqrt(v)*Math.sin(ph[i])};});
+  function mul(x,y){return {re:x.re*y.re-x.im*y.im,im:x.re*y.im+x.im*y.re};}
+  function add(x,y){return {re:x.re+y.re,im:x.im+y.im};}
+  function sc(x,k){return {re:x.re*k,im:x.im*k};}
+  function exi(x){return {re:Math.cos(x),im:Math.sin(x)};}
+  for(var i=0;i<A.length;i++)for(var j=i+1;j<A.length;j++){
+   var coupling=(f[i].t===f[j].t ? 0.25 : -0.15)+.30*f[i].c*f[j].c+.15*f[i].a*f[j].a+.25*f[i].fit*f[j].fit;
+   var th=Math.max(-.18,Math.min(.18,qiStrength*coupling)); if(Math.abs(th)<1e-8)continue;
+   var d=ph[j]-ph[i],c=Math.cos(th),sn=Math.sin(th),ai=A[i],aj=A[j];
+   A[i]=add(sc(ai,c),sc(mul(exi(-d),aj),-sn));
+   A[j]=add(sc(mul(exi(d),ai),sn),sc(aj,c));
+  }
+  var q=A.map(function(x){return x.re*x.re+x.im*x.im;}), n=q.reduce(function(a,b){return a+b;},0);
+  if(!Number.isFinite(n)||Math.abs(n-1)>1e-8)return moves;
+  var ranked=moves.map(function(m,i){return {m:m,i:i,s:(1-qiWeight)*p[i]+qiWeight*q[i],b:p[i]};});
+  var topBefore=ranked.slice().sort(function(x,y){return (y.b-x.b)||(x.i-y.i);})[0];
+  ranked.sort(function(x,y){return (y.s-x.s)||(y.b-x.b)||(x.i-y.i);});
+  lastQiDiagnostics={enabled:true,candidates:moves.length,changedTop:ranked[0].i!==topBefore.i,topBefore:chess.moveToUci(topBefore.m),topAfter:chess.moveToUci(ranked[0].m),norm:n,context:ctxKey};
+  return ranked.map(function(x){return x.m;});
+ }catch(e){return moves;}
+}
+
+
+function qiGraphOrderRootMoves(moves,pos,ttMove){
+ if(!qiGraphEnabled||moves.length<2){
+  lastQiGraphDiagnostics={enabled:qiGraphEnabled,candidates:moves.length,edgeCount:0,graphDensity:0,normDrift:0,mode:qiGraphEnabled?'GRAPH-TOO-FEW':'GRAPH-OFF'};
+  return moves;
+ }
+ try{
+  var ctx=subit.computeS(pos),ctxKey=subit.keyOfS(ctx);
+  var enemyKing=pos.kingPos[pos.turn==='w'?'b':'w'];
+  function clamp(x,a,b){return Math.max(a,Math.min(b,x));}
+  function cosine(a,b){
+   var dot=0,aa=0,bb=0,n=Math.max(a.length,b.length);
+   for(var z=0;z<n;z++){var x=a[z]||0,y=b[z]||0;dot+=x*y;aa+=x*x;bb+=y*y;}
+   return aa<1e-12||bb<1e-12?0:clamp(dot/Math.sqrt(aa*bb),-1,1);
+  }
+  function hashPhase(id){
+   var h=2166136261;
+   for(var z=0;z<id.length;z++){h^=id.charCodeAt(z);h=Math.imul(h,16777619);}
+   return ((h>>>0)/4294967296)*2*Math.PI;
+  }
+  var seen=new Set();
+  var rows=moves.map(function(m){
+   var id=chess.moveToUci(m);
+   if(typeof id!=='string'||!id.length)throw new Error('QI graph requires stable UCI move IDs');
+   if(seen.has(id))throw new Error('QI graph duplicate move ID: '+id);
+   seen.add(id);
+   var pc=pos.board[m.from[0]][m.from[1]],target=pos.board[m.to[0]][m.to[1]];
+   var tactical=(target!=='.'||m.ep||m.promo)?1:0;
+   var center=Math.max(0,1-(Math.abs(3.5-m.to[0])+Math.abs(3.5-m.to[1]))/7);
+   var advance=clamp(pos.turn==='w'?(6-m.to[0])/6:(m.to[0]-1)/6,-1,1);
+   var king=pc&&pc.toUpperCase()==='K'?1:0;
+   var travel=(Math.abs(m.to[0]-m.from[0])+Math.abs(m.to[1]-m.from[1]))/7;
+   var enemyNear=enemyKing?Math.max(0,1-(Math.abs(enemyKing[0]-m.to[0])+Math.abs(enemyKing[1]-m.to[1]))/7):0;
+   var whoFit=ctx.who==='ATTACK' ? .7*tactical+.3*enemyNear :
+    ctx.who==='PRESSURE' ? .55*center+.45*travel :
+    ctx.who==='DEFENCE' ? .55*king+.45*(tactical ? .5 : 1) :
+    .7*(1-tactical)+.3*center;
+   var whereFit=ctx.where==='KING' ? enemyNear :
+    ctx.where==='CENTER' ? center :
+    ctx.where==='QUEENSIDE' ? (m.to[1]<=2?1:(m.to[1]<=4?.35:0)) : travel;
+   var whenFit=ctx.when==='TACTICAL' ? tactical :
+    ctx.when==='OPENING' ? ((pc&&(pc.toUpperCase()==='N'||pc.toUpperCase()==='B')?.65:0)+.35*center) :
+    ctx.when==='ENDGAME' ? .55*advance+.45*king : .5*tactical+.5*center;
+   return{id:id,move:m,score:scoreMove(m,pos,0,ttMove),
+    features:[tactical,center,advance,king,travel,enemyNear,whoFit,whereFit,whenFit],
+    context:[whoFit,whereFit,whenFit],tactical:tactical,to:m.to[0]+','+m.to[1]};
+  });
+  rows.sort(function(a,b){return a.id<b.id?-1:a.id>b.id?1:0;});
+  var classicalRank=Object.create(null);
+  rows.slice().sort(function(a,b){return b.score-a.score||(a.id<b.id?-1:a.id>b.id?1:0);}).forEach(function(x,i){classicalRank[x.id]=i;});
+  var ex=rows.map(function(x){return Math.exp(-classicalRank[x.id]/3);});
+  var total=ex.reduce(function(a,b){return a+b;},0);
+  if(!(total>0)||!Number.isFinite(total))throw new Error('QI graph softmax normalization failed');
+  var base=ex.map(function(x){return x/total;});
+  var amplitudes=rows.map(function(x,i){var phase=hashPhase(x.id)+.35*x.tactical;return{re:Math.sqrt(base[i])*Math.cos(phase),im:Math.sqrt(base[i])*Math.sin(phase)};});
+  var normBefore=amplitudes.reduce(function(a,z){return a+z.re*z.re+z.im*z.im;},0);
+  var edges=[],degree=new Array(rows.length).fill(0),absSum=0,possible=rows.length*(rows.length-1)/2;
+  for(var i=0;i<rows.length;i++)for(var j=i+1;j<rows.length;j++){
+   var sim=cosine(rows[i].features,rows[j].features),cSim=cosine(rows[i].context,rows[j].context);
+   var conflict=rows[i].to===rows[j].to?1:0,contrast=Math.abs(rows[i].tactical-rows[j].tactical);
+   var weight=clamp(.50*sim+.25*cSim+.15*contrast-.35*conflict,-1,1);
+   if(Math.abs(weight)<.02)continue;
+   var delta=hashPhase(rows[i].id+'|'+rows[j].id)-Math.PI;
+   edges.push({i:i,j:j,weight:weight,delta:delta});degree[i]++;degree[j]++;absSum+=Math.abs(weight);
+  }
+  for(var e=0;e<edges.length;e++){
+   var edge=edges[e],i=edge.i,j=edge.j,theta=clamp(qiGraphStrength*edge.weight,-.25,.25);
+   if(Math.abs(theta)<1e-8)continue;
+   var c=Math.cos(theta),sn=Math.sin(theta),d=edge.delta,ai=amplitudes[i],aj=amplitudes[j];
+   var cosD=Math.cos(d),sinD=Math.sin(d);
+   var rotNeg={re:aj.re*cosD+aj.im*sinD,im:aj.im*cosD-aj.re*sinD};
+   var rotPos={re:ai.re*cosD-ai.im*sinD,im:ai.re*sinD+ai.im*cosD};
+   amplitudes[i]={re:c*ai.re-sn*rotNeg.re,im:c*ai.im-sn*rotNeg.im};
+   amplitudes[j]={re:sn*rotPos.re+c*aj.re,im:sn*rotPos.im+c*aj.im};
+  }
+  var raw=amplitudes.map(function(z){return z.re*z.re+z.im*z.im;});
+  var normAfter=raw.reduce(function(a,b){return a+b;},0);
+  if(!Number.isFinite(normAfter)||Math.abs(normAfter-normBefore)>1e-8)throw new Error('QI graph unitary norm invariant failed');
+  var blend=.12,ranked=rows.map(function(row,i){return{move:row.move,id:row.id,base:base[i],mixed:raw[i]/normAfter,p:(1-blend)*base[i]+blend*(raw[i]/normAfter)};});
+  var topBase=ranked.slice().sort(function(a,b){return b.base-a.base||(a.id<b.id?-1:1);})[0];
+  ranked.sort(function(a,b){return b.p-a.p||(a.id<b.id?-1:a.id>b.id?1:0);});
+  var idSet=new Set(ranked.map(function(x){return x.id;}));
+  if(idSet.size!==moves.length||moves.some(function(m){return !idSet.has(chess.moveToUci(m));}))throw new Error('QI graph changed the legal candidate set');
+  lastQiGraphDiagnostics={enabled:true,mode:'GRAPH-ON',candidates:moves.length,edgeCount:edges.length,
+   possibleEdges:possible,graphDensity:possible?edges.length/possible:0,
+   meanAbsEdgeWeight:edges.length?absSum/edges.length:0,
+   meanDegree:rows.length?degree.reduce(function(a,b){return a+b;},0)/rows.length:0,
+   normBefore:normBefore,normAfter:normAfter,normDrift:Math.abs(normAfter-normBefore),
+   changedTop:ranked[0].id!==topBase.id,topBefore:topBase.id,topAfter:ranked[0].id,context:ctxKey,
+   strength:qiGraphStrength,blend:blend,edgeSchedule:'canonical-UCI-lexicographic'};
+  return ranked.map(function(x){return x.move;});
+ }catch(err){
+  lastQiGraphDiagnostics={enabled:true,mode:'GRAPH-FALLBACK',candidates:moves.length,edgeCount:0,
+   graphDensity:0,normDrift:null,error:String(err&&err.message||err)};
+  return moves;
+ }
+}
+function orderRootMoves(moves,pos,ttMove){
+ if(qiGraphEnabled)return qiGraphOrderRootMoves(moves,pos,ttMove);
+ lastQiGraphDiagnostics={enabled:false,candidates:moves.length,edgeCount:0,graphDensity:0,normDrift:0,mode:'GRAPH-OFF'};
+ return qiOrderRootMoves(moves,pos,ttMove);
+}
 
 function isRepeat(hash){
 if (!positionHistory) return false;
@@ -3437,7 +3603,9 @@ return bestScore;
 function searchRoot(pos, depth, ttPrevMove, extBudget, prevScore){
 var moves = chess.legalMoves(pos);
 if (moves.length === 0) return null;
+moves = moves.slice();
 moves.sort(function(a,b){ return scoreMove(b,pos,0,ttPrevMove) - scoreMove(a,pos,0,ttPrevMove); });
+moves = orderRootMoves(moves,pos,ttPrevMove);
 var ROOT_EXT_BUDGET = (extBudget != null) ? extBudget : 4;
 function doSearch(alInit, beInit){
 var alpha = alInit, beta = beInit;
@@ -3484,7 +3652,12 @@ wasAborted: function(){ return aborted; },
 getExtBudget: function(){ return extBudget; },
 getLmrThreshold: function(){ return lmrThresholdBase; },
 getPolicy: function(){ return {lmrMult: policyLmrMult, nullEnable: policyNullEnable,
-                         futility: policyFutility, nullR: policyNullR, futMargin: policyFutMargin}; }
+                         futility: policyFutility, nullR: policyNullR, futMargin: policyFutMargin}; },
+getQiDiagnostics: function(){
+ var base=lastQiDiagnostics||{};
+ if(qiGraphEnabled)return Object.assign({},base,lastQiGraphDiagnostics,{mode:lastQiGraphDiagnostics.mode||'GRAPH'});
+ return Object.assign({},base,{mode:qiEnabled?'QI-INTERFERENCE':'CLASSICAL',graph:lastQiGraphDiagnostics});
+}
 };
 }
 return { createSearch: createSearch };
@@ -3557,7 +3730,8 @@ const workerSrc = [
 '      policyNullEnable: (typeof data.policyNullEnable === "boolean") ? data.policyNullEnable : true,',
 '      policyFutility: (typeof data.policyFutility === "number") ? data.policyFutility : 0,',
 '      policyNullR: (typeof data.policyNullR === "number") ? data.policyNullR : 2,',
-'      policyFutMargin: (typeof data.policyFutMargin === "number") ? data.policyFutMargin : null',
+'      policyFutMargin: (typeof data.policyFutMargin === "number") ? data.policyFutMargin : null,',
+'      qiEnabled: !!data.qiEnabled, qiWeight: data.qiWeight, qiStrength: data.qiStrength, qiGraphEnabled: !!data.qiGraphEnabled, qiGraphStrength: data.qiGraphStrength',
 '    });',
 '    if (data.positionHistory) s.setPositionHistory(new Map(data.positionHistory));',
 '    if (data.timeLimit) s.setDeadline(data.timeLimit);',
@@ -3581,7 +3755,7 @@ const workerSrc = [
 '      history: hist, omega: omegaResult, stoppedEarly: stoppedEarly,',
 '      aborted: s.wasAborted(), nodes: s.getNodes(),',
 '      extBudget: s.getExtBudget(), lmrThreshold: s.getLmrThreshold(),',
-'      policy: s.getPolicy()',
+'      policy: s.getPolicy(), qi: s.getQiDiagnostics()',
 '    }});',
 '  } catch (err) {',
 '    self.postMessage({id: data.id, error: String(err && err.message || err)});',
@@ -3628,7 +3802,7 @@ policyLmrMult: (typeof opts.policyLmrMult === 'number') ? opts.policyLmrMult : 0
 policyNullEnable: (typeof opts.policyNullEnable === 'boolean') ? opts.policyNullEnable : true,
 policyFutility: (typeof opts.policyFutility === 'number') ? opts.policyFutility : 0,
 policyNullR: (typeof opts.policyNullR === 'number') ? opts.policyNullR : 2,
-policyFutMargin: (typeof opts.policyFutMargin === 'number') ? opts.policyFutMargin : null
+policyFutMargin: (typeof opts.policyFutMargin === 'number') ? opts.policyFutMargin : null, qiEnabled: !!opts.qiEnabled, qiWeight: opts.qiWeight, qiStrength: opts.qiStrength, qiGraphEnabled: !!opts.qiGraphEnabled, qiGraphStrength: opts.qiGraphStrength
 });
 if (opts.positionHistory) s.setPositionHistory(opts.positionHistory);
 if (opts.timeLimit) s.setDeadline(opts.timeLimit);
@@ -3650,7 +3824,7 @@ omegaResult = subit.classifyOmegaSearch(hist);
 if (!last) resolve(null);
 else resolve({best: last.best, all: last.all, depth: last.depth, history: hist, omega: omegaResult,
               stoppedEarly: stoppedEarly, aborted: s.wasAborted(), nodes: s.getNodes(),
-              extBudget: s.getExtBudget(), lmrThreshold: s.getLmrThreshold(), policy: s.getPolicy()});
+              extBudget: s.getExtBudget(), lmrThreshold: s.getLmrThreshold(), policy: s.getPolicy(), qi: s.getQiDiagnostics()});
 } catch(e){ reject(e); }
 return;
 }
@@ -3679,7 +3853,8 @@ policyLmrMult: (typeof opts.policyLmrMult === 'number') ? opts.policyLmrMult : 0
 policyNullEnable: (typeof opts.policyNullEnable === 'boolean') ? opts.policyNullEnable : true,
 policyFutility: (typeof opts.policyFutility === 'number') ? opts.policyFutility : 0,
 policyNullR: (typeof opts.policyNullR === 'number') ? opts.policyNullR : 2,
-policyFutMargin: (typeof opts.policyFutMargin === 'number') ? opts.policyFutMargin : null
+policyFutMargin: (typeof opts.policyFutMargin === 'number') ? opts.policyFutMargin : null,
+qiEnabled: !!opts.qiEnabled, qiWeight: opts.qiWeight, qiStrength: opts.qiStrength, qiGraphEnabled: !!opts.qiGraphEnabled, qiGraphStrength: opts.qiGraphStrength
 });
 } catch(err){ clearTimeout(timeoutHandle); workerCallbacks.delete(id); reject(err); }
 });
@@ -3692,7 +3867,7 @@ captured: {byWhite: [], byBlack: []},
 hintMove: null, pendingPromo: null,
 flipped: false, over: false,
 settings: {theme:'classic', coords:'on', legal:'on', reg:'on', arrow:'on',
-           resourceBudget:'on', expandedEval:'on', policy:'off', level:'3'},
+           resourceBudget:'on', expandedEval:'on', policy:'off', qi:'on', qiGraph:'off', level:'3'},
 lastSearchOmega: null, lastSearchResult: null,
 lastOmegaPolicy: null, lastExtBudget: null, lastLmrThreshold: null, lastTimeBudget: null,
 lastPolicy: null, lastNullR: null, lastFutMargin: null,
@@ -4330,6 +4505,8 @@ policyNullEnable: policy.null_enabled,
 policyFutility: policy.futility_mult,
 policyNullR: params.nullReduction,
 policyFutMargin: params.futilityMargin,
+qiEnabled: state.settings.qi === 'on', qiWeight: 0.08, qiStrength: 0.06,
+qiGraphEnabled: state.settings.qiGraph === 'on', qiGraphStrength: 0.08,
 timeLimit: timeBudget
 });
 } catch (e){ console.warn('[SUBIT] Search failed:', e && e.message || e); }
@@ -4343,6 +4520,10 @@ const legal = chess.legalMoves(state.pos);
 if (legal.length === 0){ updateStatus(); return; }
 result = { best: { move: legal[0], score: 0 }, depth: 1, omega: 'STABLE', nodes: 0 };
 }
+state.lastSearchResult = result;
+const qd = result.qi || {enabled:false,candidates:0,changedTop:false};
+const qel = $('qi-diagnostics');
+if(qel) qel.textContent = 'SUBIT-QI ' + (qd.mode||(qd.enabled?'ON':'OFF')) + ' · кандидатів: ' + (qd.candidates||0) + ' · зміна першого ходу: ' + (qd.changedTop?'так':'ні') + (qd.topBefore?' · до: '+qd.topBefore:'') + (qd.topAfter?' · після: '+qd.topAfter:'')+(qd.context?' · контекст: '+qd.context:'')+(qd.edgeCount!=null?' · ребер: '+qd.edgeCount:'')+(qd.normDrift!=null?' · Δnorm: '+Number(qd.normDrift).toExponential(2):'')+(qd.error?' · fallback: '+qd.error:'');
 const m = result.best.move;
 /* v2.1.2 FIX: snapshot BEFORE capture push */
 state.history.push(snapshotForHistory());
@@ -4943,7 +5124,28 @@ $('arrow-select').value = state.settings.arrow;
 $('resource-select').value = state.settings.resourceBudget;
 $('expanded-eval-select').value = state.settings.expandedEval;
 $('policy-select').value = state.settings.policy;
+$('qi-select').value = state.settings.qi;
+$('qi-graph-select').value = state.settings.qiGraph;
 updateStorageInfo(); openModal('settings-modal');
+});
+$('qi-ab-run').addEventListener('click', async function(){
+ var btn=$('qi-ab-run'), out=$('qi-ab-result');
+ if(!state.pos || state.thinking){out.textContent='A/B недоступний під час активного пошуку';return;}
+ btn.disabled=true; out.textContent='Виконується A/B тест на поточній позиції…';
+ var snapshot=chess.clonePos(state.pos), weights=subitState.weightsFor(state.pos);
+ var params=subitState.searchParamsFor(state.pos), started=performance.now();
+ var common={earlyStop:false,positionHistory:subitState.posCounts,extBudget:params.extBudget,
+  lmrThreshold:params.lmrThreshold,policyLmrMult:params.policy.lmr_mult,
+  policyNullEnable:params.policy.null_enabled,policyFutility:params.policy.futility_mult,
+  policyNullR:params.nullReduction,policyFutMargin:params.futilityMargin,timeLimit:1800};
+ try{
+  var a=await searchAsync(chess.clonePos(snapshot),3,weights,Object.assign({},common,{qiEnabled:false,qiGraphEnabled:false}));
+  var b=await searchAsync(chess.clonePos(snapshot),3,weights,Object.assign({},common,{qiEnabled:true,qiWeight:.08,qiStrength:.06,qiGraphEnabled:false}));
+  var c=await searchAsync(chess.clonePos(snapshot),3,weights,Object.assign({},common,{qiEnabled:false,qiGraphEnabled:true,qiGraphStrength:.08}));
+  function fmt(x){return x&&x.best?chess.moveToUci(x.best.move)+' · score '+x.best.score+' · depth '+x.depth+' · nodes '+x.nodes+(x.aborted?' · aborted':''):'no result';}
+  out.textContent='CLASSICAL: '+fmt(a)+' | QI v0.1.2: '+fmt(b)+' | GRAPH v0.2.2: '+fmt(c)+' | Δnodes graph−classical: '+((c&&a)?(c.nodes-a.nodes):'n/a')+' | elapsed '+Math.round(performance.now()-started)+' ms. Один запуск не є статистично значущим.';
+ }catch(e){out.textContent='A/B помилка: '+String(e&&e.message||e);}
+ finally{btn.disabled=false;}
 });
 $('settings-close').addEventListener('click', function(){
 state.settings.theme = $('theme-select').value;
@@ -4954,6 +5156,8 @@ state.settings.arrow = $('arrow-select').value;
 state.settings.resourceBudget = $('resource-select').value;
 state.settings.expandedEval = $('expanded-eval-select').value;
 state.settings.policy = $('policy-select').value;
+state.settings.qi = $('qi-select').value;
+state.settings.qiGraph = $('qi-graph-select').value;
 subitState.resourceBudgetEnabled = (state.settings.resourceBudget === 'on');
 subitState.regularizationEnabled = (state.settings.reg === 'on');
 subitState.policyEnabled = (state.settings.policy === 'on');
