@@ -50,6 +50,9 @@ jobs:
       - name: Run test suite
         run: npm test
 
+      - name: Open-engine UCI adapter tests
+        run: node tests/open_engine_uci.test.js
+
       - name: UI DOM smoke (board and pieces)
         run: node tests/ui_dom_smoke.test.js
 
