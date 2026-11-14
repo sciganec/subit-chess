@@ -3178,6 +3178,44 @@ var TT = new Map(), histTable = new Map(), killers = [];
 var nodesSearched = 0, aborted = false, deadline = 0;
 var positionHistory = null;
 var DELTA_MARGIN = 200;
+var qiEnabled = !!opts.qiEnabled;
+var qiWeight = (typeof opts.qiWeight === 'number') ? Math.max(0,Math.min(0.25,opts.qiWeight)) : 0.08;
+var qiStrength = (typeof opts.qiStrength === 'number') ? Math.max(0,Math.min(0.25,opts.qiStrength)) : 0.06;
+function qiOrderRootMoves(moves,pos,ttMove){
+ if(!qiEnabled||moves.length<2||qiWeight<=0||qiStrength<=0)return moves;
+ try{
+  var raw=moves.map(function(m){return scoreMove(m,pos,0,ttMove);}), mx=Math.max.apply(null,raw);
+  var ex=raw.map(function(v){return Math.exp(Math.max(-40,Math.min(0,(v-mx)/180)));});
+  var z=ex.reduce(function(a,b){return a+b;},0); if(!(z>0)||!Number.isFinite(z))return moves;
+  var p=ex.map(function(v){return v/z;});
+  var f=moves.map(function(m){
+   var pc=pos.board[m.from[0]][m.from[1]], target=pos.board[m.to[0]][m.to[1]];
+   return {t:(target!=='.'||m.ep||m.promo)?1:0,
+    c:1-(Math.abs(3.5-m.to[0])+Math.abs(3.5-m.to[1]))/7,
+    a:Math.max(-1,Math.min(1,pos.turn==='w'?(6-m.to[0])/6:(m.to[0]-1)/6)),
+    k:pc&&pc.toUpperCase()==='K'?1:0};
+  });
+  var ph=f.map(function(x){return .7*x.t+.25*x.c+.15*x.a+.2*x.k;});
+  var A=p.map(function(v,i){return {re:Math.sqrt(v)*Math.cos(ph[i]),im:Math.sqrt(v)*Math.sin(ph[i])};});
+  function mul(x,y){return {re:x.re*y.re-x.im*y.im,im:x.re*y.im+x.im*y.re};}
+  function add(x,y){return {re:x.re+y.re,im:x.im+y.im};}
+  function sc(x,k){return {re:x.re*k,im:x.im*k};}
+  function exi(x){return {re:Math.cos(x),im:Math.sin(x)};}
+  for(var i=0;i<A.length;i++)for(var j=i+1;j<A.length;j++){
+   var coupling=(f[i].t===f[j].t?.25:-.15)+.35*f[i].c*f[j].c+.2*f[i].a*f[j].a;
+   var th=Math.max(-.18,Math.min(.18,qiStrength*coupling)); if(Math.abs(th)<1e-8)continue;
+   var d=ph[j]-ph[i],c=Math.cos(th),sn=Math.sin(th),ai=A[i],aj=A[j];
+   A[i]=add(sc(ai,c),sc(mul(exi(-d),aj),-sn));
+   A[j]=add(sc(mul(exi(d),ai),sn),sc(aj,c));
+  }
+  var q=A.map(function(x){return x.re*x.re+x.im*x.im;}), n=q.reduce(function(a,b){return a+b;},0);
+  if(!Number.isFinite(n)||Math.abs(n-1)>1e-8)return moves;
+  var ranked=moves.map(function(m,i){return {m:m,i:i,s:(1-qiWeight)*p[i]+qiWeight*q[i],b:p[i]};});
+  ranked.sort(function(x,y){return (y.s-x.s)||(y.b-x.b)||(x.i-y.i);});
+  return ranked.map(function(x){return x.m;});
+ }catch(e){return moves;}
+}
+
 
 function isRepeat(hash){
 if (!positionHistory) return false;
@@ -3437,7 +3475,9 @@ return bestScore;
 function searchRoot(pos, depth, ttPrevMove, extBudget, prevScore){
 var moves = chess.legalMoves(pos);
 if (moves.length === 0) return null;
+moves = moves.slice();
 moves.sort(function(a,b){ return scoreMove(b,pos,0,ttPrevMove) - scoreMove(a,pos,0,ttPrevMove); });
+moves = qiOrderRootMoves(moves,pos,ttPrevMove);
 var ROOT_EXT_BUDGET = (extBudget != null) ? extBudget : 4;
 function doSearch(alInit, beInit){
 var alpha = alInit, beta = beInit;
@@ -3558,6 +3598,7 @@ const workerSrc = [
 '      policyFutility: (typeof data.policyFutility === "number") ? data.policyFutility : 0,',
 '      policyNullR: (typeof data.policyNullR === "number") ? data.policyNullR : 2,',
 '      policyFutMargin: (typeof data.policyFutMargin === "number") ? data.policyFutMargin : null',
+'      qiEnabled: !!data.qiEnabled, qiWeight: data.qiWeight, qiStrength: data.qiStrength',
 '    });',
 '    if (data.positionHistory) s.setPositionHistory(new Map(data.positionHistory));',
 '    if (data.timeLimit) s.setDeadline(data.timeLimit);',
@@ -3628,7 +3669,7 @@ policyLmrMult: (typeof opts.policyLmrMult === 'number') ? opts.policyLmrMult : 0
 policyNullEnable: (typeof opts.policyNullEnable === 'boolean') ? opts.policyNullEnable : true,
 policyFutility: (typeof opts.policyFutility === 'number') ? opts.policyFutility : 0,
 policyNullR: (typeof opts.policyNullR === 'number') ? opts.policyNullR : 2,
-policyFutMargin: (typeof opts.policyFutMargin === 'number') ? opts.policyFutMargin : null
+policyFutMargin: (typeof opts.policyFutMargin === 'number') ? opts.policyFutMargin : null, qiEnabled: !!opts.qiEnabled, qiWeight: opts.qiWeight, qiStrength: opts.qiStrength
 });
 if (opts.positionHistory) s.setPositionHistory(opts.positionHistory);
 if (opts.timeLimit) s.setDeadline(opts.timeLimit);
