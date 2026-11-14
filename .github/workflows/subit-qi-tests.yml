@@ -1,0 +1,32 @@
+name: SUBIT-QI experimental tests
+on:
+  pull_request:
+    paths:
+      - 'experiments/subit-qi-v0.2.0/**'
+      - 'tests/subit_qi_invariants.test.js'
+      - '.github/workflows/subit-qi-tests.yml'
+  push:
+    branches:
+      - feat/subit-qi-v0.1.1
+    paths:
+      - 'experiments/subit-qi-v0.2.0/**'
+      - 'tests/subit_qi_invariants.test.js'
+      - '.github/workflows/subit-qi-tests.yml'
+jobs:
+  node-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax checks
+        run: |
+          node --check experiments/subit-qi-v0.2.0/subit-qi-graph.js
+          node --check experiments/subit-qi-v0.2.0/subit-qi-engine-adapter.js
+      - name: Graph invariants
+        run: node experiments/subit-qi-v0.2.0/tests/subit-qi-graph.test.js
+      - name: Engine adapter contract
+        run: node experiments/subit-qi-v0.2.0/tests/subit-qi-engine-adapter.test.js
+      - name: Existing QI invariants
+        run: node tests/subit_qi_invariants.test.js
