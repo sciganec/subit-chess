@@ -4,7 +4,7 @@
 
 | Файл | Розмір | SHA-256 |
 |---|---|---|
-| `subit_chess_v3.0.3.html` | 213 482 B | `2CF9DB651D8E2D6F7226F2F2FB559100355ACDB39E7A28DDEE66464FE537D2AA` |
+| `subit_chess_v3.0.3.html` | 210 766 B | `6EF7F523F59316755745854379156650E495510482B90EAF8A1ABE4800F3E655` |
 
 Артефакт ідентичний `src/subit_chess_v3.0.3.html` та `index.html` (той самий бандл,
 `node build/bundle.mjs`, 9 модулів, 208.5 kB). Попередні релізи: `ver/subit_chess_v3.0.0/`
