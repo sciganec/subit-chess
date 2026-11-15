@@ -1,13 +1,13 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v3.0.2**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.3**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
 
 Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s policy vector,
 teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
-ADR 0009+ describe v3.0.2 and are the binding decisions for the current engine.
+ADR 0009+ describe v3.0.3 and are the binding decisions for the current engine.
 
 ---
 
@@ -520,7 +520,7 @@ single offline HTML file (no server, no CDN, no network).
 - Source of truth: `src/engine/*.mjs` (12 modules) + `build/shell.html` (UI).
 - `build/bundle.mjs` walks the import graph from `src/engine/index.mjs`, inlines every
   module into the shell's `<script>` block, and writes both
-  `src/subit_chess_v3.0.2.html` and `index.html`.
+  `src/subit_chess_v3.0.3.html` and `index.html`.
 - The build is deterministic: same input → byte-identical output, and the two artifacts
   always match.
 - No user-facing build step: the repository ships the built file.
@@ -598,7 +598,7 @@ evaluation was both player and referee.
 
 ## ADR 0015 — Futility belongs to the frontier, not to the last ply
 
-**Status:** Accepted (v3.0.2)
+**Status:** Accepted (v3.0.3)
 
 ### Context
 
@@ -639,4 +639,46 @@ defects followed from running it inside the tree rather than only at the frontie
 
 ---
 
-*End of DECISIONS.md — v3.0.2*
+## ADR 0016 — the game position owns its repetition history
+
+**Status:** Accepted (v3.0.3)
+
+### Context
+
+`Position.setFEN()` rebuilds a position and clears `rep`/`repLimit`, which is right for
+loading a position. `Engine.play()` also went through it — it cloned the position, made the
+move, then called `setFEN(this.fen)` to refresh the derived state. The result: after the
+first move of every real game the repetition stack was empty. Threefold/fivefold could only
+be seen inside one search, never across moves, so the engine shuffled in equal positions and
+`status()` could never end a game by repetition.
+
+Two related defects surfaced in the same audit: repetitions were matched on `hashLo` alone
+(32 bits, so a collision could end a won game as a draw), and `Engine.search()` handed the
+node budget to `setLimits()` and then dropped it when calling `searcher.search()`, which
+re-reads its limits from its own options.
+
+### Decision
+
+- `Engine.play()` records the position it leaves (`pushRep()`) and carries `rep`, `repHi`
+  and `repLimit` across the `setFEN()` refresh. The stack is part of the game state, not of
+  the parser.
+- A repetition requires both 32-bit halves of the Zobrist key to match.
+- Limits travel with the call: `searcher.search(pos, { depth, timeMs, nodes })`. A budget
+  that is not accepted is a budget that does not exist.
+- The evaluation tier is chosen once: by the meta-controller when it runs, otherwise by the
+  caller (`Engine.setEvalMode()`, the UI selector). A per-search default must not overwrite
+  an explicit choice.
+- Regression tests in `tests/engine.eval.mjs`: fivefold after four knight cycles, and
+  `search({ depth: 8, nodes: 1 })` honouring one node.
+
+### Consequences
+
+- Real games now end correctly by fivefold repetition and the engine can steer towards or
+  away from a repetition.
+- The stack grows with the game length; it is capped only by the 75-move/fivefold rules,
+  which is bounded in practice.
+- No measured strength claim: repetition awareness removes shuffling, it does not add tactics.
+
+---
+
+*End of DECISIONS.md — v3.0.3*

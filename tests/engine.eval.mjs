@@ -244,6 +244,26 @@ const LOPSIDED = [
       `flag=${r.flag} score=${r.score}`);
   }
 }
+/* ---- 11. the game keeps its repetition history across moves ---- */
+{
+  // Engine.play() rebuilt the position through setFEN(), which clears `rep`:
+  // threefold/fivefold could then never be seen outside a single search.
+  const e = new Engine(cloneParams(DEFAULT_PARAMS), {});
+  e.setFEN(Position.start().fen());
+  const cycle = ['g1f3', 'g8f6', 'f3g1', 'f6g8'];
+  let played = 0;
+  for (let i = 0; i < 4; i++) for (const u of cycle) { if (!e.play(u)) break; played++; }
+  check('the repetition stack survives Engine.play', played === 16 && e.pos.repetitionCount() === 5,
+    `plies=${played} count=${e.pos.repetitionCount()}`);
+  const st = e.pos.status();
+  check('fivefold repetition ends the game', !!st && st.over && st.reason === 'fivefold repetition',
+    st ? st.reason : 'null');
+
+  const e2 = new Engine(cloneParams(DEFAULT_PARAMS), {});
+  e2.setFEN(Position.start().fen());
+  const r = e2.search({ depth: 8, nodes: 1 });
+  check('a node budget is honoured', r.nodes <= 2, `nodes=${r.nodes}`);
+}
 console.log(fails ? `\n${fails} FAILED` : '\nEVAL OK');
 process.exit(fails ? 1 : 0);
 

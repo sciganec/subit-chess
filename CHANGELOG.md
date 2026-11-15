@@ -28,13 +28,21 @@ Strength and measurement items for the v3 engine (measured, not cosmetic):
 
 ### Added
 
+- `bench/match.mjs`: `--time <ms>` plays a match on a clock instead of a fixed depth
+  (the way the UI plays), a `futil3` ablation (futility at depth 3, the pre-3.0.1
+  speed setting), and `--quiet` no longer swallows the following argument.
 - `bench/match.mjs`: length distribution in the summary (mean / median / max /
-  `capped` / termination reasons) and a `--variety` knob that shuffles the
-  opening order deterministically from `--seed`, so two runs do not share the
-  same opening sequence.
-- Measured baseline for Gate 1: `base` vs `plain`, 6 games, depth 3, seed 5,
-  `--variety` -> mean 190 plies, median 212.5, 1/6 games at the 300-ply cap,
-  reasons `checkmate: 5, max plies: 1`.
+  `capped` / termination reasons) and a `--variety` knob that shuffles the opening
+  order deterministically from `--seed`, so two runs do not share one sequence.
+
+Measured: `base` vs `futil3` at 150 ms/move, 24 games, seed 11 -> 47.9% ± 16.1
+(7W 9D 8L), mean 209 plies; and at a fixed 1 s per move the two reach the same depth
+on four middlegame/endgame positions (kiwipete d5, endgame d8, ~150k nodes each). The
+3x node cost of the 3.0.1 futility fix therefore shows only at a fixed *depth*: at UI
+clock settings the mate fix is free.
+
+Gate 1 baseline: `base` vs `plain`, 6 games, depth 3, seed 5, `--variety` -> mean 190
+plies, median 212.5, 1/6 games at the 300-ply cap, reasons `checkmate: 5, max plies: 1`.
 
 ### Changed
 
@@ -42,12 +50,55 @@ Strength and measurement items for the v3 engine (measured, not cosmetic):
   actually does (12 fixed openings, colour-alternated, `status()` checked after
   every move, so the cap is not what contaminates the numbers). Gate 1 is
   re-scoped to breadth plus a reported length distribution. The debt list no
-  longer claims `unmakeNullMove` increments `stm` — it restores `turn` from the
+  longer claims `unmakeNullMove` increments `stm` - it restores `turn` from the
   undo record.
 
 ---
 ---
+---
 
+## [3.0.3] — 2026-11-15
+
+Correctness pass on the game state: repetition, node budget, evaluation-tier switch.
+All three were invisible in tests because they only appear in a real game, not in a
+single search.
+
+### Fixed
+
+- **The game lost its repetition history after every move.** `Engine.play()` rebuilt the
+  position through `setFEN()`, which clears `rep`/`repLimit`, so outside a single search
+  no repetition could ever be seen: the engine could not claim or avoid a threefold, and
+  equal positions ran to the 300-ply cap. `play()` now carries the stack over (and records
+  the position it leaves). Regression: `g1f3 g8f6 f3g1 f6g8` repeated four times reports
+  `repetitionCount() === 5` and `status() -> fivefold repetition`.
+- **A repetition was matched on 32 bits.** `isRepetition()`/`repetitionCount()` compared
+  `hashLo` only; a collision would end a won game as a draw. Both halves are compared now.
+- **The node budget was silently dropped.** `Engine.search()` called `setLimits({nodes})`
+  and then `searcher.search(pos, {depth, timeMs})`, and the searcher re-reads its limits
+  from those options — `search({depth: 8, nodes: 1})` searched 81,619 nodes. The budget
+  now travels with the search call (`nodes: 1` -> 1 node).
+- **The fast/structural switch did nothing.** `Engine.search()` re-assigned
+  `evaluation.opts.mode` from the engine defaults on every call, overwriting the UI
+  selection. The tier is now only chosen by the meta-controller, `Engine.setEvalMode()`
+  keeps an explicit choice, and the UI uses it.
+
+### Added
+
+- Regression tests for all three (repetition stack, fivefold, node budget) in
+  `tests/engine.eval.mjs`.
+- ADR 0016 — the game position owns its repetition history (`docs/DECISIONS.md`).
+
+### Notes
+
+- Playing strength: repetition awareness removes blind shuffling, but no measurement yet
+  shows a score change; `base` vs `futil3` at 150 ms/move, 24 games, was 47.9% ± 16.1,
+  i.e. still inside the noise band. Treat 3.0.3 as a correctness release, not a strength
+  claim.
+- Known gaps kept from the 3.0.2 audit (not in this release): FEN validation, quiescence
+  not detecting stalemate/draws at the horizon, meta-controller skipped for fixed-depth
+  searches, no Web Worker.
+
+---
 ## [3.0.2] — 2026-11-15
 
 Search diagnostics: the root reports whether its published score is exact, and a test

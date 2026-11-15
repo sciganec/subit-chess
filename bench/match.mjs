@@ -26,6 +26,14 @@ export const CONFIGS = {
   // reference: shipped defaults
   base: { label: 'base (shipped defaults)', params: {}, opts: {} },
 
+  // futility depth ablation: 3 prunes far more (3x fewer nodes) but can hide a
+  // mate behind a pruned quiet move; used to measure speed-vs-safety
+  futil3: {
+    label: 'futility at depth 3 (pre-3.0.1 speed)',
+    params: { search: { futility: { maxDepth: 3 } } },
+    opts: {}
+  },
+
   // doc 05 §25.2 ablations
   nostruct: {
     label: 'A — no structural priority',
@@ -202,7 +210,7 @@ function mergeInto(target, patch) {
 }
 
 /** Play one game; `aWhite` decides which config has the white pieces. */
-function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite }) {
+function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite, timeMs = 0 }) {
   const engines = {
     white: newEngine(aWhite ? cfgA : cfgB, aWhite ? depthA : depthB),
     black: newEngine(aWhite ? cfgB : cfgA, aWhite ? depthB : depthA)
@@ -219,11 +227,14 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite }) {
     const side = engines.white.pos.turn === WHITE ? 'white' : 'black';
     const engine = engines[side];
     const before = engine.fen;
-    const wantDepth = side === 'white' ? depthA : depthB;
+    const wantDepth = side === "white" ? depthA : depthB;
+    // time-limited play: the engine gets a clock instead of a depth, which is how
+    // the UI plays and the only fair way to compare two pruning settings
+    const want = timeMs ? { timeMs } : { depth: wantDepth };
 
     let res;
     try {
-      res = engine.search({ depth: wantDepth });
+      res = engine.search(want);
     } catch (err) {
       return { error: `${side} search threw: ${err && err.message}`, plies, nodes, maxDepth };
     }
@@ -303,12 +314,14 @@ export function summarize(games, side) {
  * ------------------------------------------------------------------ */
 
 function parseArgs(argv) {
-  const out = { games: 20, depth: 5, seed: 1, maxPlies: 300, a: 'base', b: 'plain', suite: null, out: null, quiet: false, variety: false };
+  const out = { games: 20, depth: 5, seed: 1, maxPlies: 300, a: 'base', b: 'plain', suite: null, out: null, quiet: false, variety: false, time: 0 };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const eq = a.indexOf('=');
     const key = eq > 0 ? a.slice(0, eq) : a;
-    const val = eq > 0 ? a.slice(eq + 1) : argv[++i];
+    // a boolean flag must not swallow the next argument (--quiet --out x.js broke here)
+    const next = argv[i + 1];
+    const val = eq > 0 ? a.slice(eq + 1) : (next !== undefined && !next.startsWith("--") ? argv[++i] : true);
     switch (key) {
       case '--list': out.list = true; break;
       case '--a': out.a = val; break;
@@ -321,6 +334,7 @@ function parseArgs(argv) {
       case '--out': out.out = val; break;
       case '--quiet': out.quiet = true; break;
       case '--variety': out.variety = true; break;
+      case '--time': out.time = parseInt(val, 10); break;
       default: throw new Error(`unknown argument "${a}"`);
     }
   }
@@ -342,7 +356,7 @@ export function runMatch(opts) {
     const fen = suite[i % suite.length];
     const aWhite = i % 2 === 0;                 // colour balance
     const r = playGame(cfgA, cfgB, fen, {
-      depthA, depthB, maxPlies: opts.maxPlies, aWhite
+      depthA, depthB, maxPlies: opts.maxPlies, aWhite, timeMs: opts.time
     });
     const over = r.over || { result: 'draw' };
     // `over.result` is the winner by name; convert to A's score
@@ -376,7 +390,7 @@ function main() {
   }
 
   console.log(`\n${label}`);
-  console.log(`  games   ${s.n}  (depth ${opts.depth}, seed ${opts.seed}, max ${opts.maxPlies} plies)`);
+  console.log(`  games   ${s.n}  (${opts.time ? `${opts.time}ms/move` : `depth ${opts.depth}`}, seed ${opts.seed}, max ${opts.maxPlies} plies)`);
   console.log(`  score   ${(s.score * 100).toFixed(1)}%  ±${(s.ci95 * 100).toFixed(1)}  (${s.wins}W ${s.draws}D ${s.losses}L)`);
   console.log(`  errors  ${s.errors}`);
   console.log(`  nodes   ${Math.round(s.avgNodes)} per game`);

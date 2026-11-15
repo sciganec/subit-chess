@@ -24,7 +24,7 @@ import { Searcher, TranspositionTable, MoveOrder, MATE, searchBudget } from './s
 import { generatePlans, describePlans, makePlanOrderer, pareto, PLAN } from './plans.mjs';
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 
-export const VERSION = '3.0.2';
+export const VERSION = '3.0.3';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -174,7 +174,9 @@ export class Engine {
     const timeMs = opts.timeMs !== undefined ? opts.timeMs
       : plan ? plan.timeMs : 0;
 
-    this.evaluation.opts.mode = plan ? plan.evalMode : this.opts.evalMode;
+    // only the meta-controller picks a tier; an explicit user choice (setEvalMode,
+    // or the UI writing evaluation.opts.mode) must survive the next search
+    if (plan) this.evaluation.opts.mode = plan.evalMode;
 
     if (this.opts.usePlans && this.plans.length) {
       const orderer = makePlanOrderer(this.plans, this.pos.turn);
@@ -185,7 +187,9 @@ export class Engine {
     }
 
     this.searcher.setLimits({ depth, timeMs, nodes: opts.nodes || 0 });
-    const result = this.searcher.search(this.pos, { depth, timeMs });
+    // the searcher re-reads its limits from the options it is given, so the node
+    // budget has to travel with them -- setLimits() alone is silently reset
+    const result = this.searcher.search(this.pos, { depth, timeMs, nodes: opts.nodes || 0 });
 
     const risk = riskOf(result, result.depth);
     this.memory.remember(this.pos, {
@@ -231,6 +235,13 @@ export class Engine {
     return out;
   }
 
+  /** Switch the evaluation tier (fast | structural | hybrid) and keep it. */
+  setEvalMode(mode) {
+    this.opts.evalMode = mode;
+    this.evaluation.opts.mode = mode;
+    return this;
+  }
+
   bestMove(opts = {}) {
     const r = this.search(opts);
     return r.move;
@@ -242,10 +253,20 @@ export class Engine {
     if (!target || !this.pos.legalMoves().includes(target)) return null;
     const san = moveToSan(this.pos, target);
     const child = this.pos.clone();
+    // record the position we are leaving before it changes: without this the
+    // repetition stack of the game is empty and threefold can never be seen
+    // (Engine.setFEN() rebuilds the position and clears `rep`)
+    child.pushRep();
     child.makeMove(target);
     const parentStructure = this.structure;
+    const rep = child.rep;
+    const repHi = child.repHi;
+    const repLimit = child.repLimit;
     this.pos = child;
     this.setFEN(this.fen);
+    this.pos.rep = rep;
+    this.pos.repHi = repHi;
+    this.pos.repLimit = repLimit;
     const delta = parentStructure && this.structure
       ? structuralDelta(parentStructure, this.structure)
       : null;

@@ -1297,7 +1297,7 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (e) => applyTheme(e.target.value));
   $('level-select').addEventListener('change', (e) => setLevel(e.target.value));
   $('evalmode-select').addEventListener('change', (e) => {
-    engine.evaluation.opts.mode = e.target.value;
+    if (engine.setEvalMode) engine.setEvalMode(e.target.value); else engine.evaluation.opts.mode = e.target.value;
     analyze();
   });
   document.querySelectorAll('.level-pill').forEach((el) => {

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>SUBIT-CHESS v3.0.2</title>
+<title>SUBIT-CHESS v3.0.3</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -323,7 +323,7 @@ outline:2px solid var(--accent);outline-offset:2px}
 <header class="header">
   <div class="logo">
     <div class="logo-mark">Σ</div>
-    <div><h1>SUBIT-CHESS v3.0.2</h1>
+    <div><h1>SUBIT-CHESS v3.0.3</h1>
     <small>S₀ = I × Z × Φ · SVF v3 · структурний пошук</small></div>
   </div>
   <div class="header-actions">
@@ -758,7 +758,8 @@ export class Position {
     this.hashHi = 0;
     this.phaseMaterial = 0;
     this.ply = 0;
-    this.rep = []; // hashes of positions seen earlier in the game (for repetition)
+    this.rep = []; // 32-bit halves of the hashes of positions seen earlier in the game
+    this.repHi = []; // the other halves: a repetition needs both (32 bits alone can collide)
     this.repLimit = 0; // index of the oldest entry still relevant after an irreversible move
     this.dirty = true;
   }
@@ -808,6 +809,7 @@ export class Position {
     this.refreshPieces();
     this.ply = 0;
     this.rep = [];
+    this.repHi = [];
     this.repLimit = 0;
     return this;
   }
@@ -828,6 +830,7 @@ export class Position {
     p.phaseMaterial = this.phaseMaterial;
     p.ply = this.ply;
     p.dirty = this.dirty;
+    p.repHi = this.repHi.slice();
     p.rep = this.rep.slice();
     p.repLimit = this.repLimit;
     return p;
@@ -1398,18 +1401,24 @@ export class Position {
 
   isRepetition() {
     const start = this.repLimit;
-    for (let i = start; i < this.rep.length; i++) if (this.rep[i] === this.hashLo) return true;
+    // both halves: a 32-bit match alone is a collision, not a repetition, and a
+    // false one can end a won game as a draw
+    for (let i = start; i < this.rep.length; i++) {
+      if (this.rep[i] === this.hashLo && this.repHi[i] === this.hashHi) return true;
+    }
     return false;
   }
 
   repetitionCount() {
     let count = 1;
-    for (let i = this.repLimit; i < this.rep.length; i++) if (this.rep[i] === this.hashLo) count++;
+    for (let i = this.repLimit; i < this.rep.length; i++) {
+      if (this.rep[i] === this.hashLo && this.repHi[i] === this.hashHi) count++;
+    }
     return count;
   }
 
-  pushRep() { this.rep.push(this.hashLo); }
-  popRep() { this.rep.pop(); }
+  pushRep() { this.rep.push(this.hashLo); this.repHi.push(this.hashHi); }
+  popRep() { this.rep.pop(); this.repHi.pop(); }
 
   insufficientMaterial() {
     const w = [], b = [];
@@ -4316,7 +4325,7 @@ export class MetaController {
 
 
 /* ===== src/engine/index.mjs ===== */
-export const VERSION = '3.0.2';
+export const VERSION = '3.0.3';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -4466,7 +4475,9 @@ export class Engine {
     const timeMs = opts.timeMs !== undefined ? opts.timeMs
       : plan ? plan.timeMs : 0;
 
-    this.evaluation.opts.mode = plan ? plan.evalMode : this.opts.evalMode;
+    // only the meta-controller picks a tier; an explicit user choice (setEvalMode,
+    // or the UI writing evaluation.opts.mode) must survive the next search
+    if (plan) this.evaluation.opts.mode = plan.evalMode;
 
     if (this.opts.usePlans && this.plans.length) {
       const orderer = makePlanOrderer(this.plans, this.pos.turn);
@@ -4477,7 +4488,9 @@ export class Engine {
     }
 
     this.searcher.setLimits({ depth, timeMs, nodes: opts.nodes || 0 });
-    const result = this.searcher.search(this.pos, { depth, timeMs });
+    // the searcher re-reads its limits from the options it is given, so the node
+    // budget has to travel with them -- setLimits() alone is silently reset
+    const result = this.searcher.search(this.pos, { depth, timeMs, nodes: opts.nodes || 0 });
 
     const risk = riskOf(result, result.depth);
     this.memory.remember(this.pos, {
@@ -4523,6 +4536,13 @@ export class Engine {
     return out;
   }
 
+  /** Switch the evaluation tier (fast | structural | hybrid) and keep it. */
+  setEvalMode(mode) {
+    this.opts.evalMode = mode;
+    this.evaluation.opts.mode = mode;
+    return this;
+  }
+
   bestMove(opts = {}) {
     const r = this.search(opts);
     return r.move;
@@ -4534,10 +4554,20 @@ export class Engine {
     if (!target || !this.pos.legalMoves().includes(target)) return null;
     const san = moveToSan(this.pos, target);
     const child = this.pos.clone();
+    // record the position we are leaving before it changes: without this the
+    // repetition stack of the game is empty and threefold can never be seen
+    // (Engine.setFEN() rebuilds the position and clears `rep`)
+    child.pushRep();
     child.makeMove(target);
     const parentStructure = this.structure;
+    const rep = child.rep;
+    const repHi = child.repHi;
+    const repLimit = child.repLimit;
     this.pos = child;
     this.setFEN(this.fen);
+    this.pos.rep = rep;
+    this.pos.repHi = repHi;
+    this.pos.repLimit = repLimit;
     const delta = parentStructure && this.structure
       ? structuralDelta(parentStructure, this.structure)
       : null;
@@ -5487,7 +5517,7 @@ function bindEvents() {
   $('theme-select').addEventListener('change', (e) => applyTheme(e.target.value));
   $('level-select').addEventListener('change', (e) => setLevel(e.target.value));
   $('evalmode-select').addEventListener('change', (e) => {
-    engine.evaluation.opts.mode = e.target.value;
+    if (engine.setEvalMode) engine.setEvalMode(e.target.value); else engine.evaluation.opts.mode = e.target.value;
     analyze();
   });
   document.querySelectorAll('.level-pill').forEach((el) => {

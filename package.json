@@ -1,6 +1,6 @@
 {
   "name": "subit-chess",
-  "version": "3.0.2",
+  "version": "3.0.3",
   "description": "Browser chess engine v3: modular ES-module core, SVF positional vector, structural plans, budgeted alpha-beta search; ships as a single offline HTML file",
   "keywords": [
     "chess",

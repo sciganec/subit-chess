@@ -243,7 +243,8 @@ export class Position {
     this.hashHi = 0;
     this.phaseMaterial = 0;
     this.ply = 0;
-    this.rep = []; // hashes of positions seen earlier in the game (for repetition)
+    this.rep = []; // 32-bit halves of the hashes of positions seen earlier in the game
+    this.repHi = []; // the other halves: a repetition needs both (32 bits alone can collide)
     this.repLimit = 0; // index of the oldest entry still relevant after an irreversible move
     this.dirty = true;
   }
@@ -293,6 +294,7 @@ export class Position {
     this.refreshPieces();
     this.ply = 0;
     this.rep = [];
+    this.repHi = [];
     this.repLimit = 0;
     return this;
   }
@@ -313,6 +315,7 @@ export class Position {
     p.phaseMaterial = this.phaseMaterial;
     p.ply = this.ply;
     p.dirty = this.dirty;
+    p.repHi = this.repHi.slice();
     p.rep = this.rep.slice();
     p.repLimit = this.repLimit;
     return p;
@@ -883,18 +886,24 @@ export class Position {
 
   isRepetition() {
     const start = this.repLimit;
-    for (let i = start; i < this.rep.length; i++) if (this.rep[i] === this.hashLo) return true;
+    // both halves: a 32-bit match alone is a collision, not a repetition, and a
+    // false one can end a won game as a draw
+    for (let i = start; i < this.rep.length; i++) {
+      if (this.rep[i] === this.hashLo && this.repHi[i] === this.hashHi) return true;
+    }
     return false;
   }
 
   repetitionCount() {
     let count = 1;
-    for (let i = this.repLimit; i < this.rep.length; i++) if (this.rep[i] === this.hashLo) count++;
+    for (let i = this.repLimit; i < this.rep.length; i++) {
+      if (this.rep[i] === this.hashLo && this.repHi[i] === this.hashHi) count++;
+    }
     return count;
   }
 
-  pushRep() { this.rep.push(this.hashLo); }
-  popRep() { this.rep.pop(); }
+  pushRep() { this.rep.push(this.hashLo); this.repHi.push(this.hashHi); }
+  popRep() { this.rep.pop(); this.repHi.pop(); }
 
   insufficientMaterial() {
     const w = [], b = [];
