@@ -325,7 +325,7 @@ export class Searcher {
         best = result.move;
         bestScore = result.score;
         lastCompleted = {
-          depth, move: best, score: bestScore, nodes: this.nodes,
+          depth, move: best, score: bestScore, nodes: this.nodes, flag: result.flag,
           pv: this.extractPv(),
           seldepth: this.seldepth
         };
@@ -353,6 +353,9 @@ export class Searcher {
       timeMs: elapsed,
       nps: elapsed > 0 ? Math.round((this.nodes * 1000) / elapsed) : 0,
       completed: !!lastCompleted,
+      // the bound flag of the iteration that produced score/depth: a published
+      // score must be exact (SEARCH-INV-002), never a fail-low/fail-high bound
+      flag: info ? info.flag : null,
       ttHits: this.tt.hits,
       ttCutoffs: this.tt.cutoffs
     };

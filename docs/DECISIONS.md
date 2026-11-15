@@ -1,13 +1,13 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v3.0.1**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.2**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
 
 Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s policy vector,
 teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
-ADR 0009+ describe v3.0.1 and are the binding decisions for the current engine.
+ADR 0009+ describe v3.0.2 and are the binding decisions for the current engine.
 
 ---
 
@@ -520,7 +520,7 @@ single offline HTML file (no server, no CDN, no network).
 - Source of truth: `src/engine/*.mjs` (12 modules) + `build/shell.html` (UI).
 - `build/bundle.mjs` walks the import graph from `src/engine/index.mjs`, inlines every
   module into the shell's `<script>` block, and writes both
-  `src/subit_chess_v3.0.1.html` and `index.html`.
+  `src/subit_chess_v3.0.2.html` and `index.html`.
 - The build is deterministic: same input → byte-identical output, and the two artifacts
   always match.
 - No user-facing build step: the repository ships the built file.
@@ -598,7 +598,7 @@ evaluation was both player and referee.
 
 ## ADR 0015 — Futility belongs to the frontier, not to the last ply
 
-**Status:** Accepted (v3.0.1)
+**Status:** Accepted (v3.0.2)
 
 ### Context
 
@@ -639,4 +639,4 @@ defects followed from running it inside the tree rather than only at the frontie
 
 ---
 
-*End of DECISIONS.md — v3.0.1*
+*End of DECISIONS.md — v3.0.2*

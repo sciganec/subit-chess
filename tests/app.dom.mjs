@@ -13,7 +13,7 @@ const { JSDOM } = require('jsdom');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
-const HTML = path.join(root, 'src', 'subit_chess_v3.0.1.html');
+const HTML = path.join(root, 'src', 'subit_chess_v3.0.2.html');
 
 let fails = 0;
 function check(name, cond, extra = '') {
@@ -57,7 +57,7 @@ check('the board is a light/dark checkerboard',
   `${board.querySelectorAll('.sq.light').length}/${board.querySelectorAll('.sq.dark').length}`);
 check('32 pieces are rendered', board.querySelectorAll('.piece-img').length === 32,
   String(board.querySelectorAll('.piece-img').length));
-check('the header carries the version', doc.querySelector('.logo h1').textContent.includes('v3.0.1'),
+check('the header carries the version', doc.querySelector('.logo h1').textContent.includes('v3.0.2'),
   doc.querySelector('.logo h1').textContent);
 check('the status line names the side to move',
   doc.getElementById('status').textContent.includes('Ваш хід'),

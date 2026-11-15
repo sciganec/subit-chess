@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>SUBIT-CHESS v3.0.1</title>
+<title>SUBIT-CHESS v3.0.2</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -323,7 +323,7 @@ outline:2px solid var(--accent);outline-offset:2px}
 <header class="header">
   <div class="logo">
     <div class="logo-mark">Σ</div>
-    <div><h1>SUBIT-CHESS v3.0.1</h1>
+    <div><h1>SUBIT-CHESS v3.0.2</h1>
     <small>S₀ = I × Z × Φ · SVF v3 · структурний пошук</small></div>
   </div>
   <div class="header-actions">
@@ -3373,7 +3373,7 @@ export class Searcher {
         best = result.move;
         bestScore = result.score;
         lastCompleted = {
-          depth, move: best, score: bestScore, nodes: this.nodes,
+          depth, move: best, score: bestScore, nodes: this.nodes, flag: result.flag,
           pv: this.extractPv(),
           seldepth: this.seldepth
         };
@@ -3401,6 +3401,9 @@ export class Searcher {
       timeMs: elapsed,
       nps: elapsed > 0 ? Math.round((this.nodes * 1000) / elapsed) : 0,
       completed: !!lastCompleted,
+      // the bound flag of the iteration that produced score/depth: a published
+      // score must be exact (SEARCH-INV-002), never a fail-low/fail-high bound
+      flag: info ? info.flag : null,
       ttHits: this.tt.hits,
       ttCutoffs: this.tt.cutoffs
     };
@@ -4313,7 +4316,7 @@ export class MetaController {
 
 
 /* ===== src/engine/index.mjs ===== */
-export const VERSION = '3.0.1';
+export const VERSION = '3.0.2';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -4496,6 +4499,9 @@ export class Engine {
       pvMoves: result.pv,
       pvSan: this.pvToSan(result.pv),
       completed: result.completed,
+      // bound flag of the iteration behind score/depth (SEARCH-INV-002);
+      // 0 = exact, 1 = lower bound, 2 = upper bound
+      flag: result.flag,
       risk: RISK_NAME[risk],
       plan: plan ? { depth: plan.depth, timeMs: plan.timeMs, complexity: plan.complexity, uncertainty: plan.uncertainty } : null,
       // sign follows the score: a negative mate score means we get mated

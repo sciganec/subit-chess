@@ -24,7 +24,7 @@ import { Searcher, TranspositionTable, MoveOrder, MATE, searchBudget } from './s
 import { generatePlans, describePlans, makePlanOrderer, pareto, PLAN } from './plans.mjs';
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 
-export const VERSION = '3.0.1';
+export const VERSION = '3.0.2';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -207,6 +207,9 @@ export class Engine {
       pvMoves: result.pv,
       pvSan: this.pvToSan(result.pv),
       completed: result.completed,
+      // bound flag of the iteration behind score/depth (SEARCH-INV-002);
+      // 0 = exact, 1 = lower bound, 2 = upper bound
+      flag: result.flag,
       risk: RISK_NAME[risk],
       plan: plan ? { depth: plan.depth, timeMs: plan.timeMs, complexity: plan.complexity, uncertainty: plan.uncertainty } : null,
       // sign follows the score: a negative mate score means we get mated

@@ -18,7 +18,7 @@ import { Structure } from '../src/engine/structure.mjs';
 import { Evaluation, evaluateFast, DEFAULT_PARAMS, cloneParams } from '../src/engine/evaluate.mjs';
 import { generatePlans, makePlanOrderer } from '../src/engine/plans.mjs';
 import { Engine } from '../src/engine/index.mjs';
-import { MATE } from '../src/engine/search.mjs';
+import { MATE, TT_EXACT } from '../src/engine/search.mjs';
 
 let fails = 0;
 function check(name, cond, extra = '') {
@@ -225,6 +225,25 @@ const LOPSIDED = [
   check('Rc7 is the mating move', r4.san === 'Rc7#' && r4.mate > 0, `${r4.san} mate=${r4.mate}`);
 }
 
+/* ---- 10. a published root score is exact, never a bound ---- */
+{
+  // A fail-low/fail-high bound published as an ordinary score is exactly how a
+  // mate outside the aspiration window reached the UI (SEARCH-INV-002, the
+  // SmallFish game): the bound looks like a quiet evaluation.
+  const positions = [
+    Position.start().fen(),
+    'r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1',
+    '2k5/3R4/p1N1K1p1/P1p5/7p/1p5P/8/8 b - - 1 45',
+    '1k6/1pp2N2/p3P1p1/8/P3K2p/7P/1r6/5R2 w - - 2 38'
+  ];
+  for (const fen of positions) {
+    const e = new Engine(cloneParams(DEFAULT_PARAMS), {});
+    e.setFEN(fen);
+    const r = e.search({ depth: 6 });
+    check(`the published score is exact (${fen.slice(0, 20)}...)`, r.flag === TT_EXACT,
+      `flag=${r.flag} score=${r.score}`);
+  }
+}
 console.log(fails ? `\n${fails} FAILED` : '\nEVAL OK');
 process.exit(fails ? 1 : 0);
 

@@ -31,6 +31,32 @@ Next strength items for the v3 engine (measured, not cosmetic):
 
 ---
 
+## [3.0.2] — 2026-11-15
+
+Search diagnostics: the root reports whether its published score is exact, and a test
+asserts that it always is.
+
+### Added
+
+- `search()` returns the bound flag of the iteration behind `score`/`depth`
+  (`0` = exact, `1` = lower bound, `2` = upper bound), so a bound can no longer be
+  mistaken for an evaluation by callers or by the ablation harness.
+- `tests/engine.eval.mjs` § «the published score is exact»: start position, Kiwipete,
+  the SmallFish mate position and the endgame position all report `flag=0` at depth 6
+  (SEARCH-INV-002).
+
+### Notes
+
+- Closes the open question about a ~270 cp jump between consecutive plies in the
+  SmallFish replay. Re-measured with the same evaluator, only the root aspiration loop
+  differing: before `38.Re1` the pre-3.0.1 engine published `546` with `flag=1`
+  (a lower bound), the exact value is `593`, and after the move both sides report
+  `593 / -593`. There is no discontinuity in the evaluation — the jump was a bound
+  published as a score, the defect fixed in 3.0.1.
+- No strength claim changes: the artifact differs from 3.0.1 only by the diagnostic
+  field and the test.
+
+---
 ## [3.0.1] — 2026-11-15
 
 Search fix: the engine no longer hides a forced mate behind futility pruning.
