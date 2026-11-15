@@ -206,22 +206,30 @@ const PST_CHARS = ' PNBRQK';
 
 function buildPieceSquareTables(params) {
   const tables = [null];   // index 0 unused
+  // flat copies: `mid[t * 128 + sq]` avoids the double indirection of
+  // `tables[t].mid[sq]` in the leaf loop (measured: 42% of search time there)
+  const mid = new Int32Array(7 * 128);
+  const end = new Int32Array(7 * 128);
   for (let t = 1; t <= 6; t++) {
     const ch = PST_CHARS[t];
     const mat = params.material[ch] || 0;
-    const mid = new Int32Array(128);
-    const end = new Int32Array(128);
+    const m = new Int32Array(128);
+    const e = new Int32Array(128);
     const pst = PST[ch];
     for (let sq = 0; sq < 128; sq++) {
       if (sq & 0x88) continue;
       const r = sq >> 4, f = sq & 7;
       const idx = r * 8 + f;
       const v = t === KING ? 0 : mat;
-      mid[sq] = v + pst[idx];
-      end[sq] = v + (t === KING ? KING_ENDGAME[idx] : pst[idx]);
+      m[sq] = v + pst[idx];
+      e[sq] = v + (t === KING ? KING_ENDGAME[idx] : pst[idx]);
+      mid[t * 128 + sq] = m[sq];
+      end[t * 128 + sq] = e[sq];
     }
-    tables[t] = { mid, end };
+    tables[t] = { mid: m, end: e };
   }
+  tables.flatMid = mid;
+  tables.flatEnd = end;
   return tables;
 }
 
@@ -253,6 +261,16 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const T = tables(params);
   const cfg = params.eval || {};
   const mob = cfg.mobility || null;
+  const cfgPassed = cfg.passed || null;
+  const cfgDoubled = cfg.doubled || 0;
+  const cfgIsolated = cfg.isolated || 0;
+  const cfgBishopPair = cfg.bishopPair || 0;
+  const cfgRookOpen = cfg.rookOpen || 0;
+  const cfgRookSemiOpen = cfg.rookSemiOpen || 0;
+  const cfgShield = cfg.kingShield || 0;
+  const cfgShieldEndgame = cfg.kingShieldEndgame || 0;
+  const flatMid = T.flatMid;
+  const flatEnd = T.flatEnd;
   pos.refreshPieces();
   const stmSign = pos.turn === WHITE ? 1 : -1;
   const b = pos.board;
@@ -275,38 +293,23 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
     const sign = color === WHITE ? 1 : -1;
     const list = pos.listSq[color];
     const n = pos.listCnt[color];
+    const mine = pawnMask[color];
     // the tables are stored white-relative; mirror the square for black
-    if (color === WHITE) {
-      for (let i = 0; i < n; i++) {
-        const sq = list[i];
-        const t = b[sq] & 7;
-        mid += sign * T[t].mid[sq];
-        end += sign * T[t].end[sq];
-        if (mob && (t === KNIGHT || t === BISHOP || t === ROOK || t === QUEEN)) {
-          const w = t === KNIGHT ? mob.N : t === BISHOP ? mob.B : t === ROOK ? mob.R : mob.Q;
-          mobility += sign * w * (t === KNIGHT ? knightMobility(b, sq, color) : sliderMobility(b, sq, t, color));
-        }
-        if (t === PAWN) pawnMask[color][sq & 7] |= 1 << (7 - (sq >> 4));
-        else if (t === BISHOP) bishops[color]++;
-        else if (t === ROOK) { if (rookCnt[color] < 10) rookSq[color][rookCnt[color]++] = sq; }
-        else if (t === KING) kingSq[color] = sq;
+    const black = color === WHITE ? 0 : 1;
+    for (let i = 0; i < n; i++) {
+      const sq = list[i];
+      const t = b[sq] & 7;
+      const tsq = black ? (7 - (sq >> 4)) * 16 + (sq & 7) : sq;
+      mid += sign * flatMid[t * 128 + tsq];
+      end += sign * flatEnd[t * 128 + tsq];
+      if (mob && (t === KNIGHT || t === BISHOP || t === ROOK || t === QUEEN)) {
+        const w = t === KNIGHT ? mob.N : t === BISHOP ? mob.B : t === ROOK ? mob.R : mob.Q;
+        mobility += sign * w * (t === KNIGHT ? knightMobility(b, sq, color) : sliderMobility(b, sq, t, color));
       }
-    } else {
-      for (let i = 0; i < n; i++) {
-        const sq = list[i];
-        const t = b[sq] & 7;
-        const idx = (7 - (sq >> 4)) * 16 + (sq & 7);
-        mid += sign * T[t].mid[idx];
-        end += sign * T[t].end[idx];
-        if (mob && (t === KNIGHT || t === BISHOP || t === ROOK || t === QUEEN)) {
-          const w = t === KNIGHT ? mob.N : t === BISHOP ? mob.B : t === ROOK ? mob.R : mob.Q;
-          mobility += sign * w * (t === KNIGHT ? knightMobility(b, sq, color) : sliderMobility(b, sq, t, color));
-        }
-        if (t === PAWN) pawnMask[color][sq & 7] |= 1 << (7 - (sq >> 4));
-        else if (t === BISHOP) bishops[color]++;
-        else if (t === ROOK) { if (rookCnt[color] < 10) rookSq[color][rookCnt[color]++] = sq; }
-        else if (t === KING) kingSq[color] = sq;
-      }
+      if (t === PAWN) mine[sq & 7] |= 1 << (7 - (sq >> 4));
+      else if (t === BISHOP) bishops[color]++;
+      else if (t === ROOK) { if (rookCnt[color] < 10) rookSq[color][rookCnt[color]++] = sq; }
+      else if (t === KING) kingSq[color] = sq;
     }
   }
 
@@ -314,15 +317,15 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   // (40 at the start) while PHASE_TOTAL is the piece total, so using it
   // directly kept the taper switched off through the whole middlegame
   let pawns = 0;
-  for (let f = 0; f < 8; f++) pawns += popcount(pawnMask[0][f]) + popcount(pawnMask[1][f]);
+  for (let f = 0; f < 8; f++) pawns += POP8[pawnMask[0][f]] + POP8[pawnMask[1][f]];
   const nonPawn = pos.phaseMaterial - pawns;
   const phase = 1 - Math.min(1, nonPawn / PHASE_TOTAL);   // 0 opening .. 1 endgame
 
   let score = cfg.taper === false ? (phase < 0.5 ? mid : end) : mid + (end - mid) * phase;
 
   // ---- structural terms, white-positive ----
-  const passed = cfg.passed || null;
-  const shieldW = cfg.kingShield || 0;
+  const passed = cfgPassed;
+  const shieldW = cfgShield;
   if (mobility) score += mobility * (1 - 0.5 * phase);   // mobility matters less in the endgame
 
   for (let color = 0; color < 2; color++) {
@@ -330,25 +333,25 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
     const mine = pawnMask[color];
     const theirs = pawnMask[color ^ 1];
 
-    if (cfg.bishopPair && bishops[color] >= 2) score += sign * cfg.bishopPair;
+    if (cfgBishopPair && bishops[color] >= 2) score += sign * cfgBishopPair;
 
     for (let f = 0; f < 8; f++) {
       const mask = mine[f];
       if (!mask) continue;
-      const n = popcount(mask);
-      if (cfg.doubled && n > 1) score -= sign * cfg.doubled * (n - 1);
+      const n = POP8[mask];
+      if (cfgDoubled && n > 1) score -= sign * cfgDoubled * (n - 1);
       const left = f > 0 ? mine[f - 1] : 0;
       const right = f < 7 ? mine[f + 1] : 0;
-      if (cfg.isolated && !left && !right) score -= sign * cfg.isolated * n;
+      if (cfgIsolated && !left && !right) score -= sign * cfgIsolated * n;
       if (passed) {
         // a pawn is passed when no enemy pawn stands on its file or the adjacent
         // files *in front of it*. Ranks are white-relative, so white looks at
         // higher ranks and black at lower ones.
+        const enemy = theirs[f] | (f > 0 ? theirs[f - 1] : 0) | (f < 7 ? theirs[f + 1] : 0);
         let m = mask;
         while (m) {
-          const r = ctz(m);
+          const r = CTZ8[m & 255];
           m &= m - 1;
-          const enemy = theirs[f] | (f > 0 ? theirs[f - 1] : 0) | (f < 7 ? theirs[f + 1] : 0);
           const blocked = color === WHITE
             ? (enemy & ~((1 << (r + 1)) - 1))
             : (enemy & ((1 << r) - 1));
@@ -362,7 +365,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
       const f = sq & 7;
       if (!mine[f]) {
         // semi-open = enemy pawn still on the file, open = no pawn at all
-        score += sign * (theirs[f] ? (cfg.rookSemiOpen || 0) : (cfg.rookOpen || 0));
+        score += sign * (theirs[f] ? cfgRookSemiOpen : cfgRookOpen);
       }
     }
 
@@ -373,7 +376,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
       const kf = kingSq[color] & 7;
       const kr = 7 - (kingSq[color] >> 4);
       const dir = color === WHITE ? 1 : -1;
-      const weight = shieldW * (1 - (1 - (cfg.kingShieldEndgame || 0)) * phase);
+      const weight = shieldW * (1 - (1 - cfgShieldEndgame) * phase);
       const lo = Math.min(kr + dir, kr + 2 * dir);
       const hi = Math.max(kr + dir, kr + 2 * dir);
       let missing = 0;
@@ -388,10 +391,13 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   return clampScore(score * stmSign + params.tempo, params);
 }
 
-function popcount(x) {
-  let n = 0;
-  while (x) { x &= x - 1; n++; }
-  return n;
+// 8-bit lookup tables: the pawn masks are one byte per file, so a table beats a
+// loop (measured in the leaf loop)
+const POP8 = new Int8Array(256);
+const CTZ8 = new Int8Array(256);
+for (let i = 1; i < 256; i++) {
+  POP8[i] = POP8[i >> 1] + (i & 1);
+  CTZ8[i] = i & 1 ? 0 : CTZ8[i >> 1] + 1;
 }
 
 /* ---------------- mobility (cheap, board-scanned) ---------------- */
@@ -422,12 +428,6 @@ function sliderMobility(b, sq, type, color) {
       break;
     }
   }
-  return n;
-}
-
-function ctz(x) {
-  let n = 0;
-  while (!(x & 1)) { x >>= 1; n++; }
   return n;
 }
 

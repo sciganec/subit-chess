@@ -57,6 +57,44 @@ plies, median 212.5, 1/6 games at the 300-ply cap, reasons `checkmate: 5, max pl
 ---
 ---
 
+## [3.0.5] — 2026-11-15
+
+A leaf-evaluation speedup, measured and value-identical: the same search tree, the same
+nodes, ~7% more of them per second.
+
+### Changed
+
+- **`evaluateFast` is faster at the leaves** (~472k → ~589k evaluations/s, +25%). The
+  piece-square sum now reads flat `Int32Array`s (`mid[t * 128 + sq]`) instead of
+  `tables[t].mid[sq]` (two property loads per piece), the per-term config is hoisted out
+  of the loop, both colours share one piece loop with the square mirrored once instead of
+  a second copy of the loop, and pawn `popcount`/`ctz` are byte lookups.
+- The speedup reaches the search as throughput, not as a different decision: a fixed `d7`
+  search on `2kr1b1r/p1p2pp1/1pn2q1p/1QPp4/3PbB2/2P2N2/PR2BPPP/5RK1 b - - 1 16` needs
+  503402 nodes in 2860 ms → 2654 ms (+7.4% nodes/s) with the same best move (`Qxf4`) and
+  the same score (+4). Evaluation values are unchanged: 10 positions (opening, middlegame,
+  endgame, asymmetric, en-passant, both colours to move) return identical values to the
+  centipawn against the previous build.
+
+### Notes
+
+- Tried and reverted: a per-node pinned-piece mask, to skip the `isAttacked()` legality
+  test for every move that cannot expose its own king. `isAttacked` fell from 8.2% to 7.0%
+  of the profile, but the ray scan that builds the mask costs 1.5%, and the wall clock went
+  the other way (min of 5 `d7` runs: 2636 ms without, 2662 ms with). Reverted: the mask
+  only pays when the attack test dominates, and here it does not — most calls are the
+  per-node check detection, which the mask does not touch.
+- TT sizing is not the lever: `ttBits` 18 vs 20 changed nothing measurable (164k vs 165k
+  nps on the same position, 503402 nodes either way).
+- Cost model after this change (self time, 5 × `d7` searches, 2.5M nodes):
+  `evaluateFast` 39.7%, `scoreMoves` 16.8%, `generateMoves` 14.8%, `isAttacked` 7.0%,
+  `quiescence` 6.1%, `makeMove` 4.5%, `negamax` 3.2%, GC 2.4%. Inside `evaluateFast`:
+  mobility 37%, material + piece-square 55%, pawn/rook/king structure 8%.
+- The remaining 2x is not in `evaluate.mjs`. It needs staged move generation (captures
+  first, quiets after the cutoff) or bitboards: `generateMoves` + `isAttacked` +
+  make/unmake are 27% of the profile and only a representation change moves them. Tracked
+  in `docs/ROADMAP.md`.
+
 ## [3.0.4] — 2026-11-15
 
 Search determinism and a real top difficulty level. Both came from one report: "the

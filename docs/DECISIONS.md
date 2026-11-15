@@ -1,13 +1,13 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v3.0.4**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.5**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
 
 Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s policy vector,
 teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
-ADR 0009+ describe v3.0.4 and are the binding decisions for the current engine.
+ADR 0009+ describe v3.0.5 and are the binding decisions for the current engine.
 
 ---
 
@@ -520,7 +520,7 @@ single offline HTML file (no server, no CDN, no network).
 - Source of truth: `src/engine/*.mjs` (12 modules) + `build/shell.html` (UI).
 - `build/bundle.mjs` walks the import graph from `src/engine/index.mjs`, inlines every
   module into the shell's `<script>` block, and writes both
-  `src/subit_chess_v3.0.4.html` and `index.html`.
+  `src/subit_chess_v3.0.5.html` and `index.html`.
 - The build is deterministic: same input → byte-identical output, and the two artifacts
   always match.
 - No user-facing build step: the repository ships the built file.
@@ -718,6 +718,51 @@ The version was not the cause: v3.0.0 and v3.0.3 return identical moves and scor
   (audit item 8).
 - No Elo claim: this release changes reproducibility and depth, not the evaluation.
 
+## ADR 0018 — the leaf tier is optimized by measurement, and the remaining 2x is a representation change
+
+### Context
+
+Goal: fit `d9` into the 6 s the top UI level may spend. At the v3.0.4 throughput
+(~150-180k nodes/s in the browser build) that is out of reach, so the question was where
+the time actually goes.
+
+Measured on `2kr1b1r/p1p2pp1/1pn2q1p/1QPp4/3PbB2/2P2N2/PR2BPPP/5RK1 b - - 1 16`, `d7`,
+503402 nodes, `node --cpu-prof` over 5 runs, self time over 2.5M nodes:
+
+| where | self time |
+| --- | --- |
+| `evaluateFast` | 42.5% |
+| `scoreMoves` | 16.7% |
+| `generateMoves` | 14.2% |
+| `isAttacked` | 7.2% |
+| `quiescence` | 3.2% |
+| `makeMove` | 3.0% |
+
+Inside the leaf evaluation, ablated: mobility 37%, material + piece-square 55%,
+pawn/rook/king structure 8%.
+
+### Decision
+
+- Optimize the leaf tier without changing its value: flat piece-square tables, one loop
+  for both colours, hoisted config, byte `popcount`/`ctz`. 472k → 589k evaluations/s
+  (+25%), +7.4% nodes/s at the search level, identical values on 10 positions and an
+  identical search tree (503402 nodes, same move, same score).
+- Reject the pinned-piece legality mask: it moved `isAttacked` from 8.2% to 7.0% but cost
+  1.5% to build and lost 1% of wall clock (min of 5 `d7` runs: 2636 ms without, 2662 ms
+  with). The mask only pays when the attack test dominates, and here most of its calls are
+  the per-node check detection, which the mask does not touch.
+- Record that the next 2x is a representation change, not another local optimization:
+  staged move generation and bitboards attack `generateMoves` + `isAttacked` + make/unmake
+  (27% of the profile) and the per-move loops in `scoreMoves` (17%).
+
+### Consequences
+
+- The engine is ~7% faster at the same strength, with the same tree, so any regression test
+  written against node counts stays valid.
+- The next step is stated with the profile numbers and is therefore falsifiable: if staged
+  generation does not push `generateMoves` below 8%, the representation is the problem,
+  not the staging.
+
 ---
 
-*End of DECISIONS.md — v3.0.4*
+*End of DECISIONS.md — v3.0.5*

@@ -1,6 +1,6 @@
 # Roadmap
 
-Direction for **subit-chess** after v3.0.4.
+Direction for **subit-chess** after v3.0.5.
 
 Guiding principles (unchanged):
 - **Evidence over ambition.** Every next step has a pre-registered gate.
@@ -14,7 +14,7 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.4 (2026-11-15)
+## Current state — v3.0.5 (2026-11-15)
 
 **Status:** Engine core rewrite + correctness pass. Strength demonstrated so far is a
 single large fix (evaluation perspective); everything else is still inside the noise band.
@@ -32,6 +32,7 @@ single large fix (evaluation perspective); everything else is still inside the n
 | Repetition survives `Engine.play`, and both hash halves are compared | `tests/engine.eval.mjs`, ADR 0016, v3.0.3 |
 | A node budget and the fast/structural switch are honoured | `tests/engine.eval.mjs`, v3.0.3 |
 | The same position and depth give the same move | `tests/engine.eval.mjs` §12, ADR 0017, v3.0.4 |
+| The leaf tier is faster without changing its value | ADR 0018, v3.0.5: 472k → 589k eval/s, +7.4% nodes/s, identical values on 10 positions, identical tree (503402 nodes) |
 
 **What is not yet known:**
 - Does a ply of depth convert into strength? (the `--a base@5 --b base@4` regression)
@@ -146,6 +147,32 @@ result against the sparring partner over 100 games.
 **Kill criterion:** if best-move agreement is below 50%, stop tuning parameters and fix the
 search/eval contract first — a low agreement rate means the engine is not choosing moves the
 way its own specification says it should.
+
+---
+
+## Gate 6 — search throughput (d9 inside the 6 s clock)
+
+**Why:** the top UI level searches `depth: 10` with a 6 s clock (ADR 0017), and at the
+v3.0.4-3.0.5 throughput a middlegame `d9` does not fit. Strength per second is the only
+lever that does not change the evaluation, so it is worth its own gate.
+
+**Pre-registered metric:** nodes/s on a fixed position at a fixed depth
+(`2kr1b1r/p1p2pp1/1pn2q1p/1QPp4/3PbB2/2P2N2/PR2BPPP/5RK1 b - - 1 16`, `d7`, 503402 nodes),
+plus the profile of where the time goes. Baseline: ~190k nodes/s in Node, 2654 ms for that
+search after v3.0.5 (2860 ms in v3.0.4).
+
+**Plan, in the order the profile justifies:**
+
+| Step | Attacks | Expected | Gate |
+|---|---|---|---|
+| Staged move generation (captures first, quiets after the cutoff) | `generateMoves` 14.8%, `scoreMoves` 16.8% | 20-40% | `generateMoves` self time < 8% |
+| Bitboards (occupancy + attack bitsets) | `generateMoves` 14.8%, `isAttacked` 7.0%, make/unmake 6.5% | 25-40% | `isAttacked` < 3%, make/unmake < 3% |
+| Leaf-tier mobility from precomputed ray tables | mobility = 37% of `evaluateFast` | 5-8% | `evaluateFast` < 25% |
+
+**Kill criterion:** if staged generation does not push `generateMoves` below 8%, the
+representation is the problem, not the staging — go straight to bitboards. If bitboards do
+not reach 300k nodes/s, stop optimizing the search and spend the remaining effort on
+selectivity (better pruning, verified by `base` vs `nopruning` over 100 games).
 
 ---
 
