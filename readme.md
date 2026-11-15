@@ -6,16 +6,16 @@ UI that shows what the engine is actually thinking.
 
 Single-file HTML — no build step for the end user, no server, no CDN, no network access.
 
-**Current release: v3.0.3**
+**Current release: v3.0.4**
 
 ## Quick start
 
-Open `src/subit_chess_v3.0.3.html` in any modern browser (double-click works; the file is
+Open `src/subit_chess_v3.0.4.html` in any modern browser (double-click works; the file is
 fully self-contained).
 
 ```
-1. Pick a level       → 1 Поч / 2 Лег / 3 Сер / 4 Скл / 5 Експ (depth 1 / 2 / 4 / 6 / 8,
-                        2.5 s safety clock on level 5)
+1. Pick a level       → 1 Поч / 2 Лег / 3 Сер / 4 Скл / 5 Експ (depth 1 / 2 / 4 / 6 / 10,
+                         6 s safety clock on level 5)
 2. Play               → click or drag a piece; legal moves show as dots, captures as rings
 3. Watch the panels   → S₀ state, SVF vector, structural plans, relations, search stats
 4. ⚙ Налаштування     → theme, coordinates, move hints, last-move arrow, eval tier
@@ -89,7 +89,7 @@ plus per-side depth (`base@6` vs `base@4`).
 ```
 src/engine/     ES-module engine core (12 modules)
 build/          shell.html (UI) + bundle.mjs (inlines src/engine into one HTML)
-src/            subit_chess_v3.0.3.html ← shipped single-file engine (built)
+src/            subit_chess_v3.0.4.html ← shipped single-file engine (built)
                 subit_chess_v2.2.0.html ← legacy v2 engine (diffusion/ρ_s, kept for reference)
 index.html      copy of the shipped v3 file (convenience)
 tests/          core.perft, engine.smoke/plans/eval/verify/driver/learn, app.dom (jsdom UI)
@@ -103,7 +103,7 @@ runners/        legacy v1.9.1 Node CLI (not used by v3 — see "Honest limitatio
 
 ```bash
 npm install                # only devDependency: jsdom (UI smoke test)
-npm run build              # node build/bundle.mjs → src/subit_chess_v3.0.3.html + index.html
+npm run build              # node build/bundle.mjs → src/subit_chess_v3.0.4.html + index.html
 npm test                   # v3 suite: engine perft/smoke/plans/eval/verify/driver/learn + UI
 npm run test:engine        # engine only
 npm run test:app           # jsdom UI smoke test
@@ -111,7 +111,7 @@ npm run test:legacy        # v2.2.0 single-file suite (128 assertions, kept for 
 ```
 
 `npm run build` is deterministic: the bundled HTML is byte-identical across runs, and
-`src/subit_chess_v3.0.3.html` and `index.html` always match.
+`src/subit_chess_v3.0.4.html` and `index.html` always match.
 
 ## Measured status (honest)
 

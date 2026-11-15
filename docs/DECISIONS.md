@@ -1,13 +1,13 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v3.0.3**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.4**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
 
 Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s policy vector,
 teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
-ADR 0009+ describe v3.0.3 and are the binding decisions for the current engine.
+ADR 0009+ describe v3.0.4 and are the binding decisions for the current engine.
 
 ---
 
@@ -520,7 +520,7 @@ single offline HTML file (no server, no CDN, no network).
 - Source of truth: `src/engine/*.mjs` (12 modules) + `build/shell.html` (UI).
 - `build/bundle.mjs` walks the import graph from `src/engine/index.mjs`, inlines every
   module into the shell's `<script>` block, and writes both
-  `src/subit_chess_v3.0.3.html` and `index.html`.
+  `src/subit_chess_v3.0.4.html` and `index.html`.
 - The build is deterministic: same input → byte-identical output, and the two artifacts
   always match.
 - No user-facing build step: the repository ships the built file.
@@ -598,7 +598,7 @@ evaluation was both player and referee.
 
 ## ADR 0015 — Futility belongs to the frontier, not to the last ply
 
-**Status:** Accepted (v3.0.3)
+**Status:** Accepted (v3.0.1)
 
 ### Context
 
@@ -681,4 +681,43 @@ re-reads its limits from its own options.
 
 ---
 
-*End of DECISIONS.md — v3.0.3*
+---
+
+## ADR 0017 — transposition entries age out, and the top level searches 10 ply
+
+### Context
+
+A game report ("the engine got weaker") turned into a measurement. Two findings:
+
+1. The TT carried a per-entry `generation` but `probe()` never read it, so a bound
+   written under one move order was reused by later searches. Same position, same depth,
+   different move: after 11...O-O a cold `d12` search reported Kxf1 +81.0, while a search
+   preceded by `d6/d8/d10` reported Nf5 +113.2.
+2. The strongest UI level asked for `depth: 8`. On the position after 11...O-O the move is
+   stable (Kxf1 at every depth) but the score is not: 0.0 at d8, +12.0 at d10, +135.0 at
+   d11, +81.0 at d12. At playing depth the engine reported equality where it is winning.
+
+The version was not the cause: v3.0.0 and v3.0.3 return identical moves and scores
+(Kxf1 0.0 / 12.0 / 81.0) on that position.
+
+### Decision
+
+- `TT_MAX_AGE = 1`: an entry older than one search generation is not probed. The cost is
+  2% more nodes on a 22-ply line at 600 ms/move (2.29M vs 2.24M) and no loss of reached
+  depth (150 vs 149 cold, 159 vs 159 warm); the benefit is that the same position no
+  longer depends on what was searched before it.
+- Level 5 searches `depth: 10` with a 6 s clock. Depth is the hard limit, the clock is the
+  safety net; measured d10 in 3.0 s (initial), d9 in 4.0 s and d10 in 5.8 s (critical).
+- The level label reports the searched depth, not the level number.
+
+### Consequences
+
+- Reproducible play: identical position and depth now give the identical move, which also
+  makes regression tests meaningful.
+- The top level can block the main thread for up to 6 s; the Web Worker is still open
+  (audit item 8).
+- No Elo claim: this release changes reproducibility and depth, not the evaluation.
+
+---
+
+*End of DECISIONS.md — v3.0.4*

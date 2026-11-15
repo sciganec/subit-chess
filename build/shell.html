@@ -342,7 +342,7 @@ outline:2px solid var(--accent);outline-offset:2px}
         <div class="avatar engine">SUBIT</div>
         <div class="player-meta">
           <div class="player-name">SUBIT Engine</div>
-          <div class="player-sub" id="engine-sub">Рівень 3 · d3</div>
+          <div class="player-sub" id="engine-sub">Рівень 3 · d4</div>
         </div>
       </div>
       <div class="captured-wrap">
@@ -590,6 +590,19 @@ const THEMES = {
   ocean: { light: '#dee3e6', dark: '#788a94' },
   midnight: { light: '#cfcfcf', dark: '#444444' }
 };
+
+// difficulty: depth is the hard limit, the clock is a safety net so a deep
+// search cannot freeze the page (LEVELS above, levels 1..5). The top level is
+// the strength setting: on a middlegame position the same move (Kxf1) scores
+// 0.0 at d8, +12 at d10 and +135 at d11, so the depth the UI reports is the
+// depth it actually reached.
+const LEVELS = [
+  { depth: 1, timeMs: 0 },
+  { depth: 2, timeMs: 0 },
+  { depth: 4, timeMs: 0 },
+  { depth: 6, timeMs: 0 },
+  { depth: 10, timeMs: 6000 }
+];
 
 /* ---------------- helpers ---------------- */
 
@@ -1111,14 +1124,7 @@ function engineMove() {
 
   setTimeout(() => {
     // difficulty: depth is the hard limit, the clock is a safety net so a deep
-    // search cannot freeze the page (levels 1..5)
-    const LEVELS = [
-      { depth: 1, timeMs: 0 },
-      { depth: 2, timeMs: 0 },
-      { depth: 4, timeMs: 0 },
-      { depth: 6, timeMs: 0 },
-      { depth: 8, timeMs: 2500 }
-    ];
+    // search cannot freeze the page (LEVELS above, levels 1..5)
     const lvl = Math.max(1, Math.min(5, Number(state.settings.level) || 3));
     const plan = LEVELS[lvl - 1];
     let r = null;
@@ -1242,7 +1248,8 @@ function setLevel(level) {
     el.classList.toggle('active', Number(el.dataset.level) === state.settings.level);
   });
   $('level-select').value = String(state.settings.level);
-  $('engine-sub').textContent = 'Рівень ' + state.settings.level + ' · d' + state.settings.level;
+  const plan = LEVELS[state.settings.level - 1];
+  $('engine-sub').textContent = 'Рівень ' + state.settings.level + ' · d' + plan.depth;
 }
 
 function bindEvents() {

@@ -23,7 +23,7 @@ Strength and measurement items for the v3 engine (measured, not cosmetic):
 - **Spec compliance debt:** plan feasibility and `pareto()` (doc 11), no-op
   `contextAdjust` (doc 05 §context), `structure` gaps, `verify` coverage,
   `meta` thresholds (docs 31/32/33/36).
-- **Search hygiene:** TT aging (entries are never evicted), dead `contextBonus`
+- **Search hygiene:** dead `contextBonus`
   in `index.mjs` (always returns 0), `Score.diff` never set.
 
 ### Added
@@ -56,6 +56,45 @@ plies, median 212.5, 1/6 games at the 300-ply cap, reasons `checkmate: 5, max pl
 ---
 ---
 ---
+
+## [3.0.4] — 2026-11-15
+
+Search determinism and a real top difficulty level. Both came from one report: "the
+engine got weaker" after a game in which it lost a position it had evaluated as equal.
+
+### Fixed
+
+- **The root move depended on what had been searched before.** The transposition table
+  stored a generation counter per entry but `probe()` never read it, so bounds written
+  under one move order were reused in later searches and could flip the root choice. On
+  the position after 11...O-O a cold `d12` search reported Kxf1 +81.0; the same search
+  after `d6/d8/d10` reported Nf5 +113.2 — a 32 cp swing from stale entries, not from
+  the position. Entries older than one generation are now ignored (`TT_MAX_AGE`), which
+  makes the result independent of history. Regression: `tests/engine.eval.mjs` §12.
+- **The top difficulty level searched 8 ply.** Level 5 asked for `depth: 8`. On the
+  position after 11...O-O the engine keeps the same move from d8 to d12 (Kxf1) but its
+  score moves 0.0 → +12.0 → +135.0 → +81.0, so at playing depth it reported equality
+  where it is winning. Level 5 now searches `depth: 10` with a 6 s clock (measured: d10
+  in 3.0 s from the initial position; d9 in 4.0 s and d10 in 5.8 s on that middlegame
+  position). This raises general depth; it does **not** make the reported game's score
+  accurate — that needs d11, ≈13 s, which a browser UI cannot spend.
+
+### Changed
+
+- The level label shows the depth that is actually searched (`Рівень 3 · d4`), not the
+  level number; `LEVELS` moved to module scope so `setLevel()` can read it.
+
+### Notes
+
+- Cost of aging: 2.29M nodes vs 2.24M on a 22-ply line at 600 ms/move (+2%), reached
+  depth 150 vs 149 (cold) and 159 vs 159 (warm). No strength measurement backs a claim
+  either way — the change is about reproducibility, not Elo.
+- Not a regression release: v3.0.0 and v3.0.3 return identical moves and scores on the
+  critical position (Kxf1 0.0 / 12.0 / 81.0 at d8/d10/d12). What changed between releases
+  (futility, aspiration, repetition) never touched this line.
+- The move in the reported game was never the problem: the engine's own deeper search
+  prefers Kxf1 at every depth, and the human's 12.Nf5 was scored +113 only while stale
+  TT entries were in play. With aging the same search reports Kxf1 (+135 at d11).
 
 ## [3.0.3] — 2026-11-15
 

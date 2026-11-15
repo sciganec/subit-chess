@@ -13,7 +13,7 @@ const { JSDOM } = require('jsdom');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
-const HTML = path.join(root, 'src', 'subit_chess_v3.0.3.html');
+const HTML = path.join(root, 'src', 'subit_chess_v3.0.4.html');
 
 let fails = 0;
 function check(name, cond, extra = '') {
@@ -57,7 +57,7 @@ check('the board is a light/dark checkerboard',
   `${board.querySelectorAll('.sq.light').length}/${board.querySelectorAll('.sq.dark').length}`);
 check('32 pieces are rendered', board.querySelectorAll('.piece-img').length === 32,
   String(board.querySelectorAll('.piece-img').length));
-check('the header carries the version', doc.querySelector('.logo h1').textContent.includes('v3.0.3'),
+check('the header carries the version', doc.querySelector('.logo h1').textContent.includes('v3.0.4'),
   doc.querySelector('.logo h1').textContent);
 check('the status line names the side to move',
   doc.getElementById('status').textContent.includes('Ваш хід'),
@@ -140,6 +140,16 @@ doc.getElementById('theme-select').dispatchEvent(new dom.window.Event('change', 
 check('the board theme switches',
   doc.documentElement.style.getPropertyValue('--light-sq') === '#f0d9b5',
   doc.documentElement.style.getPropertyValue('--light-sq'));
+
+/* the difficulty pills advertise the depth they actually search */
+click(doc.querySelector('.level-pill[data-level="5"]'));
+check('level 5 advertises its search depth',
+  doc.getElementById('engine-sub').textContent.endsWith('d10'),
+  doc.getElementById('engine-sub').textContent);
+click(doc.querySelector('.level-pill[data-level="1"]'));
+check('level 1 advertises its search depth',
+  doc.getElementById('engine-sub').textContent.endsWith('d1'),
+  doc.getElementById('engine-sub').textContent);
 
 check('no runtime errors were reported', errors.length === 0, errors.join('; '));
 

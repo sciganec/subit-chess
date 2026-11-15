@@ -18,7 +18,7 @@ import { Structure } from '../src/engine/structure.mjs';
 import { Evaluation, evaluateFast, DEFAULT_PARAMS, cloneParams } from '../src/engine/evaluate.mjs';
 import { generatePlans, makePlanOrderer } from '../src/engine/plans.mjs';
 import { Engine } from '../src/engine/index.mjs';
-import { MATE, TT_EXACT } from '../src/engine/search.mjs';
+import { MATE, TT_EXACT, TT_LOWER, TT_UPPER, TranspositionTable } from '../src/engine/search.mjs';
 
 let fails = 0;
 function check(name, cond, extra = '') {
@@ -263,6 +263,49 @@ const LOPSIDED = [
   e2.setFEN(Position.start().fen());
   const r = e2.search({ depth: 8, nodes: 1 });
   check('a node budget is honoured', r.nodes <= 2, `nodes=${r.nodes}`);
+}
+/* ---- 12. TT entries age out, so the root move cannot depend on history ---- */
+{
+  // A bound written under one move order can flip the root choice: after
+  // 11...O-O a cold d12 search reported Kxf1 +81.0, while the same search
+  // preceded by d6/d8/d10 reported Nf5 +113.2. Stale entries must be ignored.
+  const INF = 1e9;
+  const tt = new TranspositionTable(12);
+  const key = 0x9e3779b9;
+  const mv = 0x1234;
+  tt.store(key, 8, 42, TT_EXACT, mv, 0);
+  check('a fresh TT entry is probed', tt.probe(key, 4, -INF, INF, 0) !== null);
+  tt.newGeneration();
+  check('an entry one generation old is still probed', tt.probe(key, 4, -INF, INF, 0) !== null);
+  tt.newGeneration();
+  check('an entry two generations old is ignored', tt.probe(key, 4, -INF, INF, 0) === null);
+  check('the stored move is gone with the stale entry', tt.moveFor(key) === mv,
+    `moveFor=${tt.moveFor(key)}`);
+
+  // the same position must give the same root move whether or not a shallower
+  // search ran before it
+  const FEN = 'r1bq1rk1/pppp1ppp/5n2/4P1B1/3N1P2/2P5/P3Q1PP/R3Kn1R w KQ - 1 12';
+  const cold = new Engine(cloneParams(DEFAULT_PARAMS), {});
+  cold.setFEN(FEN);
+  const rc = cold.search({ depth: 9 });
+  const warm = new Engine(cloneParams(DEFAULT_PARAMS), {});
+  warm.setFEN(FEN);
+  for (const d of [5, 7]) warm.search({ depth: d });
+  const rw = warm.search({ depth: 9 });
+  check('the root move is independent of the search history', rc.move === rw.move,
+    `cold=${rc.san} warm=${rw.san}`);
+  check('the warm score equals the cold score', rc.score === rw.score,
+    `cold=${rc.score} warm=${rw.score}`);
+
+  // a bound entry is never published as an exact score (SEARCH-INV-002)
+  const tt2 = new TranspositionTable(12);
+  tt2.store(key, 8, 42, TT_LOWER, mv, 0);
+  const hit = tt2.probe(key, 4, -INF, INF, 0);
+  check('a lower bound is reported as such', !!hit && hit.flag === TT_LOWER,
+    hit ? `flag=${hit.flag}` : 'null');
+  const upper = new TranspositionTable(12);
+  upper.store(key, 8, 42, TT_UPPER, mv, 0);
+  check('an upper bound is reported as such', upper.probe(key, 4, -INF, INF, 0).flag === TT_UPPER);
 }
 console.log(fails ? `\n${fails} FAILED` : '\nEVAL OK');
 process.exit(fails ? 1 : 0);

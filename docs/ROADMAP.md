@@ -1,6 +1,6 @@
 # Roadmap
 
-Direction for **subit-chess** after v3.0.3.
+Direction for **subit-chess** after v3.0.4.
 
 Guiding principles (unchanged):
 - **Evidence over ambition.** Every next step has a pre-registered gate.
@@ -14,7 +14,7 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.3 (2026-11-15)
+## Current state — v3.0.4 (2026-11-15)
 
 **Status:** Engine core rewrite + correctness pass. Strength demonstrated so far is a
 single large fix (evaluation perspective); everything else is still inside the noise band.
@@ -28,9 +28,10 @@ single large fix (evaluation perspective); everything else is still inside the n
 | Depth is not yet paying | depth 5 vs 4: 45.8% ± 22.4 over 12 games |
 | Structural layers do not yet pay | `base` vs `plain`: 56.3% ± 34.3 over 8 games |
 | The root move is a true argmax | brute-force comparison on 3 positions: 8/109/82 |
-| A forced mate is no longer hidden by futility pruning | regression in `tests/engine.eval.mjs`, v3.0.3 |
+| A forced mate is no longer hidden by futility pruning | regression in `tests/engine.eval.mjs`, v3.0.1 |
 | Repetition survives `Engine.play`, and both hash halves are compared | `tests/engine.eval.mjs`, ADR 0016, v3.0.3 |
 | A node budget and the fast/structural switch are honoured | `tests/engine.eval.mjs`, v3.0.3 |
+| The same position and depth give the same move | `tests/engine.eval.mjs` §12, ADR 0017, v3.0.4 |
 
 **What is not yet known:**
 - Does a ply of depth convert into strength? (the `--a base@5 --b base@4` regression)
@@ -46,9 +47,10 @@ single large fix (evaluation perspective); everything else is still inside the n
   mean game length of a run is currently unknown.
 - **Sample size.** 8-20 games gives a ±13-34 pp interval. Anything below ~100 Elo is
   unmeasurable at that size.
-- **Debt:** TT entries never age out; `contextBonus` in `index.mjs` always returns 0
-  (dead ordering term); `Score.diff` is never written. (`unmakeNullMove` was re-checked:
-  it restores `turn` from the undo record, there is no `stm++` bug.)
+- **Debt:** `contextBonus` in `index.mjs` always returns 0 (dead ordering term);
+  `Score.diff` is never written. (TT aging landed in 3.0.4: entries older than one
+  generation are ignored, `tests/engine.eval.mjs` §12.) (`unmakeNullMove` was
+  re-checked: it restores `turn` from the undo record, there is no `stm++` bug.)
 
 ---
 

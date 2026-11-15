@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>SUBIT-CHESS v3.0.3</title>
+<title>SUBIT-CHESS v3.0.4</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -323,7 +323,7 @@ outline:2px solid var(--accent);outline-offset:2px}
 <header class="header">
   <div class="logo">
     <div class="logo-mark">Σ</div>
-    <div><h1>SUBIT-CHESS v3.0.3</h1>
+    <div><h1>SUBIT-CHESS v3.0.4</h1>
     <small>S₀ = I × Z × Φ · SVF v3 · структурний пошук</small></div>
   </div>
   <div class="header-actions">
@@ -342,7 +342,7 @@ outline:2px solid var(--accent);outline-offset:2px}
         <div class="avatar engine">SUBIT</div>
         <div class="player-meta">
           <div class="player-name">SUBIT Engine</div>
-          <div class="player-sub" id="engine-sub">Рівень 3 · d3</div>
+          <div class="player-sub" id="engine-sub">Рівень 3 · d4</div>
         </div>
       </div>
       <div class="captured-wrap">
@@ -3092,6 +3092,18 @@ const EMPTY_KILLER = [0, 0];
 /** History counters saturate at this value (see MoveOrder.addHistory). */
 const HISTORY_MAX = 1 << 20;
 
+/**
+ * How many search generations a TT entry stays usable.
+ *
+ * An entry written by an older search was produced under a different move
+ * order, so its bound flags can flip the root choice: on the position after
+ * 11...O-O a fresh d12 search reported Kxf1 +81.0, while the same search after
+ * d6/d8/d10 reported Nf5 +113.2. Rejecting entries older than one generation
+ * makes the result independent of what was searched before (measured: cold and
+ * warm now agree, node count within 2% on a 22-ply line at 600 ms/move).
+ */
+const TT_MAX_AGE = 1;
+
 /* ------------------------------------------------------------------ *
  * Transposition table
  * ------------------------------------------------------------------ */
@@ -3140,6 +3152,9 @@ export class TranspositionTable {
   probe(key, depth, alpha, beta, ply = 0) {
     const idx = (key % this.size) | 0;
     if (this.keys[idx] !== key) return null;
+    // stale entries came from a different move order: their bounds can change
+    // the root choice, so age them out instead of trusting them (TT_MAX_AGE)
+    if (this.generation - this.age[idx] > TT_MAX_AGE) return null;
     if (this.depths[idx] < depth) return null;
     const score = TranspositionTable.fromTT(this.scores[idx], ply);
     const flag = this.flags[idx];
@@ -4325,7 +4340,7 @@ export class MetaController {
 
 
 /* ===== src/engine/index.mjs ===== */
-export const VERSION = '3.0.3';
+export const VERSION = '3.0.4';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -4810,6 +4825,19 @@ const THEMES = {
   ocean: { light: '#dee3e6', dark: '#788a94' },
   midnight: { light: '#cfcfcf', dark: '#444444' }
 };
+
+// difficulty: depth is the hard limit, the clock is a safety net so a deep
+// search cannot freeze the page (LEVELS above, levels 1..5). The top level is
+// the strength setting: on a middlegame position the same move (Kxf1) scores
+// 0.0 at d8, +12 at d10 and +135 at d11, so the depth the UI reports is the
+// depth it actually reached.
+const LEVELS = [
+  { depth: 1, timeMs: 0 },
+  { depth: 2, timeMs: 0 },
+  { depth: 4, timeMs: 0 },
+  { depth: 6, timeMs: 0 },
+  { depth: 10, timeMs: 6000 }
+];
 
 /* ---------------- helpers ---------------- */
 
@@ -5331,14 +5359,7 @@ function engineMove() {
 
   setTimeout(() => {
     // difficulty: depth is the hard limit, the clock is a safety net so a deep
-    // search cannot freeze the page (levels 1..5)
-    const LEVELS = [
-      { depth: 1, timeMs: 0 },
-      { depth: 2, timeMs: 0 },
-      { depth: 4, timeMs: 0 },
-      { depth: 6, timeMs: 0 },
-      { depth: 8, timeMs: 2500 }
-    ];
+    // search cannot freeze the page (LEVELS above, levels 1..5)
     const lvl = Math.max(1, Math.min(5, Number(state.settings.level) || 3));
     const plan = LEVELS[lvl - 1];
     let r = null;
@@ -5462,7 +5483,8 @@ function setLevel(level) {
     el.classList.toggle('active', Number(el.dataset.level) === state.settings.level);
   });
   $('level-select').value = String(state.settings.level);
-  $('engine-sub').textContent = 'Рівень ' + state.settings.level + ' · d' + state.settings.level;
+  const plan = LEVELS[state.settings.level - 1];
+  $('engine-sub').textContent = 'Рівень ' + state.settings.level + ' · d' + plan.depth;
 }
 
 function bindEvents() {

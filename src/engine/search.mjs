@@ -35,6 +35,18 @@ const EMPTY_KILLER = [0, 0];
 /** History counters saturate at this value (see MoveOrder.addHistory). */
 const HISTORY_MAX = 1 << 20;
 
+/**
+ * How many search generations a TT entry stays usable.
+ *
+ * An entry written by an older search was produced under a different move
+ * order, so its bound flags can flip the root choice: on the position after
+ * 11...O-O a fresh d12 search reported Kxf1 +81.0, while the same search after
+ * d6/d8/d10 reported Nf5 +113.2. Rejecting entries older than one generation
+ * makes the result independent of what was searched before (measured: cold and
+ * warm now agree, node count within 2% on a 22-ply line at 600 ms/move).
+ */
+const TT_MAX_AGE = 1;
+
 /* ------------------------------------------------------------------ *
  * Transposition table
  * ------------------------------------------------------------------ */
@@ -83,6 +95,9 @@ export class TranspositionTable {
   probe(key, depth, alpha, beta, ply = 0) {
     const idx = (key % this.size) | 0;
     if (this.keys[idx] !== key) return null;
+    // stale entries came from a different move order: their bounds can change
+    // the root choice, so age them out instead of trusting them (TT_MAX_AGE)
+    if (this.generation - this.age[idx] > TT_MAX_AGE) return null;
     if (this.depths[idx] < depth) return null;
     const score = TranspositionTable.fromTT(this.scores[idx], ply);
     const flag = this.flags[idx];
