@@ -1,36 +1,39 @@
 {
   "name": "subit-chess",
-  "version": "1.9.1",
-  "description": "Browser chess engine with S₀ morphological grammar (I×Z×Φ=48) and ρ_s policy vector on 8 signal cells",
+  "version": "3.0.0",
+  "description": "Browser chess engine v3: modular ES-module core, SVF positional vector, structural plans, budgeted alpha-beta search; ships as a single offline HTML file",
   "keywords": [
     "chess",
     "chess-engine",
     "subit",
-    "grammar",
-    "telemetry",
-    "rho-s",
+    "svf",
+    "positional-plans",
     "alpha-beta",
+    "iterative-deepening",
+    "ablation-harness",
     "browser",
-    "single-file"
+    "single-file",
+    "offline"
   ],
   "license": "MIT",
   "author": "SUBIT",
-  "homepage": "https://github.com/USER/subit-chess",
+  "homepage": "https://github.com/sciganec/subit-chess",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/USER/subit-chess.git"
+    "url": "git+https://github.com/sciganec/subit-chess.git"
   },
   "bugs": {
-    "url": "https://github.com/USER/subit-chess/issues"
+    "url": "https://github.com/sciganec/subit-chess/issues"
   },
-  "main": "src/subit_chess_v1.9.1.html",
-  "browser": "src/subit_chess_v1.9.1.html",
+  "main": "src/subit_chess_v3.0.0.html",
+  "browser": "src/subit_chess_v3.0.0.html",
   "files": [
     "src/",
-    "runners/",
+    "build/",
+    "bench/",
     "tests/",
     "docs/",
-    "README.md",
+    "readme.md",
     "LICENSE",
     "CHANGELOG.md"
   ],
@@ -39,22 +42,23 @@
     "node": ">=20"
   },
   "scripts": {
-    "test": "node tests/test.js",
-    "test:perft": "node tests/test.js --only-perft",
-    "test:policy": "node tests/test.js --only-policy",
-
-    "selfplay": "node runners/run.js --mode selfplay --games 100 --depth 2",
-    "teacher": "node runners/run.js --mode teacher --games 100 --depth 2 --out results/run1.json",
-
-    "match": "node runners/run.js --mode match --games 400 --depth 2 --seed 42",
-    "match:baseline": "node runners/run.js --mode match --games 400 --depth 2 --seed 42 --policy off",
-    "match:rho8": "node runners/run.js --mode match --games 400 --depth 2 --seed 42 --policy on",
-
-    "screening": "node runners/run.js --mode match --games 200 --depth 2 --seed 42",
-    "screening:baseline": "node runners/run.js --mode match --games 200 --depth 2 --seed 42 --policy off",
-
+    "build": "node build/bundle.mjs",
+    "test": "node tests/core.perft.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/app.dom.mjs",
+    "test:engine": "node tests/core.perft.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs",
+    "test:app": "node tests/app.dom.mjs",
+    "test:perft": "node tests/core.perft.mjs",
+    "test:eval": "node tests/engine.eval.mjs",
+    "test:invariants": "node tests/engine.verify.mjs",
+    "test:legacy": "node tests/test.js",
+    "bench:engine": "node src/engine/index.mjs bench",
+    "analyze:engine": "node src/engine/index.mjs analyze",
+    "search:engine": "node src/engine/index.mjs search",
+    "selfplay:engine": "node src/engine/index.mjs selfplay",
+    "match:engine": "node bench/match.mjs --a base --b plain --games 20 --depth 5 --seed 7",
+    "match:ablate": "node bench/match.mjs --a base --b nostruct --games 40 --depth 5 --seed 7",
+    "match:depth": "node bench/match.mjs --a base@5 --b base@4 --games 40 --depth 5 --seed 7",
     "clean": "node -e \"require('fs').rmSync('results',{recursive:true,force:true});require('fs').mkdirSync('results',{recursive:true});require('fs').writeFileSync('results/.gitkeep','')\"",
-    "release": "npm run test && git tag v$npm_package_version && git push origin v$npm_package_version"
+    "release": "npm run build && npm test && git tag v$npm_package_version && git push origin v$npm_package_version"
   },
   "devDependencies": {
     "jsdom": "^24.1.0"
