@@ -310,12 +310,15 @@ export class Searcher {
       let beta = depth >= 4 ? prevScore + window.window : INF;
 
       let result = null;
-      for (let attempt = 0; attempt < 4; attempt++) {
+      for (let attempt = 0; attempt < 2; attempt++) {
         result = this.negamaxRoot(rootMoves, depth, alpha, beta, prevScore, best);
         if (this.stop && !result.completed) break;
-        if (result.score <= alpha && attempt < 3) { alpha -= window.widen * (attempt + 1); continue; }
-        if (result.score >= beta && attempt < 3) { beta += window.widen * (attempt + 1); continue; }
-        break;
+        if (result.flag === TT_EXACT) break;
+        // A bound is not a score: re-search with an open window instead of
+        // publishing the bound, which hides a mate outside the aspiration
+        // window (doc 05 §aspiration, SEARCH-INV-002).
+        alpha = -INF;
+        beta = INF;
       }
       if (result && result.completed) {
         prevScore = result.score;
@@ -405,11 +408,12 @@ export class Searcher {
       if (alpha >= beta) break;
     }
 
+    let flag = TT_EXACT;
     if (completed && bestMove) {
-      const flag = bestScore <= alphaOrig ? TT_UPPER : bestScore >= beta ? TT_LOWER : TT_EXACT;
+      flag = bestScore <= alphaOrig ? TT_UPPER : bestScore >= beta ? TT_LOWER : TT_EXACT;
       if (this.useTT) this.tt.store(pos.key, depth, bestScore, flag, bestMove, 0);
     }
-    return { move: bestMove, score: bestScore, completed };
+    return { move: bestMove, score: bestScore, completed, flag };
   }
 
   copyPvLine(ply) {
@@ -477,6 +481,7 @@ export class Searcher {
     let bestScore = -INF;
     let bestMove = 0;
     let legal = 0;
+    let pruned = 0;
     const lmr = this.params.search.lmr;
     const futility = this.params.search.futility;
 
@@ -489,7 +494,7 @@ export class Searcher {
       if (this.useFutility && futility.enabled && depth <= futility.maxDepth &&
           !pvNode && isQuiet && !inCheck && bestScore > -INF) {
         const staticScore = this.ev.evaluate(pos, depth);
-        if (staticScore + futility.margin <= alpha) continue;
+        if (staticScore + futility.margin <= alpha) { pruned++; continue; }
       }
 
       pos.pushRep();
@@ -553,7 +558,13 @@ export class Searcher {
       }
     }
 
-    if (legal === 0) return inCheck ? -MATE + ply : 0;
+    if (legal === 0) {
+      // A node where every quiet move was futility-pruned was never searched:
+      // it is not stalemate, and reporting 0 here hides mates and wins. Fall
+      // back to the static evaluation (doc 05 §futility).
+      if (pruned > 0) return this.ev.evaluate(pos, depth);
+      return inCheck ? -MATE + ply : 0;
+    }
 
     if (this.useTT) {
       const flag = bestScore <= alphaOrig ? TT_UPPER : TT_EXACT;

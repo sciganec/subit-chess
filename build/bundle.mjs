@@ -25,7 +25,8 @@ const root = path.resolve(here, '..');
 const ENGINE = path.join(root, 'src', 'engine');
 const ENTRY = path.join(ENGINE, 'index.mjs');
 const SHELL = path.join(root, 'build', 'shell.html');
-const OUT = path.join(root, 'src', 'subit_chess_v3.0.0.html');
+const VERSION = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+const OUT = path.join(root, 'src', 'subit_chess_v' + VERSION + '.html');
 // the repository entry point: opening the project root must serve the current
 // app, not a stale copy of an older release
 const PAGE = path.join(root, 'index.html');
@@ -88,7 +89,7 @@ function main() {
 
   const bundle = parts.join('\n');
   const shell = fs.readFileSync(SHELL, 'utf8');
-  const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version;
+  const version = VERSION;
   const html = shell
     .split('/*__VERSION__*/').join(version)
     .replace('/*__MODULES__*/', () => bundle);

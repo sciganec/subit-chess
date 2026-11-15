@@ -18,6 +18,7 @@ import { Structure } from '../src/engine/structure.mjs';
 import { Evaluation, evaluateFast, DEFAULT_PARAMS, cloneParams } from '../src/engine/evaluate.mjs';
 import { generatePlans, makePlanOrderer } from '../src/engine/plans.mjs';
 import { Engine } from '../src/engine/index.mjs';
+import { MATE } from '../src/engine/search.mjs';
 
 let fails = 0;
 function check(name, cond, extra = '') {
@@ -195,6 +196,33 @@ const LOPSIDED = [
   p.setFEN('8/8/4k3/8/8/4K3/8/R7 w - - 100 80');   // rook endgame, no progress
   check('the 75-move rule ends the game', p.status() === null || p.status().reason !== 'fifty-move rule');
   void engine;
+}
+
+/* ---------------- 9. pruning must not hide a forced mate ---------------- */
+{
+  // SUBIT-CHESS v3.0.0 vs SmallFish, after 45.Nc6: black is mated in 2
+  // (45...b2 46.Kd6 g5 47.Rc7#). Futility pruning at depth <= 3 reported
+  // -471 cp at depth 8 instead of the mate, so the engine promoted into a mate
+  // it could not see. A bound is not a score, and a pruned node is not stalemate.
+  const HID_MATE = '2k5/3R4/p1N1K1p1/P1p5/7p/1p5P/8/8 b - - 1 45';
+  const e = new Engine(cloneParams(DEFAULT_PARAMS), {});
+  e.setFEN(HID_MATE);
+  const r = e.search({ depth: 8 });
+  check('a forced mate is not hidden by frontier pruning', r.mate !== null && r.score <= -(MATE - 1000),
+    `mate=${r.mate} score=${r.score}`);
+  check('the mate is reported from the mated side', r.score < 0 && r.mate < 0, `mate=${r.mate}`);
+
+  const e2 = new Engine(cloneParams(DEFAULT_PARAMS), {});
+  e2.setFEN('2k5/3R4/p1N1K1p1/P1p5/7p/7P/1p6/8 w - - 0 46');   // after 45...b2
+  const r2 = e2.search({ depth: 6 });
+  check('the mating side sees the mate', r2.mate !== null && r2.mate > 0, `mate=${r2.mate}`);
+  check('the mating move is Kd6', r2.san === 'Kd6', r2.san);
+  e2.play('e6d6');
+  const r3 = e2.search({ depth: 6 });
+  check('Kd6 forces mate against black', r3.mate !== null && r3.mate < 0, `mate=${r3.mate}`);
+  e2.play('b2b1q');                                     // 46...b1=Q
+  const r4 = e2.search({ depth: 6 });
+  check('Rc7 is the mating move', r4.san === 'Rc7#' && r4.mate > 0, `${r4.san} mate=${r4.mate}`);
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nEVAL OK');

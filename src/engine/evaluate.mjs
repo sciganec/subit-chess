@@ -74,7 +74,11 @@ export const DEFAULT_PARAMS = {
   search: {
     nullMove: { enabled: true, minDepth: 3, reduction: 2, maxReduction: 3 },
     lmr: { enabled: true, minDepth: 3, minMoveIndex: 3, reduction: 1 },
-    futility: { enabled: true, margin: 120, maxDepth: 3 },
+    // Futility is only sound at the frontier: a pruned quiet move can be a mate
+    // in one, so pruning at depth 1..3 hides forced mates (measured on the
+    // SmallFish game: a mate in 2 was reported as -471 cp at depth 8 with
+    // maxDepth 3, and as -99996 with maxDepth <= 1).
+    futility: { enabled: true, margin: 120, maxDepth: 1 },
     checkExtension: 1,
     extensionBudget: 6,
     aspiration: { window: 25, widen: 40, maxWiden: 8 },

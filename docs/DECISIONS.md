@@ -1,13 +1,13 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v3.0.0**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.1**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
 
 Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s policy vector,
 teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
-ADR 0009+ describe v3.0.0 and are the binding decisions for the current engine.
+ADR 0009+ describe v3.0.1 and are the binding decisions for the current engine.
 
 ---
 
@@ -520,7 +520,7 @@ single offline HTML file (no server, no CDN, no network).
 - Source of truth: `src/engine/*.mjs` (12 modules) + `build/shell.html` (UI).
 - `build/bundle.mjs` walks the import graph from `src/engine/index.mjs`, inlines every
   module into the shell's `<script>` block, and writes both
-  `src/subit_chess_v3.0.0.html` and `index.html`.
+  `src/subit_chess_v3.0.1.html` and `index.html`.
 - The build is deterministic: same input → byte-identical output, and the two artifacts
   always match.
 - No user-facing build step: the repository ships the built file.
@@ -596,4 +596,47 @@ evaluation was both player and referee.
 
 ---
 
-*End of DECISIONS.md — v3.0.0*
+## ADR 0015 — Futility belongs to the frontier, not to the last ply
+
+**Status:** Accepted (v3.0.1)
+
+### Context
+
+Futility pruning discarded quiet moves that could not raise alpha even at `depth <= 3`. Two
+defects followed from running it inside the tree rather than only at the frontier:
+
+1. **A pruned node looked like a draw.** `negamax` computed `legal === 0` after futility
+   had already skipped every quiet move, so a node where all moves were pruned returned `0`
+   (stalemate). A forced mate hidden behind such a node was scored as a draw-ish `0` in the
+   node and propagated as an ordinary evaluation. In the SUBIT-CHESS v3.0.0 vs SmallFish
+   game (after 45.Nc6, `2k5/3R4/p1N1K1p1/P1p5/7p/1p5P/8/8 b - - 1 45`) black is mated in 2
+   (`45...b2 46.Kd6 g5 47.Rc7#`), yet the depth-8 root search published `-471.75 cp`.
+2. **A fail-low was published as a score.** The root aspiration loop widened by a fixed
+   step and accepted the fail-low bound as the iteration's value, so a mate that lay outside
+   the aspiration window reached the UI as a normal evaluation.
+
+### Decision
+
+- Futility pruning is restricted to the frontier: `futility.maxDepth: 1` in
+  `src/engine/evaluate.mjs`. Nodes above the frontier search all moves, so mate and stalemate
+  detection can never be hidden by a heuristic cut.
+- A node where every move was pruned returns `evaluate(pos, depth)` — a static evaluation of
+  a position that is *not* known to be terminal — never `0`.
+- `negamaxRoot` returns its bound flag (`TT_EXACT` / `TT_LOWER` / `TT_UPPER`) together with
+  the store flag. The aspiration loop widens once and then re-searches with an open window;
+  a bound is never published as a score (SEARCH-INV-002, `docs/theory/05`).
+- The regression lives in `tests/engine.eval.mjs`: mate not hidden, negative mate from the
+  mated side, `Kd6` forces mate, `Rc7#` is the mating move.
+
+### Consequences
+
+- Tactical middlegames cost more nodes: Kiwipete depth 7 goes from 965k / 5.5 s to 2.1M /
+  10.5 s. Depth is therefore capped by the clock on UI level 5, not by the horizon.
+- Silent-mate detection is restored; the engine can no longer "miss" a forced mate because a
+  heuristic pruned the mating side's replies.
+- LMR and null-move pruning are unchanged: they are depth-dependent reductions, not cutoffs,
+  and they re-search on a rise in alpha.
+
+---
+
+*End of DECISIONS.md — v3.0.1*

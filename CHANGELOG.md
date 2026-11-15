@@ -31,6 +31,43 @@ Next strength items for the v3 engine (measured, not cosmetic):
 
 ---
 
+## [3.0.1] — 2026-11-15
+
+Search fix: the engine no longer hides a forced mate behind futility pruning.
+
+### Fixed
+
+- **Futility pruning could mask a mate.** Futility ran at `depth <= 3`, and a node whose
+  quiet moves were all pruned returned as if it were stalemate (`legal === 0 -> 0`). In the
+  SUBIT-CHESS v3.0.0 vs SmallFish game — after 45.Nc6, FEN
+  `2k5/3R4/p1N1K1p1/P1p5/7p/1p5P/8/8 b - - 1 45` — black is mated in 2
+  (`45...b2 46.Kd6 g5 47.Rc7#`), but the depth-8 search reported **-471.75 cp** and the
+  engine promoted into the mate. Measured on the same position: `-99996` (mate in 2) at
+  depth 8 with `futility.maxDepth <= 1`, `-471.75` with `maxDepth 3`. Futility is now
+  limited to the frontier (`maxDepth: 1`), and a node where every move was pruned returns
+  the static evaluation instead of a false draw.
+- **A fail-low is not a score.** The root aspiration loop widened by a fixed step and could
+  accept a fail-low bound as the iteration's value, so a mate outside the window was
+  published as an ordinary evaluation. `negamaxRoot` now returns its bound flag, and the
+  loop widens once and then re-searches with an open window before publishing.
+
+### Added
+
+- Regression tests for the game position: the mate is not hidden, the mated side reports a
+  negative mate, `Kd6` forces mate, `Rc7#` is the mating move (`tests/engine.eval.mjs`).
+- ADR 0015 — futility belongs to the frontier (`docs/DECISIONS.md`).
+
+### Notes
+
+- Cost: futility at depth 1 instead of 3 raises the node count in tactical middlegames
+  (Kiwipete depth 7: 965k → 2.1M nodes, 5.5 s → 10.5 s) and therefore shortens the
+  effective depth on UI level 5, where the 2.5 s clock is the binding limit.
+- The game itself was already lost before move 45: the depth-8 evaluation of black's
+  position stayed between -130 and -250 cp while SmallFish was winning, and every black
+  move from move 26 to move 46 was the engine's own best move (zero deviation). The mate
+  at move 47 was a consequence, not the cause.
+
+---
 ## [3.0.0] — 2026-11-15
 
 Modular engine rewrite with the v2.2.0 interface preserved, plus a

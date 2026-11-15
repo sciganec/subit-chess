@@ -1,6 +1,6 @@
 # Roadmap
 
-Direction for **subit-chess** after v3.0.0.
+Direction for **subit-chess** after v3.0.1.
 
 Guiding principles (unchanged):
 - **Evidence over ambition.** Every next step has a pre-registered gate.
@@ -14,7 +14,7 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.0 (2026-11-15)
+## Current state — v3.0.1 (2026-11-15)
 
 **Status:** Engine core rewrite + correctness pass. Strength demonstrated so far is a
 single large fix (evaluation perspective); everything else is still inside the noise band.
@@ -28,6 +28,7 @@ single large fix (evaluation perspective); everything else is still inside the n
 | Depth is not yet paying | depth 5 vs 4: 45.8% ± 22.4 over 12 games |
 | Structural layers do not yet pay | `base` vs `plain`: 56.3% ± 34.3 over 8 games |
 | The root move is a true argmax | brute-force comparison on 3 positions: 8/109/82 |
+| A forced mate is no longer hidden by futility pruning | regression in `tests/engine.eval.mjs`, v3.0.1 |
 
 **What is not yet known:**
 - Does a ply of depth convert into strength? (the `--a base@5 --b base@4` regression)
