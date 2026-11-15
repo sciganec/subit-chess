@@ -1,6 +1,6 @@
 # Roadmap
 
-Direction for **subit-chess** after v3.0.5.
+Direction for **subit-chess** after v3.0.6.
 
 Guiding principles (unchanged):
 - **Evidence over ambition.** Every next step has a pre-registered gate.
@@ -14,7 +14,7 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.5 (2026-11-15)
+## Current state — v3.0.6 (2026-11-15)
 
 **Status:** Engine core rewrite + correctness pass. Strength demonstrated so far is a
 single large fix (evaluation perspective); everything else is still inside the noise band.
@@ -33,6 +33,7 @@ single large fix (evaluation perspective); everything else is still inside the n
 | A node budget and the fast/structural switch are honoured | `tests/engine.eval.mjs`, v3.0.3 |
 | The same position and depth give the same move | `tests/engine.eval.mjs` §12, ADR 0017, v3.0.4 |
 | The leaf tier is faster without changing its value | ADR 0018, v3.0.5: 472k → 589k eval/s, +7.4% nodes/s, identical values on 10 positions, identical tree (503402 nodes) |
+| Uncertainty is a vector with evidence, not a penalty | ADR 0019, v3.0.6: 36 checks, no scalar blend, certificate on every search result, deterministic profile |
 
 **What is not yet known:**
 - Does a ply of depth convert into strength? (the `--a base@5 --b base@4` regression)
@@ -173,6 +174,27 @@ search after v3.0.5 (2860 ms in v3.0.4).
 representation is the problem, not the staging — go straight to bitboards. If bitboards do
 not reach 300k nodes/s, stop optimizing the search and spend the remaining effort on
 selectivity (better pruning, verified by `base` vs `nopruning` over 100 games).
+
+---
+
+## Gate 7 — the uncertainty driver steers verification (doc 45 §16)
+
+**Why:** v3.0.6 computes the eight components and names a driver, but nothing consumes it.
+Doc 45 §16 says the vector decides *where* verification is spent, so the honest next step is
+to spend a fixed extra budget on the component that leads and measure whether the decision
+changes — not to add another knob to the evaluation.
+
+**Pre-registered metric:** on a fixed set of positions, the share of searches whose best move
+changes when the extra budget goes to the driver's component (depth for Us, width for Ut,
+tablebase/structural check for Um), against a control that spends the same budget uniformly.
+
+**Gate:** the driver-targeted budget changes at least one decision in a set where the
+uniform budget does not, and does not change any decision where the profile is already
+decisive (Us = 0 on a proven mate).
+
+**Kill criterion:** if targeted spending never changes a decision while uniform spending
+does, the driver is not informative and the profile stays descriptive — report it, do not
+act on it.
 
 ---
 

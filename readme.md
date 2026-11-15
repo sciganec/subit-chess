@@ -6,11 +6,11 @@ UI that shows what the engine is actually thinking.
 
 Single-file HTML — no build step for the end user, no server, no CDN, no network access.
 
-**Current release: v3.0.5**
+**Current release: v3.0.6**
 
 ## Quick start
 
-Open `src/subit_chess_v3.0.5.html` in any modern browser (double-click works; the file is
+Open `src/subit_chess_v3.0.6.html` in any modern browser (double-click works; the file is
 fully self-contained).
 
 ```
@@ -65,6 +65,12 @@ answers "what is this position worth", the search answers "what is the best line
   the structural (plan) bonus is bounded to `[0, 1]` so it can never outrank a capture.
 - Draw handling mirrors FIDE: 50-move and threefold are claimable inside the search (scored 0
   for both sides), 75-move and fivefold are automatic.
+- Every search result carries an **uncertainty profile** `U(P)` — eight components
+  (search, tactical, evaluation, structural, strategic, temporal, model, contextual), each in
+  `[0,1]` with the evidence that produced it — and a **decision certificate** with a
+  validation status (`FORCED_WITHIN_SCOPE`, `SEARCH_SUPPORTED`, `UNVERIFIED`, `REFUTED`) and
+  the position version it describes. The components are reported, never blended into one
+  number and never subtracted from the score (doc 37 §5-§6, doc 45 §16/§20.2, ADR 0019).
 
 ### Ablation harness
 
@@ -89,7 +95,7 @@ plus per-side depth (`base@6` vs `base@4`).
 ```
 src/engine/     ES-module engine core (12 modules)
 build/          shell.html (UI) + bundle.mjs (inlines src/engine into one HTML)
-src/            subit_chess_v3.0.5.html ← shipped single-file engine (built)
+src/            subit_chess_v3.0.6.html ← shipped single-file engine (built)
                 subit_chess_v2.2.0.html ← legacy v2 engine (diffusion/ρ_s, kept for reference)
 index.html      copy of the shipped v3 file (convenience)
 tests/          core.perft, engine.smoke/plans/eval/verify/driver/learn, app.dom (jsdom UI)
@@ -103,7 +109,7 @@ runners/        legacy v1.9.1 Node CLI (not used by v3 — see "Honest limitatio
 
 ```bash
 npm install                # only devDependency: jsdom (UI smoke test)
-npm run build              # node build/bundle.mjs → src/subit_chess_v3.0.5.html + index.html
+npm run build              # node build/bundle.mjs → src/subit_chess_v3.0.6.html + index.html
 npm test                   # v3 suite: engine perft/smoke/plans/eval/verify/driver/learn + UI
 npm run test:engine        # engine only
 npm run test:app           # jsdom UI smoke test
@@ -111,7 +117,7 @@ npm run test:legacy        # v2.2.0 single-file suite (128 assertions, kept for 
 ```
 
 `npm run build` is deterministic: the bundled HTML is byte-identical across runs, and
-`src/subit_chess_v3.0.5.html` and `index.html` always match.
+`src/subit_chess_v3.0.6.html` and `index.html` always match.
 
 ## Measured status (honest)
 

@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  ENGINE_HTML: src/subit_chess_v3.0.5.html
+  ENGINE_HTML: src/subit_chess_v3.0.6.html
 
 jobs:
   # ---------------------------------------------------------------------------

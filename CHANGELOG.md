@@ -57,6 +57,48 @@ plies, median 212.5, 1/6 games at the 300-ply cap, reasons `checkmate: 5, max pl
 ---
 ---
 
+## [3.0.6] — 2026-11-15
+
+The engine now reports how much it does not know, and on what evidence. Doc 37's eight
+uncertainty components are computed from the position and the search, and doc 45 §20.2's
+Decision Certificate is attached to every search result. Nothing is collapsed into one
+number, and nothing feeds back into the evaluation.
+
+### Added
+
+- `src/engine/uncertainty.mjs`: `computeProfile()` returns U(P) = (Us, Ut, Ue, Ur, Up, Uh,
+  Um, Uc), each in [0,1] with the evidence and context that produced it (UCT-INV-006), a
+  `driver` naming the leading component, and deliberately **no** `scalar()`: a weighted
+  blend of eight incommensurable quantities presented as *the* uncertainty is what
+  doc 37 §14.3 and doc 45 §16 forbid.
+- `buildCertificate()` / `certificateLine()`: the doc 45 §20.2 fields,
+  `validation_status` derived from the evidence (REFUTED on an illegal move, UNVERIFIED on
+  an unfinished search, SEARCH_SUPPORTED on a completed one, FORCED_WITHIN_SCOPE on a
+  proven mate), `provenance`, `position_version`, `legal_validation`, depth and node count
+  copied from the search, and the principal variation that was actually searched.
+- `Engine.uncertaintyProfile()` and `Engine.positionVersion` in `src/engine/index.mjs`.
+  Every search result now carries `uncertaintyProfile` and `certificate` beside `score`,
+  never inside it (UCT-INV-019).
+- `build/shell.html`: the search panel prints U(P) with the leading component marked, so
+  the player sees *which kind* of doubt the engine has instead of a single risk word.
+- `tests/engine.uncertainty.mjs`: 36 checks — the eight canonical types, [0,1] bounds,
+  per-component context, determinism (same position and budget give the same profile, the
+  same decision and the same evidence strings), that a large static advantage does not hide
+  the tactical component, that a proven mate zeroes Us, the certificate fields and
+  statuses, and that every position change bumps the version.
+
+### Notes
+
+- No `Confidence = 1 - Uncertainty` (doc 37 §14.3): the profile carries no confidence
+  scalar, because the subtraction would imply the two are one quantity measured twice.
+- The tactical component stays visible under a large static edge (UCT-INV-016): a position
+  that is structurally winning but tactically live reports Ut, and the driver is the
+  tactical component — not the score.
+- Um rises in a pawn ending because no tablebase stands behind the evaluation; the tier it
+  depends on is recorded with the profile instead of being assumed.
+
+---
+
 ## [3.0.5] — 2026-11-15
 
 A leaf-evaluation speedup, measured and value-identical: the same search tree, the same

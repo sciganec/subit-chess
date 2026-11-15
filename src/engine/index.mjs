@@ -23,8 +23,9 @@ import { Evaluation, DEFAULT_PARAMS, cloneParams, paramsFromJSON, SVF_COMPONENTS
 import { Searcher, TranspositionTable, MoveOrder, MATE, searchBudget } from './search.mjs';
 import { generatePlans, describePlans, makePlanOrderer, pareto, PLAN } from './plans.mjs';
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
+import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
 
-export const VERSION = '3.0.5';
+export const VERSION = '3.0.6';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -95,12 +96,17 @@ export class Engine {
     this.plans = [];
     this.lastAnalysis = null;
     this.history = [];      // [{ fen, move, san, score, depth, nodes }]
+    // position version for the decision certificate (doc 45 §20.2): every
+    // setFEN/play() produces a new version, so a certificate can never be
+    // mistaken for one that describes a different position
+    this.version = 0;
   }
 
   /* ---------------- position ---------------- */
 
   setFEN(fen) {
     this.pos.setFEN(fen);
+    this.version++;
     this.percept = new Percept(this.pos);
     this.structure = new Structure(this.pos, this.percept);
     this.context = computeContext(this.pos, this.percept, this.structure);
@@ -136,7 +142,8 @@ export class Engine {
       plans: this.plans,
       risk: RISK_NAME[riskOf(null, 0)],
       complexity: complexityOf(this.pos, this.percept, this.structure, this.context),
-      uncertainty: uncertaintyOf(ev, this.pos, this.percept, this.structure)
+      uncertainty: uncertaintyOf(ev, this.pos, this.percept, this.structure),
+      uncertaintyProfile: this.uncertaintyProfile(null, {}, ev.uncertainty)
     };
     this.lastAnalysis = analysis;
     return analysis;
@@ -149,6 +156,16 @@ export class Engine {
     return this.meta.plan({
       pos: this.pos, percept: this.percept, structure: this.structure, ctx: this.context,
       evaluation: this.evaluation, clockMs, baseDepth, maxDepth
+    });
+  }
+
+  /** Eight-component uncertainty profile of the current position (doc 37 §5-§6). */
+  uncertaintyProfile(result = null, requested = {}, evUncertainty) {
+    return computeProfile({
+      result, requested, evUncertainty,
+      pos: this.pos, percept: this.percept, structure: this.structure,
+      ctx: this.context, plans: this.plans,
+      evaluation: this.evaluation, evalMode: this.evaluation.opts.mode || 'fast'
     });
   }
 
@@ -197,10 +214,25 @@ export class Engine {
     });
     if (plan) this.meta.record(plan, result);
 
+    // uncertainty profile and decision certificate (doc 37 §6, doc 45 §16/§20.2).
+    // The profile is reported *next to* the score, never folded into it
+    // (UCT-INV-019); it describes what the search did not settle.
+    const san = moveToSan(this.pos, result.move);
+    const pvSan = this.pvToSan(result.pv);
+    const legal = result.move !== 0 && this.pos.legalMoves().includes(result.move);
+    const uncertainty = this.uncertaintyProfile(result, { depth });
+    const certificate = buildCertificate({
+      fen: this.fen, version: this.version, move: result.move, san, legal,
+      legalCount: this.pos.legalMoves().length, depth: result.depth,
+      completed: result.completed, nodes: result.nodes, pv: pvSan,
+      score: result.score, profile: uncertainty,
+      paramVersion: VERSION, algorithmVersion: VERSION
+    });
+
     return {
       move: result.move,
       uci: moveToUci(result.move),
-      san: moveToSan(this.pos, result.move),
+      san,
       score: result.score,
       depth: result.depth,
       seldepth: result.seldepth,
@@ -209,13 +241,15 @@ export class Engine {
       timeMs: result.timeMs,
       pv: result.pv.map(moveToUci),
       pvMoves: result.pv,
-      pvSan: this.pvToSan(result.pv),
+      pvSan,
       completed: result.completed,
       // bound flag of the iteration behind score/depth (SEARCH-INV-002);
       // 0 = exact, 1 = lower bound, 2 = upper bound
       flag: result.flag,
       risk: RISK_NAME[risk],
       plan: plan ? { depth: plan.depth, timeMs: plan.timeMs, complexity: plan.complexity, uncertainty: plan.uncertainty } : null,
+      uncertaintyProfile: uncertainty,
+      certificate,
       // sign follows the score: a negative mate score means we get mated
       mate: Math.abs(result.score) > MATE - 1000
         ? Math.sign(result.score) * Math.ceil((MATE - Math.abs(result.score)) / 2)
@@ -368,6 +402,7 @@ export function main(argv = process.argv.slice(2)) {
       out.push(`FEN     ${a.fen}`);
       out.push(`eval    ${a.eval.toFixed(3)}   context ${a.context}   tactical ${a.tactical}`);
       out.push(`legal   ${a.legalMoves} moves   complexity ${a.complexity.toFixed(3)}   uncertainty ${a.uncertainty.toFixed(3)}`);
+      out.push(`U(P)    ${U_TYPES.map((k) => `${U_SYM[k]}=${a.uncertaintyProfile.vector[U_TYPES.indexOf(k)]}`).join(' ')}  driver ${U_SYM[a.uncertaintyProfile.driver]}`);
       out.push(`SVF     ${SVF_COMPONENTS.map((k) => `${k}=${a.vector[k]}`).join(' ')}`);
       out.push(`relations ${Object.entries(a.relations).map(([k, v]) => `${k}:${v}`).join(' ')}`);
       out.push(`criticality ${a.criticality.map((c) => `${c.sq}${c.color}:${c.q}`).join(' ')}`);
@@ -389,6 +424,8 @@ export function main(argv = process.argv.slice(2)) {
       out.push(`best ${r.uci} (${r.san})  score ${r.score}  depth ${r.depth}/${r.seldepth}  risk ${r.risk}`);
       out.push(`nodes ${r.nodes}  ${r.nps} nps  ${r.timeMs}ms  tt ${e.tt.hits} hits`);
       out.push(`pv  ${r.pvSan.join(' ')}`);
+      out.push(`U(P) ${U_TYPES.map((k) => `${U_SYM[k]}=${r.uncertaintyProfile.vector[U_TYPES.indexOf(k)]}`).join(' ')}  driver ${U_SYM[r.uncertaintyProfile.driver]} (${r.uncertaintyProfile.driverValue})`);
+      out.push(`cert [${r.certificate.validation_status}] v${r.certificate.position_version} ${r.certificate.legal_validation.legal_moves} legal`);
       if (r.plan) out.push(`plan depth=${r.plan.depth} time=${r.plan.timeMs}ms complexity=${r.plan.complexity.toFixed(3)} uncertainty=${r.plan.uncertainty.toFixed(3)}`);
       out.push(`plans: ${e.plans.length}  ${describePlans(e.plans).split('\n').length - 1} lines`);
       break;

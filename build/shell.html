@@ -957,7 +957,22 @@ function renderSearch(r) {
     '<span class="k">швидкість</span><span class="v">' + r.nps.toLocaleString() + ' nps</span>' +
     '<span class="k">час</span><span class="v">' + r.timeMs + ' ms</span>' +
     '<span class="k">ризик</span><span class="v">' + (r.risk || '—') + '</span>' +
-    '<span class="k">PV</span><span class="v">' + (r.pvSan || []).slice(0, 8).join(' ') + '</span>';
+    '<span class="k">PV</span><span class="v">' + (r.pvSan || []).slice(0, 8).join(' ') + '</span>' +
+    uncertaintyLine(r.uncertaintyProfile);
+}
+
+// U(P) — the eight components, never one number (doc 45 §16). A component that
+// leads the profile is the one that asks for more verification, so it is marked.
+const U_SHORT = { search: 'Us', tactical: 'Ut', evaluation: 'Ue', structural: 'Ur',
+  strategic: 'Up', temporal: 'Uh', model: 'Um', contextual: 'Uc' };
+const U_ORDER = ['search', 'tactical', 'evaluation', 'structural',
+  'strategic', 'temporal', 'model', 'contextual'];
+
+function uncertaintyLine(p) {
+  if (!p || !p.vector) return '';
+  const cells = U_ORDER.map((k, i) =>
+    U_SHORT[k] + ' ' + Number(p.vector[i]).toFixed(2) + (k === p.driver ? '*' : '')).join(' · ');
+  return '<span class="k">U(P)</span><span class="v">' + cells + '</span>';
 }
 
 function refreshPanels() {

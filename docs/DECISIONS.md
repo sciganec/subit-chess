@@ -1,13 +1,13 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v3.0.5**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.6**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
 
 Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s policy vector,
 teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
-ADR 0009+ describe v3.0.5 and are the binding decisions for the current engine.
+ADR 0009+ describe v3.0.6 and are the binding decisions for the current engine.
 
 ---
 
@@ -765,4 +765,46 @@ pawn/rook/king structure 8%.
 
 ---
 
-*End of DECISIONS.md — v3.0.5*
+## ADR 0019 — uncertainty is reported as a vector, never as a penalty
+
+**Status:** Accepted (v3.0.6)
+
+### Context
+
+Doc 37 §5-§6 defines eight uncertainty types; doc 45 §16 says the eight indicators steer
+verification; doc 37 §14.3 forbids `Confidence = 1 - Uncertainty`; UCT-INV-019 forbids an
+automatic uncertainty penalty on the evaluation. Until 3.0.5 the engine had one scalar
+(`meta.uncertaintyOf`, doc 05 §17) and the UI showed a single risk word. The gap was not a
+missing number but a missing distinction: a position can be strategically clear and
+tactically lost, and one scalar cannot say which.
+
+### Decision
+
+- `uncertainty.mjs` computes U(P) as eight components, each in [0,1], each carrying the
+  evidence and context that produced it (UCT-INV-006). No weighted sum is exported;
+  `scalar()` is deliberately absent, and a test asserts its absence so a later
+  "convenience" blend cannot slip in.
+- A `driver` names the leading component. It does not rank the rest: a ranking would need
+  the commensurability that doc 45 §16 denies.
+- The certificate (doc 45 §20.2) is attached to every search result, and its
+  `validation_status` is derived from the evidence rather than asserted: an illegal
+  position is REFUTED, an unfinished search UNVERIFIED, a completed one SEARCH_SUPPORTED, a
+  proven mate FORCED_WITHIN_SCOPE. Depth, node count and the PV are copied from the search,
+  so a certificate cannot drift from the search it describes.
+- The profile and the certificate sit beside `score`, never inside it: `Engine.search()`
+  returns them as separate fields, and no evaluation path imports them
+  (`evaluate.mjs` keeps its own doc 05 §17 scalar).
+
+### Consequences
+
+- The engine can say *what kind* of doubt it has, and the UI shows it: the search panel
+  prints U(P) with the leading component marked.
+- Determinism is testable. The same position and budget produce the same profile, the same
+  decision and the same evidence strings, so a regression in the profile fails a test
+  instead of becoming a judgement call.
+- The next consumer is the verification budget (doc 45 §16): the driver should decide where
+  a deeper or wider search is spent. That is not wired yet and this ADR does not claim it.
+
+---
+
+*End of DECISIONS.md — v3.0.6*

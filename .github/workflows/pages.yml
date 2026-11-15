@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'src/subit_chess_v3.0.5.html'
+      - 'src/subit_chess_v3.0.6.html'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -27,15 +27,15 @@ jobs:
       - name: Prepare site directory
         run: |
           mkdir -p _site
-          cp src/subit_chess_v3.0.5.html _site/index.html
-          cp src/subit_chess_v3.0.5.html _site/subit_chess_v3.0.5.html
+          cp src/subit_chess_v3.0.6.html _site/index.html
+          cp src/subit_chess_v3.0.6.html _site/subit_chess_v3.0.6.html
           cat > _site/README.html <<'HTML'
           <!DOCTYPE html>
           <html lang="uk">
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>subit-chess v3.0.5</title>
+            <title>subit-chess v3.0.6</title>
             <style>
               body{font-family:system-ui,sans-serif;background:#302e2b;color:#e8e6e3;
                    padding:2rem;max-width:44rem;margin:0 auto;line-height:1.55}
@@ -47,11 +47,11 @@ jobs:
             </style>
           </head>
           <body>
-            <h1>subit-chess v3.0.5</h1>
+            <h1>subit-chess v3.0.6</h1>
             <p>Шаховий рушій у браузері: структурна функція оцінки (SVF),
                структурні плани, бюджетований альфа-бета пошук. Один HTML-файл,
                без мережі та без збірки.</p>
-            <p><a class="btn" href="./subit_chess_v3.0.5.html">Грати</a></p>
+            <p><a class="btn" href="./subit_chess_v3.0.6.html">Грати</a></p>
             <p>Джерело та документація:
                <a href="https://github.com/sciganec/subit-chess">github.com/sciganec/subit-chess</a></p>
           </body>
