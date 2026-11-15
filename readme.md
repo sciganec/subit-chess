@@ -1,353 +1,165 @@
 # subit-chess
 
-A browser chess engine with **S₀ morphological grammar**, **SUBIT-∞ v6.13 trajectory classification**, and a **controlled diffusion study generator** with Classifier-Free Guidance (CFG).
+A browser chess engine with a **positional value theory** at its core: a structural
+value function (SVF), a structural-plan generator, a budgeted alpha-beta search, and a
+UI that shows what the engine is actually thinking.
 
-Single-file HTML — no build, no server, no dependencies.
+Single-file HTML — no build step for the end user, no server, no CDN, no network access.
 
-Current stable version: **v2.2.0**
+**Current release: v3.0.0**
 
 ## Quick start
 
-Open `src/subit_chess_v2.2.0.html` in any modern browser.
+Open `src/subit_chess_v3.0.0.html` in any modern browser (double-click works; the file is
+fully self-contained).
 
 ```
-1. Play a game        → see S₀ / grammar / Ω / Belnap panels live
-2. Press "🎨" button  → Diffusion Study Generator (CFG + SUBIT v6.13)
-3. Press "ρ"  button  → ρ_s report (needs teacher run first)
-4. Press "📊" button  → S₀ telemetry diagnostics
-5. Console workflow   → see below
+1. Pick a level       → 1 Поч / 2 Лег / 3 Сер / 4 Скл / 5 Експ (depth 1 / 2 / 4 / 6 / 8,
+                        2.5 s safety clock on level 5)
+2. Play               → click or drag a piece; legal moves show as dots, captures as rings
+3. Watch the panels   → S₀ state, SVF vector, structural plans, relations, search stats
+4. ⚙ Налаштування     → theme, coordinates, move hints, last-move arrow, eval tier
+5. Ƒ / ↓ / ⇅          → FEN load & copy, PGN export, flip board
 ```
+
+Console handle: `window.__subit` (`engine`, `fen`, `history`, `move(uci)`, `analyze()`,
+`newGame(fen)`, `setLevel(n)`, `render()`).
 
 ## What's inside
 
-| Layer | Description |
+The engine is a set of plain ES modules under `src/engine/`. `build/bundle.mjs` walks the
+import graph and inlines it into the shipped single file, so the source stays readable and
+the artifact stays a single HTML file.
+
+| Module | Responsibility |
 |---|---|
-| **S₀ = I × Z × Φ** | 4 × 4 × 4 = 64 morphological cells (`who × where × when`) |
-| **Grammar G(S)** | per-cell weights `(material, positional, mobility, king, pawns, bishop)` |
-| **Ω(search)** | STABLE / METASTABLE / CYCLIC / CHAOTIC from eval history |
-| **Belnap {T,F,B,N}** | four-valued evaluation layer (bilattice §1 of SUBIT-∞) |
-| **SUBIT v6.13 trajectories** | 6 classes, Classify⁺, d_Ω_traj metric |
-| **Diffusion generator** | board tensor 8×8×14, CFG, 8 themes, cook filter, aesthetic scorer |
-| **Teacher v3** | offline `V_teacher` per cell via batch minimax search |
-| **ρ_s** | policy vector on 8 signal cells, frozen before A/B |
+| `core.mjs` | board representation, move generation, make/unmake, FEN, Zobrist, perft |
+| `percept.mjs` | S₀ = (I, Z, Φ) — initiative / zone / phase perception from the raw position |
+| `structure.mjs` | pawn structure, piece activity, king safety, space, critical squares |
+| `context.mjs` | game-phase context, opening/middlegame/endgame classification, tempo |
+| `evaluate.mjs` | fast tier (tapered material + PST, mobility, bishop pair, pawn structure, rook files, king shield) and structural tier `E(SVF)` |
+| `plans.mjs` | structural plan generation, cost/ranking, plan-aware move ordering (bounded to the structural level) |
+| `search.mjs` | iterative deepening, alpha-beta + quiescence, TT, killers/history, null move, LMR, aspiration, draw rules |
+| `meta.mjs` | search metadata: risk, stability, confidence, budget accounting |
+| `index.mjs` | `Engine` facade: `setFEN / legalMoves / analyze / budget / search / play / perft / selfPlay` |
+| `verify.mjs` | invariant checks over the pipeline (`SVF-INV-*`, `SEARCH-INV-*`) |
 
----
+### Position value
 
-## Diffusion Study Generator
+The SVF is `V(P) = (M, K, A, D, C, T, Q, R, X)` — material, king safety, activity,
+defence, coordination, tactical potential, space, structural relations, transformation
+potential (passed pawns) — reported alongside the raw search score so the panel can show
+*why* a move was chosen, not just what it scored. Every axis is side-to-move relative,
+in centipawns, before weighting (`SVF-INV-001/002`).
 
-Press `🎨` in the header to open the **Controlled Diffusion Study Generator**.
+`E(SVF)` and `score` are both displayed because they are not the same number: the fast tier
+answers "what is this position worth", the search answers "what is the best line worth".
 
-### How it works
+### Search
 
-```
-Forward process:  beautiful study → add noise → chaos (h_top > 0)
-Reverse process:  chaos → denoise T=15…0 → p(position | beauty)
+- Iterative deepening with a per-level budget; `search({depth, timeMs})`.
+- Alpha-beta + quiescence, transposition table (depth-checked, ply-normalised mate scores),
+  killer moves + history (normalised below tactics), null-move pruning, late-move reductions
+  with re-search, aspiration windows.
+- Move ordering follows the documented level order `pv > tt > tactic > struct > context > history`;
+  the structural (plan) bonus is bounded to `[0, 1]` so it can never outrank a capture.
+- Draw handling mirrors FIDE: 50-move and threefold are claimable inside the search (scored 0
+  for both sides), 75-move and fivefold are automatic.
 
-CFG:  x_t = x_uncond + w · (x_cond - x_uncond)
-         w ∈ [1, 10]  — guidance strength slider
-```
+### Ablation harness
 
-Board representation: tensor **8×8×14** (12 piece channels + turn + castling/ep = 896 values).
-
-### Condition vector c
-
-| Parameter | UI control | Values |
-|-----------|-----------|--------|
-| Genre | dropdown | `study_win`, `study_draw`, `mate_2`, `mate_3` |
-| Theme | dropdown | see table below |
-| Material | dropdown | `miniature`, `queenless`, `minor_only`, `endgame_rp`, `any` |
-| CFG `w` | slider | 1.0 – 10.0 |
-| Aesthetic min | slider | 0.50 – 0.95 |
-| SUBIT target | dropdown | `FIXED`, `PERIODIC`, `MIN_ZERO` |
-
-### Composition themes
-
-| Theme | Motif |
-|-------|-------|
-| `queen_sac` | Queen sacrifice → mate or fork |
-| `zugzwang` | Reciprocal zugzwang (any move loses) |
-| `stalemate_defense` | Miraculous stalemate rescue |
-| `domination` | Minor piece traps enemy |
-| `reti_maneuver` | King diagonal dual-threat (Réti 1921) |
-| `underpromotion` | Saavedra underpromotion to N/B/R |
-| `battery` | Discovered attack / unmasking battery |
-| `quiet_key` | Counter-intuitive quiet first move |
-
-### Validation pipeline
-
-1. **Minimax solver** (depth 4) — scores all first moves
-2. **Cook filter** — rejects if second-best ≥ 80% of best score
-3. **Aesthetic scorer** `A ∈ [0.40, 1.00]`:
-   - +0.25 quiet key move (no check)
-   - +0.15 non-capturing key move
-   - +0.10 miniature (≤ 6 pieces)
-   - +0.10 sound + no cook
-
-### SUBIT v6.13 — trajectory classification
-
-| Class | ω-size | Minimal | h_top | Chess analogue |
-|-------|---------|---------|-------|----------------|
-| `FIXED` | 1 | ✓ | 0 | Unique checkmate / final |
-| `PERIODIC` | finite >1 | ✓ | 0 | Perpetual check / draw repetition |
-| `MIN_ZERO` | ∞ | ✓ | 0 | Aperiodic minimal |
-| `MIN_POS` | ∞ | ✓ | >0 | Minimal chaotic |
-| `NONMIN_ZERO` | ∞ | ✗ | 0 | Non-minimal zero (W8) |
-| `NONMIN_POS` | ∞ | ✗ | >0 | Full chaos / diffusion noise |
-
-**Classify⁺** `(OrbitType, InclusionType, ChaosStatus, Min)` — §4.5  
-**d_Ω_traj** — normalized Hamming on 12-code representation — §11.3
-
-> `ChaosStatus: NOT_APPLICABLE ≠ NON_CHAOTIC` (§4, Remark 4.3.2)
-
-### Diffusion console API
-
-```js
-// Generate a study with theme and conditions
-const res = await __subit.diffusion.generateStudy({
-  theme: 'reti_maneuver',
-  genre: 'study_draw',
-  guidance: 5.5,
-  aestheticMin: 0.80,
-  subitTarget: 'FIXED'
-});
-// → { fen, verification: { sound, cook, aestheticScore, bestMove, subit } }
-
-// Board ↔ tensor round-trip
-const t = __subit.diffusion.boardToTensor(pos)  // → Float32Array(896)
-const p = __subit.diffusion.tensorToBoard(t, 'w') // → pos
-
-// Verify any FEN
-const v = __subit.diffusion.verifyStudy(
-  __subit.chess.fromFEN('7K/8/k1P5/7p/8/8/8/8 w - - 0 1'),
-  { genre: 'study_draw' }
-);
-// → { sound, cook, bestMove, aestheticScore, subit: { trajClass, dOmegaTraj, s0 } }
-
-// SUBIT v6.13 trajectory API
-__subit.v6_13.classifyTrajectory([h1, h2, h1])  // → 'PERIODIC'
-const sp = __subit.v6_13.classifySetPlus('INVARIANT_FIXED', 'ATTAINED', 'NOT_APPLICABLE', true)
-__subit.v6_13.dOmegaTraj('FIXED', sp, 'NONMIN_POS', spChaotic)  // → 0.58
-```
-
----
-
-## ρ_s policy
-
-`ρ_s` is a **search policy** (not eval weights). For each of 8 signal cells it controls:
-
-```
-ρ_s = (d_base, r_LMR, r_null, b_futility)
-       depth    LMR      null-R   futility margin
-       shift    mult     (1..3)   (80..250 cp)
-```
-
-- **8 active cells** out of 64 (from teacher run, 6548 FENs)
-- **32 declared params** (8 × 4 dims)
-- **Coverage: 60.0%** of transitions — 8/64 = 12.5% of cells cover 60% of positions
-- **Frozen** — initialized once from teacher means, not updated during A/B
-
-### Active cells
-
-| Cell | n |
-|---|---:|
-| `QUIET\|CENTER\|OPENING` | 1370 |
-| `QUIET\|CENTER\|MIDDLEGAME` | 871 |
-| `QUIET\|GLOBAL\|MIDDLEGAME` | 727 |
-| `PRESSURE\|CENTER\|OPENING` | 510 |
-| `DEFENCE\|CENTER\|TACTICAL` | 194 |
-| `QUIET\|CENTER\|TACTICAL` | 128 |
-| `QUIET\|GLOBAL\|OPENING` | 86 |
-| `QUIET\|CENTER\|ENDGAME` | 43 |
-
----
-
-## Console workflow (browser)
-
-```js
-// 0. Sanity checks
-__subit.perft(4)     // → 197281
-__subit.eval()       // → ≈ +10 (start, white POV)
-__subit.computeS()   // → { who: 'QUIET', where: 'CENTER', when: 'OPENING' }
-
-// 1. Teacher run — 100 games
-__subit.teacherClear(); __subit.telemetryClear();
-__subit.resetGrammarToBaseline();
-await __subit.selfPlay(100, {depth:2, maxPlies:100, epsilon:0.2, topK:3});
-await __subit.batchTeacherEval({depth:4, R_max:300, concurrency:2});
-__subit.saveTeacherSnapshot('run1');
-
-// 2. Activate ρ_s
-__subit.activateRhoS();
-__subit.rhoSReport();
-// → 8 cells with n, mean, t, d_base, r_LMR, r_null, b_futility
-
-// 3. Policy introspection
-__subit.policyFor()       // → {d_base, lmr_mult, null_enabled, futility_mult}
-__subit.searchParamsFor() // → {policy, extBudget, lmrThreshold, nullReduction, futilityMargin}
-
-// 4. A/B — disable ρ_s for baseline run
-__subit.setPolicyEnabled(false)
-```
-
----
-
-## A/B testing
-
-### Browser screening (200 games each)
-
-```js
-// Baseline
-__subit.setPolicyEnabled(false);
-__subit.telemetryClear();
-await __subit.selfPlay(200, {depth:2, maxPlies:100, epsilon:0.2, topK:3});
-__subit.telemetryReport();
-
-// ρ_s on
-__subit.setPolicyEnabled(true);
-__subit.telemetryClear();
-await __subit.selfPlay(200, {depth:2, maxPlies:100, epsilon:0.2, topK:3});
-__subit.telemetryReport();
-```
-
-**Gate (pre-registered):**
-- `Δmean > +15 cp` → PASS screening → extend to 400+ games with CI
-- `Δmean ∈ [−5, +15]` → weak signal → more games
-- `Δmean < −5 cp` → ρ_s harmful → policy tuning or rollback
-
-### Node runner (400 games + SPRT)
+`bench/match.mjs` is the instrument for every strength claim in this repository. It plays
+deterministic self-play matches between named configurations from a fixed opening set and
+reports W-D-L, score with a 95% confidence interval, and a per-game log.
 
 ```bash
-npm install
-node runners/run.js --mode match --games 400 --depth 2 --seed 42
-node runners/run.js --mode match --games 400 --policy off --out results/base.json
+npm run match:engine                 # base vs plain
+npm run match:ablate                 # base vs nostruct
+npm run match:depth                  # base@5 vs base@4 — "is a ply worth anything?"
+node bench/match.mjs --list          # all configurations
+node bench/match.mjs --a base --b eval0 --games 100 --depth 5 --seed 7 --out results/eval0.json
 ```
 
-**Honest statistics:** 200 games → SE ≈ 27 Elo. 400 games → SE ≈ 19 Elo.  
-Gate: 95% CI on score, or SPRT (H0: 0, H1: 15, α=0.05, β=0.10).
-
----
-
-## Console API reference
-
-### Lifecycle
-
-| Command | Purpose |
-|---|---|
-| `__subit.selfPlay(n, opts)` | N games, writes raw trajectory |
-| `__subit.batchTeacherEval(opts)` | Offline V_teacher per cell |
-| `__subit.saveTeacherSnapshot('run1')` | Persist teacher run to localStorage |
-| `__subit.compareTeacherSnapshots('run1','run2')` | Jaccard stability |
-| `__subit.activateRhoS()` | Init ρ_s from teacher, freeze |
-| `__subit.rhoSReport()` | Print 8 active cells |
-| `__subit.setPolicyEnabled(false)` | Baseline mode for A/B |
-
-### Introspection
-
-| Command | Returns |
-|---|---|
-| `__subit.computeS(fen?)` | `{who, where, when}` |
-| `__subit.policyFor(fen?)` | `{d_base, lmr_mult, null_enabled, futility_mult}` |
-| `__subit.searchParamsFor(fen?)` | full search params |
-| `__subit.teacherReport()` | teacher telemetry summary |
-| `__subit.telemetryReport()` | raw Δeval telemetry |
-| `__subit.getSignalCells()` | array of signal cell keys |
-
-### Diffusion & SUBIT v6.13
-
-| Command | Returns |
-|---|---|
-| `__subit.diffusion.generateStudy(cond)` | `{fen, verification}` |
-| `__subit.diffusion.boardToTensor(pos)` | `Float32Array(896)` |
-| `__subit.diffusion.tensorToBoard(t)` | `pos` |
-| `__subit.diffusion.verifyStudy(pos, cond)` | `{sound, cook, aestheticScore, subit}` |
-| `__subit.v6_13.classifyTrajectory(hist)` | `'FIXED' \| 'PERIODIC' \| …` |
-| `__subit.v6_13.classifySetPlus(…)` | `{orbitType, inclusionType, chaosStatus, min}` |
-| `__subit.v6_13.dOmegaTraj(tcA, spA, tcB, spB)` | `number ∈ [0, 1]` |
-
-### Self-tests
-
-| Command | Expected |
-|---|---|
-| `__subit.perft(4)` | `197281` |
-| `__subit.eval()` | `≈ +10` (start, white POV) |
-| `__subit.computeS()` | `QUIET\|CENTER\|OPENING` |
-
----
+Configurations: `base`, `nostruct`, `noctx`, `nores`, `noplans`, `nobudget`, `plain`,
+`eval0`, `notaper`, `nopawns`, `norooks`, `noshield`, `nopruning`, `nonull`, `nolmr`, `noasp`,
+plus per-side depth (`base@6` vs `base@4`).
 
 ## Repository layout
 
 ```
-src/         single-file HTML engines
-               subit_chess_v2.2.0.html  ← current
-               subit_chess_v1.9.1.html  ← legacy (test harness target)
-ver/         stable release snapshots (v2.0.0, v2.1.x, v2.2.0, …)
-docs/        USER-MANUAL.md, SUBIT-CHESS-SPEC.md, SUBIT-EXPERIMENT-SPEC.md,
-             DECISIONS.md, ROADMAP.md
-runners/     Node CLI: selfplay / teacher / match
-tests/       perft + hash + symmetry + S₀ + policy + v6_13 + diffusion (128 assertions)
-bench/       benchmark FEN datasets (T_train=5000, V_val=1000) + WORK_CONSTANTS.json
-results/     A/B and teacher run reports (JSON)
-.github/     CI: tests + perft + smoke + release artifact
+src/engine/     ES-module engine core (12 modules)
+build/          shell.html (UI) + bundle.mjs (inlines src/engine into one HTML)
+src/            subit_chess_v3.0.0.html ← shipped single-file engine (built)
+                subit_chess_v2.2.0.html ← legacy v2 engine (diffusion/ρ_s, kept for reference)
+index.html      copy of the shipped v3 file (convenience)
+tests/          core.perft, engine.smoke/plans/eval/verify/driver/learn, app.dom (jsdom UI)
+bench/          match.mjs ablation harness, fens/
+docs/           USER-MANUAL.md, ROADMAP.md, DECISIONS.md, theory/ (36 specs), spec/, papers/
+ver/            release snapshots per version
+runners/        legacy v1.9.1 Node CLI (not used by v3 — see "Honest limitations")
 ```
 
----
-
-## Repository workflow
+## Build and test
 
 ```bash
-# 1. Install
-npm install
-
-# 2. Tests (128 assertions: perft, hash, S₀, policy, v6_13, diffusion)
-npm test
-# or target a specific engine:
-node tests/test.js --html src/subit_chess_v2.2.0.html
-
-# 3. Backward compat
-node tests/test.js --html src/subit_chess_v1.9.1.html  # 100/100
-
-# 4. Full perft (includes perft(4) = 197281)
-node tests/test.js --only-perft --full
-
-# 5. Self-play + teacher (Node, 100 games)
-node runners/run.js --mode teacher --games 100 --out results/run1.json
-
-# 6. A/B match (400 games, SPRT)
-node runners/run.js --mode match --games 400 --depth 2 --seed 42
-
-# 7. Release
-git tag v2.2.0 && git push origin v2.2.0
+npm install                # only devDependency: jsdom (UI smoke test)
+npm run build              # node build/bundle.mjs → src/subit_chess_v3.0.0.html + index.html
+npm test                   # v3 suite: engine perft/smoke/plans/eval/verify/driver/learn + UI
+npm run test:engine        # engine only
+npm run test:app           # jsdom UI smoke test
+npm run test:legacy        # v2.2.0 single-file suite (128 assertions, kept for reference)
 ```
 
----
+`npm run build` is deterministic: the bundled HTML is byte-identical across runs, and
+`src/subit_chess_v3.0.0.html` and `index.html` always match.
+
+## Measured status (honest)
+
+- **The evaluation-perspective fix is real.** Before it, every black-to-move node was scored
+  with the wrong sign. Against the pre-fix modules the fixed engine scores **12-0** at depth
+  3/4. That is the largest single strength change in v3.
+- **The fast evaluation tier is not yet a measured win.** Against the previous eval
+  (material + PST + hard switch): 52.5% ± 13.3 over 20 games at depth 3 — inside the noise.
+- **Depth is not yet paying.** Depth 5 vs depth 4: 45.8% ± 22.4 over 12 games. An engine must
+  gain from depth; `npm run match:depth` is the regression test for that, and it is currently
+  unresolved rather than failing.
+- **No opening book, no move variety.** Self-play from the start position reaches the 300-ply
+  cap in equal positions. This blocks every larger ablation run and is the next strength item.
+- **Sample size is the binding constraint.** 8-20 games gives a ±13-34 pp interval, which
+  cannot resolve effects below ~100 Elo. Target n ≥ 100 per configuration before accepting or
+  rejecting an ablation.
+
+See [`CHANGELOG.md`](CHANGELOG.md) § Unreleased for the full list of open items.
 
 ## Documentation
 
 ### For users
-- [`docs/USER-MANUAL.md`](docs/USER-MANUAL.md) — **start here** — full user guide
+- [`docs/USER-MANUAL.md`](docs/USER-MANUAL.md) — start here: panels, levels, FEN/PGN, console API, troubleshooting.
 
-### For researchers
-- [`docs/SUBIT-CHESS-SPEC.md`](docs/SUBIT-CHESS-SPEC.md) — formal specification (SUBIT-∞ v5.2+)
-- [`docs/SUBIT-EXPERIMENT-SPEC.md`](docs/SUBIT-EXPERIMENT-SPEC.md) — pre-registered experimental protocol
-- [`docs/DECISIONS.md`](docs/DECISIONS.md) — architecture decision records (8 ADRs)
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — release plan and gates
-
-### For contributors
-- [`CHANGELOG.md`](CHANGELOG.md) — version history (v1.8.6 → v2.2.0)
-- [`tests/test.js`](tests/test.js) — test suite (128 assertions)
-- [`runners/run.js`](runners/run.js) — Node CLI
-
----
+### For developers and researchers
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — current state, measured results, next steps.
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — architecture decision records (ADRs).
+- [`docs/theory/`](docs/theory) — the 36 specifications the implementation targets
+  (`05` search architecture, `11` strategic plan generation, `25` ablations, `31`/`32`/`33`/`36`
+  computational architecture, verification, complexity, decision theory).
+- [`docs/spec/`](docs/spec) and [`docs/papers/`](docs/papers) — historical specs and papers
+  (v1.8.x-v1.9.1 era: S₀ grammar, ρ_s policy, diffusion generator). Kept for provenance; they
+  describe subsystems that v3 does not ship.
+- [`CHANGELOG.md`](CHANGELOG.md) — version history.
 
 ## Honest limitations
 
-- **Diffusion generator** is architecturally complete (tensor repr, CFG, verifier, UI) but uses curated seed positions instead of a trained neural denoiser. A real learned model (PyTorch/ONNX, ~2M studies from YACPDB/Die Schwalbe) would slot in at `generateStudy()` via the same interface.
-- **Game strength** unchanged from v2.1.x in baseline mode. v2.2.0 is a feature release (diffusion + v6.13), not a strength release.
-- **ρ_s frozen.** No online learning. `initRhoSFromTeacher()` sets params once; `rhoSFrozen = true`.
-- **Sample size.** 200 games → SE ≈ 27 Elo. Use 400+ games or SPRT for a real A/B decision.
-- **Teacher signal.** ρ_s requires ≥ 3 signal cells (`n ≥ 20 && |t| ≥ 2`) to auto-activate. Run `__subit.teacherClear()` before a fresh A/B to avoid cross-run contamination.
-
----
+- **Game strength is not yet demonstrated.** The perspective fix is a large correctness win;
+  beyond that, every measured difference is inside the confidence interval at the sample sizes
+  used so far.
+- **No opening book, no variety.** Equal middlegames shuffle to the move cap.
+- **Legacy subsystems are gone, not ported.** The v2.2.0 diffusion study generator, ρ_s policy
+  vector, teacher snapshots and telemetry do not exist in v3; `runners/run.js` targets v1.9.1
+  and is kept only for the v2 legacy suite.
+- **Search hygiene debt:** TT entries are never aged out, `contextBonus` in `index.mjs` is
+  dead code, `unmakeNullMove` increments `stm`, `Score.diff` is never written.
+- **Spec compliance is partial:** plan feasibility/`pareto()` (doc 11), no-op `contextAdjust`
+  (doc 05), `structure` gaps, `verify` coverage and `meta` thresholds are not complete.
 
 ## License
 

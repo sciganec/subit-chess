@@ -1,271 +1,143 @@
 # Roadmap
 
-Direction for **subit-chess** after v1.9.1.
+Direction for **subit-chess** after v3.0.0.
 
-Guiding principles:
+Guiding principles (unchanged):
 - **Evidence over ambition.** Every next step has a pre-registered gate.
 - **Honest probabilities.** If a path is unlikely to work, say so.
 - **Kill criteria are first-class.** Every item names what would make us stop.
-- **No new mechanisms** until the current one (ρ_s) is validated or falsified.
+- **No new mechanisms** until the current one is measured.
+
+Superseded: the v1.9.x roadmap (ρ_s A/B gates, online ρ_s learning) is dead. ρ_s, the
+teacher pipeline and the diffusion generator were removed in v3 — see
+`CHANGELOG.md` [3.0.0] § Removed and `docs/DECISIONS.md` ADR 0013.
 
 ---
 
-## Current state — v1.9.1 (2026-09-26)
+## Current state — v3.0.0 (2026-11-15)
 
-**Status:** Infrastructure release. Game strength ≈ v1.8.7 in baseline mode.
+**Status:** Engine core rewrite + correctness pass. Strength demonstrated so far is a
+single large fix (evaluation perspective); everything else is still inside the noise band.
 
-**What works:**
-- S₀ = 48 cells, signal rate ~18–22% flat across coarsenings.
-- Teacher pipeline: selfPlay → batchTeacherEval → snapshot, `droppedRaw = 0`.
-- ρ_s installed and frozen from teacher means, explicit policy passing through Worker.
-- `searchParamsFor()` → `alphaBeta` reacts to `policyNullR` / `policyFutMargin`.
+**What is measurably true:**
+
+| Claim | Evidence |
+|---|---|
+| The perspective fix is worth a lot | 12-0 vs pre-fix modules at depth 3/4 |
+| The fast eval tier is not yet a win | 52.5% ± 13.3 over 20 games, depth 3 |
+| Depth is not yet paying | depth 5 vs 4: 45.8% ± 22.4 over 12 games |
+| Structural layers do not yet pay | `base` vs `plain`: 56.3% ± 34.3 over 8 games |
+| The root move is a true argmax | brute-force comparison on 3 positions: 8/109/82 |
 
 **What is not yet known:**
-- Does ρ_s actually improve play? **Unanswered.**
-- The next release depends entirely on the A/B answer.
+- Does a ply of depth convert into strength? (the `--a base@5 --b base@4` regression)
+- Do the structural layers (plans, context, structure) earn their cost?
+- Where is the real playing strength of v3? No external sparring partner, no EPD set with
+  `bm` — every number above is self-play.
 
 **Open hazards:**
-- Auto-init of ρ_s (ADR 0006) — mitigation documented, not removed.
-- 6 effective dims (ADR 0005) vs. 4 declared — pre-registration drift, logged.
-
-**Next action:** Run 400-game A/B (see below). Everything else is blocked on it.
+- **Shuffling.** No opening book, no variety: equal middlegames run to the 300-ply cap.
+  This contaminates every measurement and is the first blocker below.
+- **Sample size.** 8-20 games gives a ±13-34 pp interval. Anything below ~100 Elo is
+  unmeasurable at that size.
+- **Debt:** TT entries never age out; `contextBonus` in `index.mjs` is dead code;
+  `unmakeNullMove` increments `stm`; `Score.diff` is never written.
 
 ---
 
-## Gate 1 — ρ_s A/B (unlocks v1.9.2 or v1.9.x-rollback)
+## Gate 1 — opening variety (unblocks everything)
 
-**Pre-registered metric:** `Δmean reward per transition` on 8 active cells.
-**Sample size:** 200 games screening, then 400 games confirm.
+**Why first:** a match that shuffles 300 plies measures nothing but repetition tolerance.
 
-### Commands
+**Actions:**
+1. Small opening book (or a randomized first-N-plies from the `bench/match.mjs` opening set)
+   with an explicit `--variety` knob.
+2. Anti-repetition rule in self-play: penalise positions already seen twice.
 
-```bash
-# baseline (policy off)
-node runners/run.js --mode match --games 400 --depth 2 --seed 42 \
-  --policy off --out results/base.json
+**Gate:** mean game length from the start position ≤ 120 plies, and no game reaching the
+300-ply cap in ≥ 90% of runs.
 
-# ρ_s (policy on, compared to baseline)
-node runners/run.js --mode match --games 400 --depth 2 --seed 42 \
-  --policy on  --out results/rho.json --baseline results/base.json
-```
+**Kill criterion:** if variety makes the engine measurably weaker (loss of ≥ 50 Elo vs
+`base` over 100 games), the book is wrong — shrink it, don't disable it.
 
-### Decision table
+---
+
+## Gate 2 — does depth convert into strength?
+
+**Pre-registered metric:** score of `base@5` vs `base@4` over 100 games at depth 5.
+**Decision table:**
 
 | Result | Verdict | Action |
 |---|---|---|
-| `Δmean > +15 cp` | PASS screening | Run 400-game confirm; if CI.lo > 0 → **v1.9.2 online learning** |
-| `Δmean ∈ [−5, +15] cp` | MARGINAL | Either tune policy values (v1.9.1.x) or kill ρ_s |
-| `Δmean < −5 cp` | FAIL | Roll back to baseline; log in DECISIONS as ADR 0009 "ρ_s negative" |
-| `Δmean ≈ 0` with `p > 0.5` | NULL | ρ_s is inert; either increase coverage or retire the mechanism |
+| score ≥ 60% (CI.lo > 0.5) | depth works | keep pruning/LMR as is; spend effort on eval |
+| 50-60% (CI spans 0.5) | weak signal | 200 games; then investigate pruning aggressiveness |
+| < 50% (CI.hi < 0.5) | depth is broken | ablation of `nopruning` / `nolmr` / `nonull` / `noasp`, 100 games each |
 
-### Prior probability
+**Prior:** depth is the one thing a search must deliver; a negative result here would mean
+a search bug, not a tuning problem. Estimate: PASS 70%, MARGINAL 20%, FAIL 10%.
 
-**Subjective estimate:**
-- PASS (`Δmean > +15`): **25%**
-- MARGINAL (`[−5, +15]`): **40%**
-- FAIL (`< −5`): **35%**
-
-Justification: 8 cells cover 60% of transitions, but the search deltas
-(`d_base ∈ [−1,+2]`, `futility ∈ [80,250]`) are modest. Prior experience with
-similar hand-tuned parameter sets suggests weakly positive or neutral.
+**Kill criterion:** if `nopruning` beats `base` at depth 5 by > 0.5, the pruning is
+over-aggressive — remove it rather than tune it.
 
 ---
 
-## v1.9.2 — Online ρ_s learning (conditional on Gate 1 PASS)
+## Gate 3 — do the structural layers earn their cost?
 
-**Trigger:** `Δmean > +15 cp` AND 400-game CI.lo > 0.
+**Pre-registered metric:** `base` vs `plain` (no structure, no plans, no context) over
+100 games at depth 4, plus `nostruct`, `noplans`, `noctx` individually.
 
-**Idea:** ρ_s is currently static. Update it during self-play using observed
-reward per cell, mirroring the existing `nudgeCellWeights` mechanism for eval
-weights but applied to policy vector.
+**Decision table:**
 
-**Sketch:**
+| Result | Verdict | Action |
+|---|---|---|
+| base wins with CI.lo > 0.5 | layers pay | keep; tune weights per doc 05 |
+| CI spans 0.5 | inert | profile the cost; either raise the weights or delete the layer |
+| base loses with CI.hi < 0.5 | layers hurt | delete the layer and record an ADR |
 
-```
-after each game:
-  for each active cell c:
-    mean_c ← running mean of reward over transitions in c
-    norm_c ← clamp(mean_c / 100, −1.5, +1.5)
-    ρ_s[c] ← 0.9 · ρ_s[c] + 0.1 · f(norm_c)     # EMA
-    clamp ρ_s[c] to bounds
-```
+**Prior:** the layers are hand-weighted and have never been validated end to end.
+Estimate: PASS 35%, MARGINAL 40%, FAIL 25%.
 
-**Risks:**
-- Non-stationarity: policy drifts into local optima.
-- Interference with eval-weight learning (both touch the same games).
-- Reintroduces train/eval mixing — must be handled via snapshot-per-run.
-
-**Gate to accept v1.9.2:**
-- 400 games A/B vs. frozen v1.9.1 ρ_s → `Δmean > +10 cp` and CI.lo > 0.
-- No degradation of signal cell count.
-
-**Kill criteria:**
-- Two consecutive runs with `Δmean < 0` → revert, mark as ADR "online learning rejected".
-
-**Prior probability:** **30%** that online learning outperforms frozen.
-Non-stationarity in self-play is a known hard problem.
+**Kill criterion:** any layer that cannot show a positive CI over 200 games is deleted
+outright — no "we'll tune it later".
 
 ---
 
-## v1.9.3 — Remove auto-init (safety-only release)
+## Gate 4 — spec compliance (docs 05/11/31/32/33/36)
 
-**Trigger:** Independent of Gate 1. Low-risk cleanup.
+Not strength work, but the implementation should not contradict its own specification:
 
-**Change:** Remove the auto-init block in `init()`:
+- `plans.mjs`: feasibility checks, `pareto()` wiring, revision handling (doc 11, `SPG-INV-*`).
+- `context.mjs`: make `contextAdjust` real instead of a no-op (doc 05 §context).
+- `verify.mjs`: extend coverage so every `SVF-INV-*` / `SEARCH-INV-*` has a test.
+- `meta.mjs`: threshold calibration against measured risk (docs 29/35).
 
-```js
-// v1.9.1
-if (initTeacherRep.signalCells >= 8){
-  subitState.initRhoSFromTeacher(initTeacherRep.allCells);
-}
-
-// v1.9.3
-if (initTeacherRep.signalCells >= 8){
-  console.log('[SUBIT] teacher ready — call __subit.activateRhoS() to install ρ_s');
-}
-```
-
-**Rationale:** ADR 0006 documented auto-init as a hazard. Removing it makes
-"silent A/B contamination" impossible.
-
-**Compatibility:** Minor — users who relied on auto-init call `__subit.activateRhoS()`.
-Add a `subit-config.json` flag `autoActivateRhoS: true` for opt-in.
-
-**Gate:** No A/B needed. This is a safety patch. Ship when ready.
-
-**Prior probability of shipping:** **90%**. Low effort, clear win.
+**Gate:** `npm run test:engine` covers every documented invariant, and no documented
+invariant is violated in the invariant suite.
 
 ---
 
-## v1.10 — Expansion candidates (conditional, blocked)
+## Gate 5 — external validation
 
-None of the below is scheduled. Each requires a **positive trigger** from
-earlier steps. Without a trigger, they stay closed.
+Everything above is self-play. Before claiming strength:
 
-### Candidate A — 16-cell mode
+1. **EPD suite with `bm`/`am`.** The repository has `bench/fens/*.epd` without `bm`; the
+   first task is to build a set with best-move annotations (public sources only, licensed
+   for redistribution).
+2. **Sparring partner.** A second engine (any UCI engine) to score against, so results do
+   not depend on the engine's own evaluation.
 
-**Trigger:** v1.9.2 online learning shows ρ_s stable across runs AND
-`signalCells` grows to ≥ 14 in a 400-game teacher run.
+**Gate:** ≥ 70% best-move agreement on a 200-position EPD set at depth 6, and a non-negative
+result against the sparring partner over 100 games.
 
-**Idea:** extend ρ_s to 16 cells by relaxing gate from `|t| ≥ 2` to `|t| ≥ 1.5`
-plus an effect-size floor `|mean| ≥ 20 cp`.
-
-**Risk:** more params, fewer samples/param.
-
-**Kill criterion:** samples/param drops below 100 → not worth it.
-
-**Prior probability:** **15%**. The 8 → 16 jump historically never paid off.
-
-### Candidate B — Trust-region ρ_s
-
-**Trigger:** v1.9.2 online learning shows oscillation.
-
-**Idea:** bound `Δρ_s` per update by `±5%` and require two consecutive games
-with same-sign reward before applying.
-
-**Prior probability:** **20%**. Only triggered if online learning ships.
-
-### Candidate C — Morphism-based ρ_s transfer
-
-**Trigger:** Category morphisms (`A → B` with count ≥ 4 and positive avg delta)
-cover ≥ 30% of active-cell transitions.
-
-**Idea:** propagate ρ_s along strong morphisms instead of per-cell learning.
-
-**Prior probability:** **10%**. Morphism infrastructure exists but is
-underpowered (`buildCompositions` requires count ≥ 2).
-
-### Candidate D — Openings suite for A/B
-
-**Trigger:** Always beneficial; not tied to Gate 1.
-
-**Idea:** add 10 fixed openings to `runners/run.js` via `--openings file.epd`,
-cycle through them, colors balanced.
-
-**Rationale:** currently `selfPlay` always starts from the initial position;
-opening diversity comes only from ε-greedy. A real A/B needs opening variance.
-
-**Prior probability:** **70%** of shipping. Cheap and improves every future A/B.
-
-**Effort:** ~60 lines in `runners/run.js` + 1 `.epd` file.
+**Kill criterion:** if best-move agreement is below 50%, stop tuning parameters and fix the
+search/eval contract first — a low agreement rate means the engine is not choosing moves the
+way its own specification says it should.
 
 ---
 
-## Explicitly rejected / parked
+## Non-goals for the next release
 
-Listed here so they do not get re-litigated.
-
-| Path | Reason |
-|---|---|
-| **32-cell coarsening** | Extrapolated signal ~6 < gate 15 (ADR 0002) |
-| **KING → CENTER merge** | t drops 2.61 → 1.92 (ADR 0003) |
-| **22-cell ρ_s** | 74.4 samples/param vs. current 136.4 (ADR 0002) |
-| **Elo-based gate** | Statistically dishonest at 200 games (ADR 0008) |
-| **`window.__rhoSModule` global** | Broken in Worker; replaced by explicit passing (ADR 0007) |
-| **NNUE / WASM / GPU backend** | Different research path; 3–6 months; no morphological tie-in |
-| **Opening book** | Conflicts with ε-greedy diversity during training |
-| **Endgame tablebase probe** | Outside scope; would need external data |
-| **MCTS / policy network** | Alpha-beta with ρ_s is the current bet; don't pivot mid-cycle |
-| **Re-training the 6-component eval** | Eval is stable; focus is on ρ_s |
-| **Removing Belnap panel** | Cheap UI, no performance cost, useful for debugging |
-
----
-
-## Non-goals (permanent)
-
-These will not be addressed in any release:
-
-- **Browser-only.** No Electron, no Node-CLI engine, no desktop app.
-- **Backwards compatibility with v1.8.x localStorage format.** Breaking changes
-  in `subit-grammar-v3` are allowed; a migration script is out of scope.
-- **Internationalization (i18n).** UI is Ukrainian + English mixed; accept it.
-- **Mobile-optimized board.** It works; polish is not on the roadmap.
-- **Multi-threaded search.** Web Worker is single-threaded per search.
-- **Cloud teacher runs.** Teacher is offline, local, single-user.
-- **Multiple games in parallel (browser).** Sequential only.
-
----
-
-## Timeline (order, not dates)
-
-```
-[now]  v1.9.1      — infrastructure, frozen ρ_s
-       ↓
-       Gate 1 (400-game A/B)  ← blocking
-       ↓
-       ┌─ PASS ────────→ v1.9.2 (online ρ_s) ─┐
-       │                                       ↓
-       │                                 Gate 2 (400-game A/B)
-       │                                       ↓
-       │                                 ┌─ PASS ──→ v1.10-A (16-cell, maybe)
-       │                                 └─ FAIL ──→ freeze at v1.9.2
-       │
-       ├─ MARGINAL ──────→ v1.9.1.x (policy tuning, one more A/B)
-       │
-       └─ FAIL ──────────→ v1.9.x-rollback (ρ_s off by default)
-                           + ADR "ρ_s negative"
-
-[independent] v1.9.3 (remove auto-init)  — safety patch, ships whenever
-[independent] v1.10-D (openings suite)   — improves future A/B, ships with next cycle
-```
-
-**"Done" state:** either
-- ρ_s shows statistically significant improvement (`CI.lo > 5 Elo`), or
-- ρ_s is formally retired and the project freezes at the last baseline-strong version.
-
-No infinite iteration. Two more A/B cycles max before a decision.
-
----
-
-## What would change this plan
-
-- **External contribution** proving ρ_s improves play on independent hardware.
-- **A theoretical result** showing why 8 cells is optimal for this eval.
-- **Discovery of a bug** in `alphaBeta` policy integration (invalidates current A/B).
-- **Unexpected teacher signal growth** (e.g., `signalCells ≥ 20`) → reopens 16-cell path.
-
-Absent these, the roadmap above is stable until Gate 1 resolves.
-
----
-
-*End of ROADMAP.md — v1.9.1*
+- Online learning / self-improvement loops (docs 06, 14, 28) — blocked until Gates 1-3 close.
+- Multi-PV analysis UI, opening explorer, engine-vs-engine match UI.
+- Web Worker search: the UI runs the search on the main thread today; move it only after
+  strength work is stable, because it changes nothing about strength.

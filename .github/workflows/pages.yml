@@ -4,7 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'src/subit_chess_v2.2.0.html'
+      - 'src/subit_chess_v3.0.0.html'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -27,9 +27,36 @@ jobs:
       - name: Prepare site directory
         run: |
           mkdir -p _site
-          cp src/subit_chess_v2.2.0.html _site/index.html
-          cp src/subit_chess_v2.2.0.html _site/subit_chess_v2.2.0.html
-          echo '<!DOCTYPE html><html><head><meta charset="utf-8"><title>subit-chess</title></head><body style="font-family:system-ui;background:#302e2b;color:#e8e6e3;padding:2rem"><h1>subit-chess</h1><p>Play: <a style="color:#81b64c" href="./subit_chess_v2.2.0.html">subit_chess_v2.2.0.html</a></p><p>Source: <a style="color:#81b64c" href="https://github.com/sciganec/subit-chess">github.com/sciganec/subit-chess</a></p></body></html>' > _site/README.html
+          cp src/subit_chess_v3.0.0.html _site/index.html
+          cp src/subit_chess_v3.0.0.html _site/subit_chess_v3.0.0.html
+          cat > _site/README.html <<'HTML'
+          <!DOCTYPE html>
+          <html lang="uk">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>subit-chess v3.0.0</title>
+            <style>
+              body{font-family:system-ui,sans-serif;background:#302e2b;color:#e8e6e3;
+                   padding:2rem;max-width:44rem;margin:0 auto;line-height:1.55}
+              a{color:#81b64c}
+              code{background:#1a1a1a;padding:2px 6px;border-radius:4px}
+              .btn{display:inline-block;margin-top:1.5rem;padding:.7rem 1.2rem;
+                   background:#81b64c;color:#14260a;font-weight:700;border-radius:8px;
+                   text-decoration:none}
+            </style>
+          </head>
+          <body>
+            <h1>subit-chess v3.0.0</h1>
+            <p>Шаховий рушій у браузері: структурна функція оцінки (SVF),
+               структурні плани, бюджетований альфа-бета пошук. Один HTML-файл,
+               без мережі та без збірки.</p>
+            <p><a class="btn" href="./subit_chess_v3.0.0.html">Грати</a></p>
+            <p>Джерело та документація:
+               <a href="https://github.com/sciganec/subit-chess">github.com/sciganec/subit-chess</a></p>
+          </body>
+          </html>
+          HTML
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3

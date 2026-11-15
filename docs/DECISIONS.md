@@ -1,9 +1,13 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v1.9.1**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.0**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
+
+Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s policy vector,
+teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
+ADR 0009+ describe v3.0.0 and are the binding decisions for the current engine.
 
 ---
 
@@ -33,7 +37,7 @@ S₀ = 4 × 3 × 4 = **48 cells**.
 
 ## ADR 0002 — ρ_s on 8 signal cells
 
-**Status:** Accepted (v1.9.0 / v1.9.1)
+**Status:** Superseded by ADR 0013 (v3.0.0) — accepted for v1.9.0/v1.9.1
 
 ### Context
 From the 48-cell teacher run (6548 unique FENs), exactly **8 cells** reached
@@ -145,7 +149,7 @@ Both `makeTelemetryModule` and `makeTeacherTelemetryModule` now use `cellCount`.
 
 ## ADR 0005 — ρ_s: 6 effective dims, not 4 (pre-registration drift, documented)
 
-**Status:** Accepted (v1.9.1)
+**Status:** Superseded by ADR 0013 (v3.0.0) — accepted for v1.9.1
 
 ### Context
 The original pre-registration (`.txt` v1.9 plan) declared ρ_s as **4 dims**:
@@ -187,7 +191,7 @@ for v1.9.1.
 
 ## ADR 0006 — ρ_s is frozen before A/B; auto-init is a known hazard
 
-**Status:** Accepted (v1.9.1)
+**Status:** Superseded by ADR 0013 (v3.0.0) — accepted for v1.9.1
 
 ### Context
 During early testing, `initRhoSFromTeacher()` was called automatically in
@@ -228,7 +232,7 @@ Keep auto-init, but make the hazard explicit:
 
 ## ADR 0007 — Explicit policy passing through Worker boundary
 
-**Status:** Accepted (v1.9.1)
+**Status:** Superseded by ADR 0013 (v3.0.0) — accepted for v1.9.1
 
 ### Context
 Early v1.9 drafts passed ρ_s through `window.__rhoSModule` (a global). This
@@ -410,4 +414,186 @@ and (with `--baseline`) a `comparison.verdict` line.
 
 ---
 
-*End of DECISIONS.md — v1.9.1*
+## ADR 0009 — Evaluation perspective is mover-relative in both tiers
+
+**Status:** Accepted (v3.0.0)
+
+### Context
+
+v3.0.0 shipped two evaluation tiers that disagreed on a basic contract:
+
+- `evaluateFast()` returned a **white-positive** score, while the negamax consumes
+  **side-to-move-relative** values.
+- `Evaluation.structural()` negated an already mover-relative vector a second time.
+
+Consequence: every node where Black was to move was scored with the wrong sign, so the
+search maximised the opponent's advantage on odd plies. This is not a tuning issue; it is
+a sign error that makes the search's own output meaningless on half the tree.
+
+### Decision
+
+1. Both tiers return **mover-relative** centipawns. `evaluateFast()` multiplies by
+   `stm = (pos.turn === WHITE ? 1 : -1)` before clamping; `structural()` returns the vector
+   from the side to move and exposes the white-positive value separately as `white`.
+2. The documented invariant is `SVF-INV-001`: for a mover-relative evaluation, mirroring the
+   position (colours swapped) must give **equality**, not negation. White-relative values
+   negate. This is now a test, not a comment.
+3. Any new evaluation term must be written mover-relative at the point of use, never
+   "fixed later" by a negation at the call site.
+
+### Consequences
+
+- Measured: **12-0** against the pre-fix modules at depth 3/4 (before the fix the second
+  player won every game).
+- The single largest playing-strength change in v3, and it is a correctness fix.
+- `tests/engine.eval.mjs` locks the contract (both tiers, both colours, both directions).
+
+---
+
+## ADR 0010 — Plan bonus is bounded to the structural level
+
+**Status:** Accepted (v3.0.0)
+
+### Context
+
+`makePlanOrderer()` added `100 + score` to the structural ordering level, where
+`w.struct = 200000` and `pv = 1e6`. The resulting bonus (~2.2e7) exceeded the PV level, so
+a quiet plan move outranked a capture at every node. The same root-side map was also
+applied to the opponent's replies, so the opponent's moves were ordered from the wrong side.
+
+### Decision
+
+- The plan bonus is normalised into `[0, 1]` and added **only** to the structural level,
+  below tactics (doc 05 §11.2, doc 11).
+- The orderer is constructed per search with `rootTurn` and orders non-root nodes from the
+  opponent's perspective; root nodes from `rootTurn`.
+- The documented level order `pv > tt > tactic > struct > context > history` is enforced by
+  test: a capture must outrank any plan move at every level.
+
+### Consequences
+
+- Plan hints still surface in move ordering and in the UI, but can never hijack the search.
+- History is normalised into `[0, 0.6·w.history]` for the same reason (raw counters were
+  exceeding `tactic`).
+
+---
+
+## ADR 0011 — Draw semantics: claimable inside search, automatic in the game
+
+**Status:** Accepted (v3.0.0)
+
+### Context
+
+Two different rules were conflated. Inside the search, a draw claim is a *choice*: a side
+that is worse can claim, a side that is better would not. Scoring a claimable draw as 0 for
+both sides let a better side shuffle into a threefold repetition and hand back half a point.
+In the game, 75 moves and fivefold repetition are automatic and end the game.
+
+### Decision
+
+- Inside `Searcher`: 50-move rule (FIDE 9.3) and threefold repetition (9.2) score **0 for
+  both sides** — the opponent can claim, so the position is not a win for the side to move.
+- 75-move rule (9.6.2) and fivefold repetition (9.6.1) are automatic draws and end the
+  search line.
+- `Position.status()` keeps the distinction for the game: claimable draws are reported as
+  claimable, automatic draws as final.
+
+### Consequences
+
+- A winning side can no longer "give back" half a point by repeating.
+- The UI status distinguishes claimable from automatic draws (user manual §5).
+
+---
+
+## ADR 0012 — Single-file artifact is produced by a bundler from ES modules
+
+**Status:** Accepted (v3.0.0)
+
+### Context
+
+v1/v2 kept the whole engine inline in one HTML file, which made the code unreadable and
+untestable. v3 needs modules, tests and a bundler, but the shipped artifact must stay a
+single offline HTML file (no server, no CDN, no network).
+
+### Decision
+
+- Source of truth: `src/engine/*.mjs` (12 modules) + `build/shell.html` (UI).
+- `build/bundle.mjs` walks the import graph from `src/engine/index.mjs`, inlines every
+  module into the shell's `<script>` block, and writes both
+  `src/subit_chess_v3.0.0.html` and `index.html`.
+- The build is deterministic: same input → byte-identical output, and the two artifacts
+  always match.
+- No user-facing build step: the repository ships the built file.
+
+### Consequences
+
+- Tests run against the modules (`npm run test:engine`), the UI is tested against the
+  bundled file with jsdom (`npm run test:app`).
+- A stale artifact is possible in principle; CI runs `npm run build` and fails on a diff.
+
+---
+
+## ADR 0013 — v3 removes ρ_s, teacher pipeline, diffusion generator, telemetry
+
+**Status:** Accepted (v3.0.0) — supersedes ADR 0002, 0005, 0006, 0007
+
+### Context
+
+The v1.9.x-2.2.0 research line (S₀ grammar weights, ρ_s policy vector, teacher snapshots,
+diffusion study generator, telemetry panels) was never validated for playing strength, and
+the ρ_s A/B gate from the v1.9.1 roadmap was never answered. Carrying those subsystems into
+v3 would mean maintaining code whose purpose (strength) was unproven, while the engine core
+had correctness defects that mattered far more.
+
+### Decision
+
+- v3 ships the engine core: percept, structure, context, evaluation (fast + SVF),
+  plans, search, meta, memory, verification.
+- Removed: ρ_s policy vector and its auto-init, grammar weight mutation, teacher run and
+  snapshots, telemetry, diffusion study generator, Belnap/morphism panels, engine-vs-engine
+  comparison panel.
+- `runners/run.js` (jsdom, v1.9.1 protocol) is kept only so `npm run test:legacy` still
+  runs; it is not part of the v3 pipeline.
+- Strength claims are made only through `bench/match.mjs` (ADR 0014).
+
+### Consequences
+
+- ADR 0002/0005/0006/0007 are marked Superseded; their context is preserved for provenance.
+- The UI loses panels; the manual and README describe only what exists.
+- The v1.9.x roadmap gates are void; `docs/ROADMAP.md` was rewritten around v3 gates.
+
+---
+
+## ADR 0014 — Strength is measured by a native ablation harness, not by vibes
+
+**Status:** Accepted (v3.0.0)
+
+### Context
+
+v1/v2 measured strength with browser self-play telemetry (reward per transition, jsdom
+runner). Those numbers were not comparable across configurations, and the engine's own
+evaluation was both player and referee.
+
+### Decision
+
+- `bench/match.mjs` is the only accepted instrument: deterministic self-play from a fixed
+  opening set, named configurations, per-side depth (`base@6` vs `base@4`), W-D-L, score
+  with a 95% confidence interval, JSON export.
+- Every strength claim in `readme.md` / `CHANGELOG.md` cites a configuration pair and a
+  sample size.
+- Configurations are ablations of one switch each (`nostruct`, `noplans`, `noctx`, `eval0`,
+  `nopruning`, `nolmr`, `nonull`, `noasp`, …) so a result is attributable.
+- A result is not accepted until the 95% CI excludes 0.5 (or the sample size is declared
+  insufficient, as with the depth-5-vs-4 measurement at n=12).
+
+### Consequences
+
+- Honest but slow: 100+ games per configuration is the entry price for any claim.
+- Self-play remains the only oracle; external validation (EPD with `bm`, a sparring engine)
+  is Gate 5 in `docs/ROADMAP.md`, not yet done.
+- The known blind spot: the engine cannot be shown to be *strong*, only to be *not worse*
+  than its own ablations.
+
+---
+
+*End of DECISIONS.md — v3.0.0*

@@ -1,4 +1,4 @@
-﻿# Changelog
+# Changelog
 
 All notable changes to **subit-chess** are documented here.
 
@@ -10,6 +10,158 @@ Statuses:
 - **Fixed** — bug fixes
 - **Security** — vulnerability fixes
 - **Notes** — non-functional decisions, pre-registration drifts, ADR refs
+
+---
+
+## [Unreleased]
+
+Next strength items for the v3 engine (measured, not cosmetic):
+
+- **Opening variety.** Self-play from the start position still reaches the 300-ply
+  cap in equal positions: the engine has no book and no move variety, so
+  dead-equal middlegames shuffle. This blocks every larger ablation run.
+- **Scale the ablation harness.** At 8-20 games the 95% CI is ±13-34 pp, which
+  cannot resolve effects below ~100 Elo. Target n ≥ 100 games per configuration
+  at depth 4-5 before accepting or rejecting `plain`, `eval0`, `noasp`.
+- **Spec compliance debt:** plan feasibility and `pareto()` (doc 11), no-op
+  `contextAdjust` (doc 05 §context), `structure` gaps, `verify` coverage,
+  `meta` thresholds (docs 31/32/33/36).
+- **Search hygiene:** TT aging (entries are never evicted), dead `contextBonus`
+  in `index.mjs`, `unmakeNullMove` incrementing `stm`, `Score.diff` never set.
+
+---
+
+## [3.0.0] — 2026-11-15
+
+Modular engine rewrite with the v2.2.0 interface preserved, plus a
+playing-strength and correctness pass verified with a native self-play harness.
+
+### Changed
+
+- **Engine** is now a set of plain ES modules under `src/engine/` (`core`, `percept`,
+  `structure`, `context`, `evaluate`, `search`, `plans`, `meta`, `index`) instead of one
+  inline script. `build/bundle.mjs` walks the import graph and inlines it into the shipped
+  single file `src/subit_chess_v3.0.0.html` (203.4 kB) — still no build step, no CDN, no
+  network access for the end user.
+- **Unified pipeline** exposed on `Engine`: `setFEN / legalMoves / analyze / budget / search /
+  play / perft / selfPlay`, with every stage (percept, structure, context, evaluation, plans,
+  memory, meta) inspectable from `analyze()`.
+- **Interface** taken from v2.2.0: same header, player bars, captured-piece trays, clocks,
+  board (SVG pieces, coordinates, legal-move dots, capture rings, check glow, last-move arrow),
+  move list, level pills, promotion / FEN / help / settings modals, theme switch, PGN export,
+  drag-and-drop plus click-to-move.
+- **Panels** now show engine-v3 data: S₀ = (I, Z, Φ) with τ/complexity/uncertainty/risk,
+  SVF vector (M,K,A,D,C,T,Q,R,X) with Belnap verdicts, structural plans, relation counts and
+  critical squares, and search statistics (score, depth, nodes, nps, risk, PV).
+- **UI difficulty** is no longer a 1:1 depth: levels 1-5 map to depth 1 / 2 / 4 / 6 / 8 with a
+  2.5 s safety clock on the top level (level 3 previously searched depth 3).
+- `package.json` version bumped 1.9.1 → 3.0.0 to match `ENGINE.VERSION` and the artefact name.
+  `main`/`browser` point at `src/subit_chess_v3.0.0.html`.
+
+### Fixed
+
+Playing-strength defects, found by reading the search against `docs/theory`:
+
+- **Evaluation perspective (strength-critical).** `evaluateFast()` returned a
+  white-positive score while the negamax consumes side-to-move-relative values,
+  and `Evaluation.structural()` negated an already side-to-move-relative vector a
+  second time. Every black-to-move node was scored with the wrong sign, so the
+  search maximised the opponent's advantage on odd plies. Both tiers now return
+  mover-relative values (`white` stays white-positive). Measured against the
+  pre-fix modules: **12-0 in a depth-3/4 match**.
+- **Plan-ordering bonus dominated the move ordering.** `makePlanOrderer()` added
+  `100 + score` to the structural level (`w.struct = 200000`), i.e. ≈2.2e7
+  against `pv = 1e6`, `tt = 9e5`, `tactic = 8e5`: a quiet plan move outranked a
+  capture at every node, and the same root-side map was applied to the
+  opponent's replies. The bonus is now bounded to `[0,1]` (structural level only,
+  below tactics) and is side-aware (doc 05 §11.2, doc 11).
+- **History term could outrank captures.** Raw history counters (capped at
+  2^20) were added unscaled, exceeding `tactic`. History is now normalised into
+  `[0, 0.6·w.history]`, keeping the documented level order
+  `pv > tt > tactic > struct > context > history`.
+- **Tapered evaluation was miscalibrated and never engaged.** `pos.phaseMaterial`
+  counts pawns (40 at the start) while `PHASE_TOTAL` is the piece total (24), so
+  `1 - phaseMaterial/24` clamped to 0 for the whole opening and most of the
+  middlegame: the mid/endgame blend was a no-op. Phase is now computed from
+  non-pawn material.
+- **Late-move reduction could overwrite a deeper result with a shallower one.**
+  The fail-high re-search used `depth - 1` unconditionally, so on a checking move
+  (which extends by one ply) a full-depth result was replaced by a one-ply
+  shallower search. The re-search now targets `max(nextDepth, depth - 1 + ext)`.
+- **The root never applied the PV-move bonus.** `negamaxRoot` passed the previous
+  iteration's *score* into the `pvMove` slot of `scoreMoves`, so the bonus could
+  never match; it now passes the previous iteration's best move.
+- **Mate distance sign.** `Engine.search()` multiplied the mate distance by the
+  sign of the score twice, reporting `mate: +N` when the side to move was getting
+  mated. The sign now follows the score (negative = we get mated).
+- **Forced mate on a single legal move.** The root shortcut returned
+  `score: 0, completed: true` when only one legal move existed, so a mate-in-1
+  reported 0. The shortcut is removed; the normal loop prices the move.
+- **Quiescence in check could return `-INF`.** When the quiescence cap was hit
+  while in check the node returned `-INF` (a fabricated loss). It now falls back
+  to the static evaluation.
+- **Score/depth provenance.** A partial iteration's score could be published
+  together with an older iteration's depth. Score, depth, PV and `completed` now
+  come from the same completed iteration.
+- **Transposition table and mate scores.** Mate scores are ply-normalised on
+  store and denormalised on probe, so an entry reused at another ply reports the
+  correct distance.
+- **Claimable vs automatic draws.** Inside the search, the 50-move rule (FIDE 9.3)
+  and threefold repetition (9.2) are scored as 0 for both sides (the opponent can
+  claim them), while the 75-move rule (9.6.2) and fivefold repetition (9.6.1) are
+  automatic; `Position.status()` keeps the claimable/automatic split for the game.
+  A better side can no longer shuffle into a repetition and hand back half a point.
+- **Move-order buffer truncation.** `MoveOrder` silently dropped legal moves
+  beyond `capacity = 256`; the scratch arrays now grow instead.
+- **Pawn bit indexing in the fast tier.** The pawn file/rank masks used `sq >> 4`
+  while the board stores rank 8 at index 0, so the mask was mirrored: the start
+  position scored **+824** instead of the expected symmetry. Indexing is now
+  `1 << (7 - (sq >> 4))`.
+- **`forkBalance` axis.** It returned white-minus-black inside a side-to-move
+  relative vector, corrupting the `T` axis for black (SVF-INV-002). It is now
+  mover-relative, and two dead terms (`hyperCounts[2] * 0`,
+  `counts[1] - counts[1]`) are gone.
+- **`spaceControlled` was dead code.** `rank > 3 && rank < 4` is unsatisfiable,
+  so the space axis was always 0; it now counts the opponent's half.
+- **Plan ids were not reproducible.** A module-global counter leaked ids across
+  searches; `generatePlans()` resets it and the ranking tiebreak no longer
+  depends on the id string.
+
+### Added
+
+- **Fast-tier terms** (`params.eval`, each individually switchable): tapered
+  material + PST, mobility for N/B/R/Q, bishop pair, doubled/isolated/passed
+  pawns, rook on open/semi-open files, king shield (endgame-weighted). The fast
+  tier is allocation-free (module-level scratch buffers, board-scanned mobility).
+- `bench/match.mjs` — deterministic self-play/ablation harness (W-D-L, score with
+  95% CI, per-game log, JSON export) with configs `base`, `nostruct`, `noctx`,
+  `nores`, `noplans`, `nobudget`, `plain`, `eval0`, `notaper`, `nopawns`,
+  `norooks`, `noshield`, `nopruning`, `nonull`, `nolmr`, `noasp`, plus per-side
+  depth via `name@depth` (doc 05 §25.2 ablations, doc 07 protocol).
+- `tests/engine.eval.mjs` — regression tests for eval colour symmetry, mover
+  sign, tier agreement, mirror search, mate signs, ordering levels and plan-bonus
+  bounds, wired into `npm run test:engine`.
+- npm scripts `match:engine` and `match:ablate`.
+
+### Removed
+
+- Panels and modals bound to subsystems that no longer exist in v3: Belnap/ρ_s grammar,
+  natural-transformations and morphism-category panels, S₀ diagnostics, ρ_s report, engine
+  comparison, controlled-diffusion study generator, teacher snapshots, telemetry.
+
+### Notes
+
+- Measured with `bench/match.mjs`: the fast tier against the previous eval
+  (material + PST + hard switch) is 52.5% ± 13.3 over 20 games at depth 3, and
+  depth 5 against depth 4 is 45.8% ± 22.4 over 12 games — both inside the noise
+  band at these sample sizes. The instrument, not the conclusion, is the
+  deliverable: an engine must gain from depth, and that regression test now runs
+  in one command (`--a base@5 --b base@4`).
+- `npm test` now runs the v3 suite (engine perft/smoke/plans/eval/verify/driver/
+  learn + the jsdom UI check). The v2.2.0 single-file suite is kept as
+  `npm run test:legacy`.
+- `TranspositionTable.probe` already checked depth (`search.mjs:67`); an early
+  hypothesis that it ignored depth was disproved and is not part of this release.
 
 ---
 
@@ -32,12 +184,6 @@ Major milestone. Controlled generation of chess studies via discrete latent diff
 - **Tests**: Groups [v6_13] + [diffusion] added. Total: **128 passed, 0 failed** (v2.2.0); backward-compat **100/100** (v1.9.1).
 
 ---
-## [Unreleased]
-
-Nothing scheduled.
-
----
-
 ## [1.9.1-docs] — 2026-09-27
 
 Documentation-only addition; no engine code changed.
