@@ -194,8 +194,10 @@ jobs:
           TAG="${GITHUB_REF_NAME#v}"
           echo "tag version: $TAG"
           if [ -f CHANGELOG.md ]; then
+            # NOTE: use index() for the tag match -- "[3.0.0]" as a regex is a
+            # character class and would match the first line containing 3, . or 0.
             awk -v tag="[$TAG]" '
-              $0 ~ tag { found=1; next }
+              index($0, tag) { found=1; next }
               found && /^## \[/ { exit }
               found { print }
             ' CHANGELOG.md > /tmp/changelog.md
