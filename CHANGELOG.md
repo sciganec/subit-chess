@@ -15,20 +15,37 @@ Statuses:
 
 ## [Unreleased]
 
-Next strength items for the v3 engine (measured, not cosmetic):
+Strength and measurement items for the v3 engine (measured, not cosmetic):
 
-- **Opening variety.** Self-play from the start position still reaches the 300-ply
-  cap in equal positions: the engine has no book and no move variety, so
-  dead-equal middlegames shuffle. This blocks every larger ablation run.
 - **Scale the ablation harness.** At 8-20 games the 95% CI is ±13-34 pp, which
-  cannot resolve effects below ~100 Elo. Target n ≥ 100 games per configuration
+  cannot resolve effects below ~100 Elo. Target n >= 100 games per configuration
   at depth 4-5 before accepting or rejecting `plain`, `eval0`, `noasp`.
 - **Spec compliance debt:** plan feasibility and `pareto()` (doc 11), no-op
   `contextAdjust` (doc 05 §context), `structure` gaps, `verify` coverage,
   `meta` thresholds (docs 31/32/33/36).
 - **Search hygiene:** TT aging (entries are never evicted), dead `contextBonus`
-  in `index.mjs`, `unmakeNullMove` incrementing `stm`, `Score.diff` never set.
+  in `index.mjs` (always returns 0), `Score.diff` never set.
 
+### Added
+
+- `bench/match.mjs`: length distribution in the summary (mean / median / max /
+  `capped` / termination reasons) and a `--variety` knob that shuffles the
+  opening order deterministically from `--seed`, so two runs do not share the
+  same opening sequence.
+- Measured baseline for Gate 1: `base` vs `plain`, 6 games, depth 3, seed 5,
+  `--variety` -> mean 190 plies, median 212.5, 1/6 games at the 300-ply cap,
+  reasons `checkmate: 5, max plies: 1`.
+
+### Changed
+
+- `docs/ROADMAP.md`: the hazard list and Gate 1 now describe what the harness
+  actually does (12 fixed openings, colour-alternated, `status()` checked after
+  every move, so the cap is not what contaminates the numbers). Gate 1 is
+  re-scoped to breadth plus a reported length distribution. The debt list no
+  longer claims `unmakeNullMove` increments `stm` — it restores `turn` from the
+  undo record.
+
+---
 ---
 
 ## [3.0.2] — 2026-11-15

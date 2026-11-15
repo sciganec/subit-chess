@@ -157,6 +157,17 @@ export const OPENINGS = [
 
 const RESULT_VALUE = { white: 1, draw: 0.5, black: 0 };
 
+/** Deterministic Fisher-Yates: the same seed gives the same opening order. */
+function shuffle(list, seed) {
+  let s = (seed | 0) || 1;
+  const rnd = () => ((s = (s * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+  for (let i = list.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const t = list[i]; list[i] = list[j]; list[j] = t;
+  }
+  return list;
+}
+
 function loadSuite(path) {
   if (!path) return OPENINGS.slice();
   const text = readFileSync(path, 'utf8');
@@ -244,11 +255,19 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite }) {
 
 function mean(xs) { return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0; }
 
+
+function median(xs) {
+  if (!xs.length) return 0;
+  const s = xs.slice().sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
 function stdev(xs) {
   if (xs.length < 2) return 0;
   const m = mean(xs);
   return Math.sqrt(xs.reduce((a, b) => a + (b - m) * (b - m), 0) / (xs.length - 1));
 }
+
 
 export function summarize(games, side) {
   const scores = games.map((g) => g.score);
@@ -265,6 +284,16 @@ export function summarize(games, side) {
     errors: games.filter((g) => g.error).length,
     avgNodes: mean(games.map((g) => g.nodes || 0)),
     avgPlies: mean(games.map((g) => g.plies ? g.plies.length : 0)),
+    // length distribution: a run whose mean length is unknown cannot be compared
+    // with the next one, and a cap-bound game measures repetition, not strength
+    medianPlies: median(games.map((g) => (g.plies ? g.plies.length : 0))),
+    maxPlies: games.reduce((a, g) => Math.max(a, g.plies ? g.plies.length : 0), 0),
+    capped: games.filter((g) => g.over && g.over.reason === "max plies").length,
+    reasons: games.reduce((acc, g) => {
+      const r = (g.over && g.over.reason) || (g.error ? "error" : "unknown");
+      acc[r] = (acc[r] || 0) + 1;
+      return acc;
+    }, {}),
     side
   };
 }
@@ -274,7 +303,7 @@ export function summarize(games, side) {
  * ------------------------------------------------------------------ */
 
 function parseArgs(argv) {
-  const out = { games: 20, depth: 5, seed: 1, maxPlies: 300, a: 'base', b: 'plain', suite: null, out: null, quiet: false };
+  const out = { games: 20, depth: 5, seed: 1, maxPlies: 300, a: 'base', b: 'plain', suite: null, out: null, quiet: false, variety: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const eq = a.indexOf('=');
@@ -291,6 +320,7 @@ function parseArgs(argv) {
       case '--suite': out.suite = val; break;
       case '--out': out.out = val; break;
       case '--quiet': out.quiet = true; break;
+      case '--variety': out.variety = true; break;
       default: throw new Error(`unknown argument "${a}"`);
     }
   }
@@ -305,6 +335,7 @@ export function runMatch(opts) {
   const depthA = a.depth === null ? opts.depth : a.depth;
   const depthB = b.depth === null ? opts.depth : b.depth;
   const suite = loadSuite(opts.suite);
+  if (opts.variety) shuffle(suite, opts.seed);
   const games = [];
 
   for (let i = 0; i < opts.games; i++) {
@@ -349,6 +380,7 @@ function main() {
   console.log(`  score   ${(s.score * 100).toFixed(1)}%  ±${(s.ci95 * 100).toFixed(1)}  (${s.wins}W ${s.draws}D ${s.losses}L)`);
   console.log(`  errors  ${s.errors}`);
   console.log(`  nodes   ${Math.round(s.avgNodes)} per game`);
+  console.log(`  length  mean ${s.avgPlies.toFixed(0)}  median ${s.medianPlies}  max ${s.maxPlies}  capped ${s.capped}/${s.n}  (${Object.entries(s.reasons).map(([k, v]) => `${k}: ${v}`).join(", ")})`);
 
   if (opts.out) {
     mkdirSync(opts.out.includes('/') ? opts.out.slice(0, opts.out.lastIndexOf('/')) : '.', { recursive: true });

@@ -37,26 +37,35 @@ single large fix (evaluation perspective); everything else is still inside the n
   `bm` — every number above is self-play.
 
 **Open hazards:**
-- **Shuffling.** No opening book, no variety: equal middlegames run to the 300-ply cap.
-  This contaminates every measurement and is the first blocker below.
+- **Opening breadth.** The suite is 12 fixed positions, colour-alternated; per-opening
+  variance dominates the interval and there is no knob to widen the set. Games do end on
+  fivefold repetition / the 75-move rule (`status()` is checked after every move), so the
+  300-ply cap is not what contaminates the numbers — but it is also not reported, so the
+  mean game length of a run is currently unknown.
 - **Sample size.** 8-20 games gives a ±13-34 pp interval. Anything below ~100 Elo is
   unmeasurable at that size.
-- **Debt:** TT entries never age out; `contextBonus` in `index.mjs` is dead code;
-  `unmakeNullMove` increments `stm`; `Score.diff` is never written.
+- **Debt:** TT entries never age out; `contextBonus` in `index.mjs` always returns 0
+  (dead ordering term); `Score.diff` is never written. (`unmakeNullMove` was re-checked:
+  it restores `turn` from the undo record, there is no `stm++` bug.)
 
 ---
 
-## Gate 1 — opening variety (unblocks everything)
+## Gate 1 — opening breadth and reported game length
 
-**Why first:** a match that shuffles 300 plies measures nothing but repetition tolerance.
+**Why first:** with 12 fixed openings the per-opening variance is the whole interval, and a
+run whose mean length is unknown cannot be compared with the next one.
 
 **Actions:**
-1. Small opening book (or a randomized first-N-plies from the `bench/match.mjs` opening set)
-   with an explicit `--variety` knob.
-2. Anti-repetition rule in self-play: penalise positions already seen twice.
+1. `bench/match.mjs`: report mean/median plies, the number of games that hit the 300-ply cap
+   and the reason (`status()` reason vs cap) in the summary.
+2. Widen the opening set (`bench/fens/openings.epd` already parses; add 12-24 quiet
+   middlegame/opening FENs) and add `--suite`/`--variety` handling for a randomised pick so
+   two runs do not share the same opening order.
+3. Anti-repetition only if the report shows shuffling: penalise positions seen twice in the
+   search (the draw rules stay authoritative).
 
-**Gate:** mean game length from the start position ≤ 120 plies, and no game reaching the
-300-ply cap in ≥ 90% of runs.
+**Gate:** the summary reports length distribution, and no more than 10% of games reach the
+cap in a 100-game run at depth 4.
 
 **Kill criterion:** if variety makes the engine measurably weaker (loss of ≥ 50 Elo vs
 `base` over 100 games), the book is wrong — shrink it, don't disable it.
