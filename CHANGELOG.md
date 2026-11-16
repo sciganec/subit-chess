@@ -20,13 +20,102 @@ Strength and measurement items for the v3 engine (measured, not cosmetic):
 - **Scale the ablation harness.** At 8-20 games the 95% CI is ±13-34 pp, which
   cannot resolve effects below ~100 Elo. Target n >= 100 games per configuration
   at depth 4-5 before accepting or rejecting `plain`, `eval0`, `noasp`.
-- **Spec compliance debt:** plan feasibility and `pareto()` (doc 11), no-op
-  `contextAdjust` (doc 05 §context), `structure` gaps, `verify` coverage,
-  `meta` thresholds (docs 31/32/33/36).
-- **Search hygiene:** dead `contextBonus`
-  in `index.mjs` (always returns 0), `Score.diff` never set.
-- **P2 UI/engine:** Web Worker search, clock, PGN `SetUp`/`FEN`/result, undo to
-  custom FEN, captured-piece counting, keyboard accessibility, settings persistence.
+- **Spec compliance debt:** `contextAdjust` no-op (doc 05 §context), `structure`
+  gaps, `verify` coverage, `meta` thresholds (docs 31/32/33/36).
+- **Search hygiene:** dead `contextBonus` in `index.mjs` (always returns 0),
+  `Score.diff` never set.
+
+---
+
+## [3.0.8] — 2026-11-16
+
+Audit follow-up: the remaining P1 items and the whole P2 UI block are closed, and
+`Memory` finally does something. No interface change; the shipped file is still
+one offline HTML.
+
+### Fixed
+
+- **P1.2 — rule-50 draws are hidden from the transposition table.** A 53-bit key
+  is reused for positions that differ only in the halfmove clock, so a score
+  cached before the 50-move boundary was served after it (and vice versa). TT
+  probe/store and the structural-evaluation cache now key on `Position.ttKey`,
+  which folds the halfmove bucket (0-79 / 80-99 / 100-149 / 150+) into the key;
+  `Position.key` stays the raw Zobrist for `verify.mjs`.
+- **P1.6 — a plan now needs all five feasibility axes.** `accepted` used to mean
+  "legally generated"; `tactical`, `temporal` and `strategic` were computed but
+  never blocked anything, so plans like a king march into an open board were
+  offered as accepted. A plan is `admitted` when it is legal, rule- and
+  structure-feasible, and `accepted` only when all five axes hold. `strategic` is
+  filled per plan type (passed-pawn race, king activity, outpost, shield, trade),
+  and `genKing` no longer emits a plan for a bare king with no enemy pawns.
+  Rejected plans now carry their full feasibility vector, which is what
+  `describePlans()` and the plan panel render.
+- **P1.8 — `riskOf()` matches its own description.** The function now uses the
+  root score spread and PV length (a short PV or a small spread is a real risk
+  signal, not a constant), the bound flag and the mate distance. The decision
+  certificate checks `completed` **before** the mate threshold, so an unfinished
+  search that happens to see a mate is `UNVERIFIED`, never `FORCED_WITHIN_SCOPE`.
+  `search()` returns `scoreSpread` / `secondScore` to make that possible.
+- **The clock charged the wrong side.** The tick skipped the whole interval while
+  the engine was thinking, i.e. the engine played for free. The clock now runs for
+  whoever is to move (including during a search) and starts with the first move of
+  the game, not at page load.
+- **PGN export produced an unplayable file for custom positions.** A game started
+  from a FEN was exported with `[Result "*"]`, no `SetUp`/`FEN`, and move numbers
+  counted from move 1 as if the standard array had been played. The exporter now
+  emits `SetUp`/`FEN`, numbers the moves from the base FEN (including `1...` for
+  a black-to-move start) and reports the real result (`0-1` on resignation,
+  mated/flagged side otherwise).
+- **Captured pieces ignored the start position.** The panel compared the board
+  against the standard piece counts, so a game loaded from a sparse FEN showed
+  phantom captures from move zero. Counts are now taken from the game's base FEN,
+  per colour.
+- **Undo ignored the start position.** "Undo" past the first move jumped back to
+  the standard array instead of the FEN the game was loaded from.
+- **Settings were lost on reload.** Theme, level, coordinates/legal/arrows and the
+  evaluation mode are persisted in `localStorage` and restored on start.
+
+### Added
+
+- **Web Worker search (P2.1).** The engine runs in a dedicated worker built from
+  the same bundled source (embedded in the page, no extra file), so the search no
+  longer freezes the board, the clock or the animations. One `Engine` per worker,
+  so TT and `Memory` survive across moves of a game; a new game resets both. The
+  main-thread path stays as a fallback when `Worker` is unavailable, and is what
+  the DOM tests exercise.
+- **Keyboard play (P2.6).** The board is a roving-tabindex grid: one square is in
+  the tab order, arrow keys move the cursor, `Enter`/`Space` select and play.
+  Modals take focus on open and give it back on close; `Escape` closes the topmost
+  modal.
+- `tests/engine.worker.mjs` (npm run `test:worker`): unpacks the embedded engine
+  source from the built page, runs it in a fake worker scope and checks that a
+  search request is answered with an id, a move, a depth and a node count.
+
+### Changed
+
+- `Memory` is read, not just written (P3.1). `Engine.search()` looks the position
+  up before searching and feeds the remembered move and score to the root
+  ordering and the aspiration window. The first search of a position is unchanged;
+  a repeated one starts from the previous answer.
+- `tests/app.dom.mjs` derives the artefact name from `package.json` instead of
+  hard-coding the version, and runs jsdom with a real origin so `localStorage`
+  behaves as it does in a browser.
+
+### Notes
+
+- `tests/engine.eval.mjs`: the warm/cold search invariant is now checked with
+  plans disabled. Plans feed the move-ordering bonus, so a warm search may
+  legitimately pick a different move than a cold one — the invariant is about TT
+  reuse, not about plan ordering. This is documented at the test.
+- Test suite: 11 suites (added `engine.worker`) plus the 128-check legacy suite.
+  `tests/engine.audit.mjs` grew from 66 to 87 checks (rule-50 TT key, five-axis
+  plan feasibility, `riskOf`/certificate, Memory read).
+- The audit item 4.2 (rule-50/75-move and repetition → 0) is still deliberately
+  rejected: claimable draws stay playable, as decided in ADR 0011/0020.
+
+---
+
+## [3.0.7] — 2026-11-16
 
 ### Added
 
@@ -54,11 +143,6 @@ plies, median 212.5, 1/6 games at the 300-ply cap, reasons `checkmate: 5, max pl
   re-scoped to breadth plus a reported length distribution. The debt list no
   longer claims `unmakeNullMove` increments `stm` - it restores `turn` from the
   undo record.
-
----
----
-
-## [3.0.7] — 2026-11-16
 
 A correctness release driven by the v3.0.6 audit. Eleven defects were fixed across the
 FEN layer, the search horizon, the context engine, the plan generators and the meta

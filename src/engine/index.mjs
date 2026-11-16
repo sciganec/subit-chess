@@ -25,7 +25,7 @@ import { generatePlans, describePlans, makePlanOrderer, pareto, PLAN } from './p
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
 
-export const VERSION = '3.0.7';
+export const VERSION = '3.0.8';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -41,7 +41,7 @@ export class Memory {
   }
 
   remember(pos, { depth, score, move }) {
-    this.entries.set(pos.key, { depth, score, move, age: ++this.age });
+    this.entries.set(pos.ttKey, { depth, score, move, age: ++this.age });
     if (this.entries.size > this.limit) {
       // drop the oldest quarter (deterministic)
       const drop = [];
@@ -51,7 +51,7 @@ export class Memory {
   }
 
   lookup(pos) {
-    const e = this.entries.get(pos.key);
+    const e = this.entries.get(pos.ttKey);
     if (e) { this.hits++; return e; }
     this.misses++;
     return null;
@@ -216,9 +216,16 @@ export class Engine {
     }
 
     this.searcher.setLimits({ depth, timeMs, nodes: opts.nodes || 0 });
+    // Memory is not write-only: a remembered move and score for this position
+    // seed the root ordering and the aspiration window (audit v3.0.6 P3.1)
+    const remembered = this.memory.lookup(this.pos);
     // the searcher re-reads its limits from the options it is given, so the node
     // budget has to travel with them -- setLimits() alone is silently reset
-    const result = this.searcher.search(this.pos, { depth, timeMs, nodes: opts.nodes || 0 });
+    const result = this.searcher.search(this.pos, {
+      depth, timeMs, nodes: opts.nodes || 0,
+      prevBest: remembered ? remembered.move : 0,
+      prevScore: remembered ? remembered.score : 0
+    });
 
     const risk = riskOf(result, result.depth);
     this.memory.remember(this.pos, {
@@ -250,6 +257,8 @@ export class Engine {
       uci: moveToUci(result.move),
       san,
       score: result.score,
+      scoreSpread: result.scoreSpread,
+      secondScore: result.secondScore,
       depth: result.depth,
       seldepth: result.seldepth,
       nodes: result.nodes,

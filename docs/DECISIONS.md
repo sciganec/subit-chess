@@ -1,13 +1,13 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v3.0.7**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.8**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
 
 Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s policy vector,
 teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
-ADR 0009+ describe v3.0.7 and are the binding decisions for the current engine.
+ADR 0009+ describe v3.0.8 and are the binding decisions for the current engine.
 
 ---
 
@@ -845,4 +845,64 @@ accept a draw it does not have to.
 
 ---
 
-*End of DECISIONS.md — v3.0.7*
+## ADR 0021 — the engine searches off the main thread, and Memory is read
+
+**Status:** Accepted (v3.0.8)
+
+### Context
+
+The v3.0.6 audit (P2.1, P3.1) found two things that made the UI dishonest about
+its own engine:
+
+- The search ran on the main thread behind `setTimeout(..., 30)`. A depth-10
+  search on a middlegame blocks painting, animation and the clock for as long as
+  it runs, so "Двигун думає..." was the only feedback and the clock was frozen
+  with it.
+- `Engine.memory` was written on every search and read by nothing. `Memory`
+  documented a game/analysis history that influenced later searches; in practice
+  it was a `Map` that grew and was never consulted.
+
+### Decision
+
+- **The worker.** `build/bundle.mjs` embeds the engine source twice: once as the
+  live inline module and once as a JSON string literal, `ENGINE_SRC`. The shell
+  appends a small message pump (`self.onmessage`) to that string and starts a
+  `Worker` from a `Blob` URL with `{ type: 'module' }`. A request carries the FEN,
+  the depth, the clock budget and a `reset` flag; a reply carries the request id
+  and the `Engine.search()` result. The blob URL is revoked after the worker has
+  loaded.
+- **One engine per worker.** The worker lazily constructs a single `Engine` and
+  reuses it for the whole game, so its TT and `Memory` survive from move to move;
+  `reset: true` (sent on the first move of a new game) clears both. A fresh
+  `Engine` per request would have thrown away the very structures the audit asked
+  to use.
+- **The fallback stays.** When `Worker` or `Blob` is missing, or the worker fails
+  to start or errors, the shell searches on the main thread with the same options.
+  This is not a compatibility nicety: it is the path the DOM test exercises, so
+  the UI logic has one implementation regardless of the environment.
+- **Memory is consulted.** `Engine.search()` calls `memory.lookup(pos)` first and
+  passes the remembered move and score to `Searcher.search({ prevBest, prevScore })`.
+  The searcher seeds the first root move with `prevBest` (when it is still legal)
+  and the aspiration window with `prevScore`. Nothing else changes: with a cold
+  memory the search is identical to before, which is what keeps the existing
+  depth/move regression tests meaningful.
+
+### Consequences
+
+- The clock now runs for the side to move *including* while the engine thinks,
+  and starts with the first move of the game rather than at page load. A deep
+  search costs the engine the time it actually spends.
+- A repeated position is searched with a warm root and a warm TT, so it reports
+  fewer nodes than a cold search of the same position. That is the intended
+  behaviour, and `tests/engine.audit.mjs` now asserts that Memory is written *and*
+  read.
+- The shipped file stays a single offline HTML: the worker source is embedded in
+  it, so there is no second request and no CDN.
+- `tests/engine.worker.mjs` unpacks the embedded string, runs it in a fake worker
+  scope and asserts a search is answered. A regression in the embedding (escaping
+  `<`, the pump, the reuse) fails the suite instead of failing silently in the
+  browser.
+
+---
+
+*End of DECISIONS.md — v3.0.8*

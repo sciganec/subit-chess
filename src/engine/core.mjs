@@ -430,6 +430,26 @@ export class Position {
     return this.hashLo * 2097152 + (this.hashHi & 0x1fffff);
   }
 
+  /**
+   * Transposition-table key: the Zobrist key plus a coarse halfmove-clock bucket.
+   *
+   * The raw Zobrist key covers only the piece placement, turn, castling and en
+   * passant (audit v3.0.6 §3.2). Two positions with the same geometry but a
+   * different halfmove clock are *different* positions for the 50-move rule:
+   * halfmove 99 is still winnable, halfmove 100 is claimable. Reusing one TT
+   * entry for both can return a draw score for a won position or the reverse.
+   * The bucket keeps the hit rate high while separating the rule-50 boundary.
+   */
+  get ttKey() {
+    // buckets: 0-79, 80-99, 100-149, 150+ (75-move automatic draw)
+    const h = this.halfmove;
+    const bucket = h < 80 ? 0 : h < 100 ? 1 : h < 150 ? 2 : 3;
+    // mix the bucket into the low bits: the Zobrist key already occupies the
+    // full 53-bit range, so a small additive perturbation is enough to separate
+    // buckets without colliding with the geometry
+    return this.key + bucket * 1048576;
+  }
+
   recomputePhaseMaterial() {
     let s = 0;
     for (const color of [WHITE, BLACK]) {

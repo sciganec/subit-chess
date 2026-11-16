@@ -19,7 +19,7 @@ const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 {
   const e = new Engine();
   check('engine builds', !!e.evaluation && !!e.searcher && !!e.tt && !!e.meta);
-  check('default version', VERSION === '3.0.7', VERSION);
+  check('default version', VERSION === '3.0.8', VERSION);
   e.setFEN(START);
   check('setFEN fills every layer', !!e.percept && !!e.structure && !!e.context);
   check('fen round-trips', e.fen === START, e.fen);

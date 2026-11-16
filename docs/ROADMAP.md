@@ -1,6 +1,6 @@
 # Roadmap
 
-Direction for **subit-chess** after v3.0.7.
+Direction for **subit-chess** after v3.0.8.
 
 Guiding principles (unchanged):
 - **Evidence over ambition.** Every next step has a pre-registered gate.
@@ -14,7 +14,7 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.7 (2026-11-16)
+## Current state — v3.0.8 (2026-11-16)
 
 **Status:** Engine core rewrite + correctness pass. Strength demonstrated so far is a
 single large fix (evaluation perspective); everything else is still inside the noise band.
@@ -35,6 +35,10 @@ single large fix (evaluation perspective); everything else is still inside the n
 | The leaf tier is faster without changing its value | ADR 0018, v3.0.5: 472k → 589k eval/s, +7.4% nodes/s, identical values on 10 positions, identical tree (503402 nodes) |
 | Uncertainty is a vector with evidence, not a penalty | ADR 0019, v3.0.6: 36 checks, no scalar blend, certificate on every search result, deterministic profile |
 | The engine validates its input before touching the board | ADR 0020, v3.0.7: 66 checks in `tests/engine.audit.mjs`, atomic FEN validation, claimable draws stay playable |
+| A rule-50 draw cannot be scored by a cached pre-boundary entry | ADR 0021, v3.0.8: `Position.ttKey` buckets the halfmove clock, TT and the structural cache key on it |
+| A plan needs all five feasibility axes to be accepted | v3.0.8: `admitted` (rule + structure) vs `accepted` (all five), rejected plans carry the full vector |
+| The engine searches off the main thread and reads its own Memory | ADR 0021, v3.0.8: `tests/engine.worker.mjs`, one `Engine` per worker, `prevBest`/`prevScore` seeding |
+| The shipped UI survives a custom start position | v3.0.8: PGN `SetUp`/`FEN`/result, undo to the base FEN, captures counted against it, keyboard play |
 
 **What is not yet known:**
 - Does a ply of depth convert into strength? (the `--a base@5 --b base@4` regression)
@@ -54,6 +58,12 @@ single large fix (evaluation perspective); everything else is still inside the n
   `Score.diff` is never written. (TT aging landed in 3.0.4: entries older than one
   generation are ignored, `tests/engine.eval.mjs` §12.) (`unmakeNullMove` was
   re-checked: it restores `turn` from the undo record, there is no `stm++` bug.)
+- **Audit closure (v3.0.8).** All P1 and all P2 items of the v3.0.6 audit are
+  closed, plus P3.1. The remaining P3 items (self-play loop, parameter control,
+  independent validation set, version comparison, strength measurement) are
+  served by `bench/match.mjs`, `engine.learn` and `selfplay` but have never been
+  run at the sample size Gate 1 requires; they stay on this list rather than
+  being marked done.
 
 ---
 

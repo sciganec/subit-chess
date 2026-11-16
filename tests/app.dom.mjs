@@ -13,7 +13,9 @@ const { JSDOM } = require('jsdom');
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
-const HTML = path.join(root, 'src', 'subit_chess_v3.0.7.html');
+const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+const VERSION = pkg.version;
+const HTML = path.join(root, 'src', `subit_chess_v${VERSION}.html`);
 
 let fails = 0;
 function check(name, cond, extra = '') {
@@ -37,7 +39,8 @@ const classic = match[1].replace(/^export\s+/gm, '');
 const shell = raw.replace(match[0], `<script>${classic.replace(/<\/script>/g, '<\\/script>')}</script>`);
 
 const errors = [];
-const dom = new JSDOM(shell, { runScripts: 'dangerously', pretendToBeVisual: true });
+// a url gives the window a real origin, so localStorage works as it does in a browser
+const dom = new JSDOM(shell, { runScripts: 'dangerously', pretendToBeVisual: true, url: 'http://localhost/' });
 dom.window.addEventListener('error', (e) => errors.push(e.message));
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -57,7 +60,7 @@ check('the board is a light/dark checkerboard',
   `${board.querySelectorAll('.sq.light').length}/${board.querySelectorAll('.sq.dark').length}`);
 check('32 pieces are rendered', board.querySelectorAll('.piece-img').length === 32,
   String(board.querySelectorAll('.piece-img').length));
-check('the header carries the version',   doc.querySelector('.logo h1').textContent.includes('v3.0.7'),
+check('the header carries the version',   doc.querySelector('.logo h1').textContent.includes('v' + VERSION),
   doc.querySelector('.logo h1').textContent);
 check('the status line names the side to move',
   doc.getElementById('status').textContent.includes('Ваш хід'),
@@ -150,6 +153,82 @@ click(doc.querySelector('.level-pill[data-level="1"]'));
 check('level 1 advertises its search depth',
   doc.getElementById('engine-sub').textContent.endsWith('d1'),
   doc.getElementById('engine-sub').textContent);
+
+/* the clock: idle until the first move, then the side to move is charged */
+const clockText = () => doc.getElementById('clock-bottom').textContent.trim();
+click(doc.getElementById('new-game'));
+check('the clock shows the full time before the game starts', clockText() === '10:00', clockText());
+await wait(400);
+check('the clock does not run before the first move', clockText() === '10:00', clockText());
+
+/* keyboard play: the board is reachable without a mouse */
+click(doc.getElementById('new-game'));
+const kbE1 = 116, kbE2 = 100, kbE4 = 68;
+const key = (el, k) => el.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: k, bubbles: true }));
+const cursorAt = (sq) => board.querySelector('.sq[data-sq="' + sq + '"]');
+S.setCursor(kbE1);
+S.focusCursor();
+check('exactly one square is in the tab order', board.querySelectorAll('.sq[tabindex="0"]').length === 1,
+  String(board.querySelectorAll('.sq[tabindex="0"]').length));
+key(cursorAt(kbE1), 'ArrowUp');
+check('the arrow keys move the keyboard cursor', S.cursor === kbE2, String(S.cursor));
+key(cursorAt(kbE2), 'Enter');
+check('Enter selects the focused piece', board.querySelectorAll('.sq.sel').length === 1);
+key(cursorAt(kbE2), 'ArrowUp');
+key(cursorAt(kbE2 + 16), 'ArrowUp');
+check('the cursor reaches e4 by keyboard', S.cursor === kbE4, String(S.cursor));
+key(cursorAt(kbE4), 'Enter');
+check('Enter plays the move from the focused square', S.fen.includes('4P3'), S.fen);
+await wait(500);
+check('the clock runs once the game has started', clockText() !== '10:00', clockText());
+
+/* settings persist across a reload */
+check('settings are written to storage',
+  (() => {
+    const raw = dom.window.localStorage.getItem('subit.settings.v3');
+    if (!raw) return false;
+    const saved = JSON.parse(raw);
+    return saved && typeof saved.level === 'number';
+  })(),
+  dom.window.localStorage.getItem('subit.settings.v3'));
+
+/* a standard game has no SetUp tag */
+check('a standard game has no SetUp tag',
+  !S.buildPGN().includes('[SetUp') && !S.buildPGN().includes('[FEN'),
+  S.buildPGN().split('\n').filter((l) => l.startsWith('[SetUp') || l.startsWith('[FEN')).join(' '));
+
+/* a custom start FEN is the undo anchor and the PGN base */
+const CUSTOM = '4k3/8/8/8/8/8/8/4K2R w K - 0 1';
+click(doc.getElementById('btn-fen'));
+doc.getElementById('fen-input').value = CUSTOM;
+click(doc.getElementById('fen-load'));
+check('the game remembers the FEN it started from', S.baseFen === CUSTOM, S.baseFen);
+check('a custom start FEN is exported as SetUp/FEN',
+  (() => {
+    const pgn = S.buildPGN();
+    return pgn.includes('[SetUp "1"]') && pgn.includes('[FEN "' + CUSTOM + '"]');
+  })(),
+  S.buildPGN().split('\n').filter((l) => l.startsWith('[')).join(' '));
+
+/* captures are measured against the game start position, not the standard set */
+const loadFen = (fen) => {
+  click(doc.getElementById('btn-fen'));
+  doc.getElementById('fen-input').value = fen;
+  click(doc.getElementById('fen-load'));
+};
+loadFen('4k3/8/8/8/8/8/4P3/4K3 w - - 0 1');
+check('a bare position reports no captures against its own baseline',
+  doc.getElementById('captured-top-count').textContent === '' &&
+  doc.getElementById('captured-bottom-count').textContent === '',
+  `${doc.getElementById('captured-top-count').textContent}/${doc.getElementById('captured-bottom-count').textContent}`);
+
+/* undo returns to the custom start, not the standard array */
+loadFen('4k3/8/8/8/8/8/8/4K2R w K - 0 1');
+click(cursorAt(119));          // h1 rook
+click(cursorAt(103));          // h2
+check('a move was played from the custom position', S.history.length === 1, String(S.history.length));
+click(doc.getElementById('undo'));
+check('undo returns to the custom start FEN', S.fen === CUSTOM, S.fen);
 
 check('no runtime errors were reported', errors.length === 0, errors.join('; '));
 

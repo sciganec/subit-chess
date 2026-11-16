@@ -318,10 +318,12 @@ export class Searcher {
     // a single legal move is not special-cased: it still has a real value
     // (it may be a mate-in-1), which the normal loop below reports exactly
 
-    let best = rootMoves[0];
+    let best = (opts.prevBest && rootMoves.includes(opts.prevBest)) ? opts.prevBest : rootMoves[0];
     let bestScore = -INF;
     let lastCompleted = null;
-    let prevScore = 0;
+    // a remembered score from an earlier search of this position seeds the
+    // aspiration window and the first move ordering (doc 05 §21, P3.1)
+    let prevScore = typeof opts.prevScore === 'number' && Number.isFinite(opts.prevScore) ? opts.prevScore : 0;
 
     for (let depth = 1; depth <= this.maxDepth; depth++) {
       const window = this.params.search.aspiration;
@@ -346,7 +348,8 @@ export class Searcher {
         lastCompleted = {
           depth, move: best, score: bestScore, nodes: this.nodes, flag: result.flag,
           pv: this.extractPv(),
-          seldepth: this.seldepth
+          seldepth: this.seldepth,
+          secondScore: result.secondScore
         };
       } else if (result && !lastCompleted && result.move) {
         best = result.move;
@@ -362,9 +365,16 @@ export class Searcher {
     // score, depth and completion must come from the same (completed) iteration:
     // publishing a partial score under an older depth broke score/depth provenance
     const info = lastCompleted;
+    // the gap between the best and the second-best root move: a large gap means
+    // the decision is clear, a small gap means the position is hard and the
+    // choice could flip with a deeper search (audit v3.0.6 §8.2)
+    const secondScore = info ? (info.secondScore === -INF ? info.score : info.secondScore) : bestScore;
+    const scoreSpread = info ? Math.abs(info.score - secondScore) : 0;
     return {
       move: best,
       score: info ? info.score : bestScore,
+      scoreSpread,
+      secondScore,
       depth: info ? info.depth : 0,
       nodes: this.nodes,
       seldepth: this.seldepth,
@@ -390,10 +400,11 @@ export class Searcher {
   negamaxRoot(rootMoves, depth, alpha, beta, prevScore, prevBest) {
     const pos = this.pos;
     let bestScore = -INF;
+    let secondScore = -INF;
     let bestMove = 0;
     let completed = true;
 
-    const ttEntry = this.useTT ? this.tt.probe(pos.key, depth, alpha, beta, 0) : null;
+    const ttEntry = this.useTT ? this.tt.probe(pos.ttKey, depth, alpha, beta, 0) : null;
     const ttMove = ttEntry ? ttEntry.move : 0;
     const orderedCount = this.order.scoreMoves(pos, rootMoves, 0, ttMove, prevBest || 0, {
       structural: this.structuralBonus,
@@ -420,11 +431,14 @@ export class Searcher {
 
       if (this.stop) { completed = false; break; }
       if (score > bestScore) {
+        secondScore = bestScore;
         bestScore = score;
         bestMove = m;
         this.pvTable[0] = m;
         this.pvLength[0] = 1 + this.pvLength[1];
         this.copyPvLine(0);
+      } else if (score > secondScore) {
+        secondScore = score;
       }
       if (score > alpha) alpha = score;
       if (alpha >= beta) break;
@@ -433,9 +447,9 @@ export class Searcher {
     let flag = TT_EXACT;
     if (completed && bestMove) {
       flag = bestScore <= alphaOrig ? TT_UPPER : bestScore >= beta ? TT_LOWER : TT_EXACT;
-      if (this.useTT) this.tt.store(pos.key, depth, bestScore, flag, bestMove, 0);
+      if (this.useTT) this.tt.store(pos.ttKey, depth, bestScore, flag, bestMove, 0);
     }
-    return { move: bestMove, score: bestScore, completed, flag };
+    return { move: bestMove, score: bestScore, secondScore, completed, flag };
   }
 
   copyPvLine(ply) {
@@ -472,7 +486,7 @@ export class Searcher {
     const alphaOrig = alpha;
 
     if (this.useTT && ply > 0) {
-      const entry = this.tt.probe(pos.key, depth, alpha, beta, ply);
+      const entry = this.tt.probe(pos.ttKey, depth, alpha, beta, ply);
       if (entry && !entry.partial) {
         this.tt.hits++;
         return entry.score;
@@ -585,7 +599,7 @@ export class Searcher {
           this.order.addKiller(ply, m);
           this.order.addHistory(pos, m, depth);
         }
-        if (this.useTT) this.tt.store(pos.key, depth, bestScore, TT_LOWER, m, ply);
+        if (this.useTT) this.tt.store(pos.ttKey, depth, bestScore, TT_LOWER, m, ply);
         return bestScore;
       }
     }
@@ -600,7 +614,7 @@ export class Searcher {
 
     if (this.useTT) {
       const flag = bestScore <= alphaOrig ? TT_UPPER : TT_EXACT;
-      this.tt.store(pos.key, depth, bestScore, flag, bestMove, ply);
+      this.tt.store(pos.ttKey, depth, bestScore, flag, bestMove, ply);
     }
     return bestScore;
   }
@@ -608,8 +622,8 @@ export class Searcher {
   /** Transposition-table move for the current node (ordering hint only). */
   ttMoveFor(pos, depth) {
     if (!this.useTT) return 0;
-    const idx = (pos.key % this.tt.size) | 0;
-    if (this.tt.keys[idx] !== pos.key) return 0;
+    const idx = (pos.ttKey % this.tt.size) | 0;
+    if (this.tt.keys[idx] !== pos.ttKey) return 0;
     return this.tt.depths[idx] >= depth ? this.tt.moves[idx] : 0;
   }
 

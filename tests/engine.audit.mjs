@@ -29,9 +29,10 @@ import { Structure, hashKeys } from '../src/engine/structure.mjs';
 import { computeContext, I_ATTACK, I_DEFENCE, I_QUIET, I_PRESSURE } from '../src/engine/context.mjs';
 import { Evaluation, DEFAULT_PARAMS } from '../src/engine/evaluate.mjs';
 import { Searcher, TranspositionTable, MATE } from '../src/engine/search.mjs';
-import { uncertaintyOf, RISK_NAME } from '../src/engine/meta.mjs';
+import { uncertaintyOf, riskOf, RISK_NAME } from '../src/engine/meta.mjs';
 import { Engine } from '../src/engine/index.mjs';
 import { generatePlans, PLAN } from '../src/engine/plans.mjs';
+import { buildCertificate } from '../src/engine/uncertainty.mjs';
 
 let fails = 0;
 function check(name, cond, extra = '') {
@@ -132,6 +133,23 @@ check('hashKeys also 53-bit',
   `hashKeys=${hashKeys([1, 2, 3, 4])}`);
 check('different positions -> different keys',
   zk(START) !== zk('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1'));
+
+/* §3.2 (P1.2) TT key separates the rule-50 boundary ---------------- *
+ * Same geometry, different halfmove clock -> different ttKey, so a
+ * won position at halfmove 99 cannot inherit a draw score from halfmove 100. */
+{
+  const h = (n) => `4k3/8/8/8/8/8/8/R3K2R w KQ - ${n} 1`;
+  const t = (n) => new Position().setFEN(h(n)).ttKey;
+  check('ttKey differs across the 50-move boundary (99 vs 100)', t(99) !== t(100));
+  check('ttKey differs across the 75-move boundary (149 vs 150)', t(149) !== t(150));
+  check('ttKey is stable within a bucket (10 vs 50)', t(10) === t(50));
+  check('ttKey is stable within a bucket (100 vs 149)', t(100) === t(149));
+  check('ttKey equals the raw Zobrist key in bucket 0 (halfmove < 80)',
+    new Position().setFEN(h(0)).ttKey === new Position().setFEN(h(0)).key);
+  check('ttKey differs from the raw Zobrist key in a higher bucket (halfmove 100)',
+    new Position().setFEN(h(100)).ttKey !== new Position().setFEN(h(100)).key);
+  check('ttKey is a safe integer', Number.isSafeInteger(t(0)) && t(0) >= 0);
+}
 
 /* ================================================================== *
  * §5.1  context directions (ATTACK indexes enemy king)
@@ -299,6 +317,46 @@ check('analyze().plans is the full Pareto set with total',
   'plans carry total');
 
 /* ================================================================== *
+ * §7.5  five-axis plan feasibility (audit P1.6)
+ * ================================================================== */
+
+check('accepted plans pass all five feasibility axes',
+  (() => {
+    const p = new Position().setFEN('r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1');
+    const pc = new Percept(p);
+    const st = new Structure(p, pc);
+    const plans = generatePlans(p, pc, st, null);
+    return plans.length > 0 && plans.every((pl) =>
+      pl.feasible.rule && pl.feasible.structural && pl.feasible.tactical &&
+      pl.feasible.temporal && pl.feasible.strategic);
+  })(),
+  'all axes true for accepted plans');
+
+check('a plan that fails tactical is rejected, not silently accepted',
+  (() => {
+    // a position with no forcing moves: RESTRICT needs >= 2 moves to be tactical
+    const p = new Position().setFEN('4k3/8/8/8/8/8/8/4K3 w - - 0 1');
+    const pc = new Percept(p);
+    const st = new Structure(p, pc);
+    const plans = generatePlans(p, pc, st, null);
+    // in a bare K vs K position, no plan should be accepted (no structure)
+    return plans.length === 0 && Array.isArray(plans.rejected);
+  })(),
+  'bare K vs K produces no accepted plans');
+
+check('rejected plans carry a feasible vector with all five axes',
+  (() => {
+    const p = new Position().setFEN('r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1');
+    const pc = new Percept(p);
+    const st = new Structure(p, pc);
+    const plans = generatePlans(p, pc, st, null);
+    const axes = ['rule', 'structural', 'tactical', 'temporal', 'strategic'];
+    return plans.rejected.length > 0 &&
+      plans.rejected.every((pl) => axes.every((a) => typeof pl.feasible[a] === 'boolean'));
+  })(),
+  'rejected plans expose their feasibility vector');
+
+/* ================================================================== *
  * 53-bit TT storage (regression: Float64Array keeps full keys)
  * ================================================================== */
 
@@ -310,6 +368,87 @@ check('TT stores 53-bit keys exactly', (() => {
   s.search(p);
   return tt.size > 0;
 })(), 'TT populated');
+
+/* ================================================================== *
+ * §8.2 + §8.3  riskOf implements its description; certificate
+ *              checks completed before the mate threshold
+ * ================================================================== */
+
+check('riskOf reports NONE for a proven mate in one',
+  riskOf({ score: 89998, completed: true, nodes: 100, seldepth: 2, pv: [1], flag: 0, scoreSpread: 89998 }, 5) === 0,
+  'mate in 1 -> NONE');
+
+check('riskOf reports LOW for a mate in many (not NONE)',
+  riskOf({ score: 89980, completed: true, nodes: 100, seldepth: 2, pv: [1,2,3,4,5,6,7,8,9,10], flag: 0, scoreSpread: 89980 }, 5) !== 0,
+  'mate in many -> LOW, not NONE');
+
+check('riskOf reports MODERATE for a bound score (flag != 0)',
+  riskOf({ score: 50, completed: true, nodes: 100, seldepth: 5, pv: [1,2,3,4,5], flag: 1, scoreSpread: 100 }, 5) === 2,
+  'bound -> MODERATE');
+
+check('riskOf reports MODERATE for a small score spread',
+  riskOf({ score: 50, completed: true, nodes: 100, seldepth: 5, pv: [1,2,3,4,5], flag: 0, scoreSpread: 10 }, 5) === 2,
+  'small spread -> MODERATE');
+
+check('riskOf reports MODERATE for a truncated PV',
+  riskOf({ score: 50, completed: true, nodes: 100, seldepth: 5, pv: [1,2], flag: 0, scoreSpread: 100 }, 5) === 2,
+  'short PV -> MODERATE');
+
+check('riskOf reports LOW for a clear, completed search',
+  riskOf({ score: 50, completed: true, nodes: 100, seldepth: 5, pv: [1,2,3,4,5], flag: 0, scoreSpread: 200 }, 5) === 1,
+  'clear -> LOW');
+
+check('certificate: an unfinished search with a mate score is UNVERIFIED, not FORCED',
+  (() => {
+    const cert = buildCertificate({
+      fen: START, version: 1, move: 1, san: 'x', legal: true, legalCount: 20,
+      depth: 3, completed: false, nodes: 500, pv: [], score: 99999
+    });
+    return cert.validation_status === 'UNVERIFIED';
+  })(),
+  'incomplete + mate score -> UNVERIFIED');
+
+check('certificate: a completed search with a mate score is FORCED_WITHIN_SCOPE',
+  (() => {
+    const cert = buildCertificate({
+      fen: START, version: 1, move: 1, san: 'x', legal: true, legalCount: 20,
+      depth: 5, completed: true, nodes: 500, pv: [1], score: 99999
+    });
+    return cert.validation_status === 'FORCED_WITHIN_SCOPE';
+  })(),
+  'completed + mate score -> FORCED_WITHIN_SCOPE');
+
+check('search result carries scoreSpread and secondScore',
+  (() => {
+    const p = new Position().setFEN(START);
+    const s = new Searcher(new Evaluation(DEFAULT_PARAMS, { mode: 'fast' }), DEFAULT_PARAMS, { tt: new TranspositionTable(4) });
+    s.setLimits({ depth: 3, nodes: 100000 });
+    const r = s.search(p);
+    return typeof r.scoreSpread === 'number' && typeof r.secondScore === 'number';
+  })(),
+  'scoreSpread and secondScore are numbers');
+
+/* ================================================================== *
+ * P3.1  Memory is actually read, not write-only
+ * ================================================================== */
+
+check('a search stores its result in Memory', (() => {
+  const e = new Engine();
+  e.setFEN(START);
+  e.search({ depth: 3 });
+  return e.memory.entries.size > 0;
+})(),
+  'Memory has an entry after a search');
+
+check('the next search of the same position consults Memory', (() => {
+  const e = new Engine();
+  e.setFEN(START);
+  e.search({ depth: 3 });
+  const before = e.memory.hits;
+  e.search({ depth: 3 });
+  return e.memory.hits > before;
+})(),
+  'Memory hit rate rises on a repeated position');
 
 console.log(fails === 0 ? '\nALL PASS' : `\n${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);

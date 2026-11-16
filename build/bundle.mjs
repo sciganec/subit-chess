@@ -90,8 +90,12 @@ function main() {
   const bundle = parts.join('\n');
   const shell = fs.readFileSync(SHELL, 'utf8');
   const version = VERSION;
+  // the same engine source is embedded as a string so a Web Worker can run it
+  // off the main thread; "<" is escaped so the blob cannot close the <script>
+  const workerSrc = JSON.stringify(bundle).replace(/</g, '\\u003c');
   const html = shell
     .split('/*__VERSION__*/').join(version)
+    .split("/*__ENGINE_SRC__*/''").join(workerSrc)
     .replace('/*__MODULES__*/', () => bundle);
 
   fs.writeFileSync(OUT, html);

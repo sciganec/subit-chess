@@ -234,7 +234,11 @@ function genKing(pos, percept, structure, legalMoves) {
   const kz = percept.kingZoneAttacks[enemy];
   const kingSq = percept.kingSq[enemy];
   const enemyPawns = percept.pawns[enemy].filter((n) => n > 0).length;
-  if (kz === 0 && enemyPawns >= 3) return [];
+  // a KING plan needs something to attack with: either existing pressure on
+  // the king zone, or pawns near the enemy king whose shelter can be torn.
+  // A bare K vs K has neither, and "increase pressure" with no pressure and
+  // no target is noise, not a plan (audit v3.0.6 §7.3).
+  if (kz === 0 && enemyPawns === 0) return [];
   const files = [];
   for (let f = 0; f < 8; f++) {
     if (Math.abs(f - fileOf(kingSq)) <= 1) files.push(f);
@@ -378,7 +382,7 @@ export const PLAN_GENERATORS = GENERATORS;
  */
 export function checkFeasibility(pos, percept, structure, plan, opts = {}) {
   const side = pos.turn;
-  const f = { rule: false, structural: false, tactical: false, temporal: true, strategic: true };
+  const f = { rule: false, structural: false, tactical: false, temporal: true, strategic: false };
 
   f.rule = plan.moves.some((m) => pos.legalMoves().includes(m));
 
@@ -387,32 +391,56 @@ export function checkFeasibility(pos, percept, structure, plan, opts = {}) {
       const pawn = percept.passed[side].length > 0;
       const clear = plan.features.pathClear === 1;
       f.structural = pawn && clear;
+      f.tactical = f.structural;   // an open passer path is a concrete threat
       f.temporal = percept.passed[side].length > 0 && !pos.inCheck(side);
+      // a passer is strategically justified only if it is actually passed and
+      // the path is not fully blocked by an enemy pawn on the same file
+      f.strategic = f.structural;
       break;
     }
     case PLAN.RESTRICT:
       f.structural = relCount(structure, REL.RESTRICT, side) > 0 || plan.features.enemyMobility > 4;
       f.tactical = plan.moves.length >= 2;
+      // restricting the strongest enemy piece is worth it only if that piece
+      // actually has mobility to take away
+      f.strategic = plan.features.enemyMobility > 0;
       break;
     case PLAN.TRADE:
       f.structural = plan.features.best >= 0;
       f.tactical = plan.moves.length > 0;
+      // a trade plan is justified when the best exchange is favourable or
+      // equal (best >= 0); a losing trade is tactically refuted, not strategic
+      f.strategic = plan.features.best >= 0;
       break;
     case PLAN.KING:
       f.structural = plan.features.zone > 0 || plan.features.shelter <= 2;
       f.tactical = plan.moves.length > 0;
+      // attacking the king is justified only when there is actual pressure on
+      // it or the enemy shelter is damaged; a KING plan with no zone and a
+      // full shelter is noise
+      f.strategic = plan.features.zone > 0 || plan.features.shelter <= 2;
       break;
     case PLAN.ACTIVATE:
       f.structural = plan.moves.length > 0;
       f.tactical = plan.moves.length > 0;
+      // activation is justified when the worst-placed piece can improve
+      f.strategic = plan.moves.length > 0;
       break;
     case PLAN.OUTPOST:
       f.structural = true;
       f.tactical = plan.moves.length === 1;
+      // an outpost is justified only if the square is genuinely guarded
+      // (control >= 1) and immune to pawn attacks; the generator already
+      // enforces this, so a plan that reaches here is strategic
+      f.strategic = plan.features.guarded > 0;
       break;
     case PLAN.SHIELD:
       f.structural = true;
       f.temporal = !pos.inCheck(side);
+      // keeping the shield is justified when it is damaged (< 3 pawns) or
+      // when the king is under pressure; a full shield with no pressure is
+      // not a plan worth spending moves on
+      f.strategic = plan.features.shield < 3 || percept.kingZoneAttacks[side] > 0;
       break;
   }
 
@@ -470,7 +498,17 @@ export function generatePlans(pos, percept, structure, legalMoves, opts = {}) {
       p.score = scorePlan(p, percept, structure, pos);
       // SPG-INV-005: verify, never assume
       p.legal = p.moves.length > 0 && p.moves.every((m) => moves.includes(m));
-      if (p.legal && p.feasible.rule && p.feasible.structural) accepted.push(p);
+      // Two tiers (audit v3.0.6 §7.5, SPG-INV-003):
+      //   admitted — legal + rule-feasible + structurally supported. The plan
+      //              is a real hypothesis about the position.
+      //   accepted — admitted AND tactically verified, temporally feasible and
+      //              strategically justified. The plan survives all five axes.
+      // A plan that is admitted but not accepted is reported on `.rejected`
+      // with its full feasibility vector, so analysis can explain *which* axis
+      // failed instead of silently dropping it.
+      p.admitted = p.legal && p.feasible.rule && p.feasible.structural;
+      p.accepted = p.admitted && p.feasible.tactical && p.feasible.temporal && p.feasible.strategic;
+      if (p.accepted) accepted.push(p);
       else rejected.push(p);
     }
   }

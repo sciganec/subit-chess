@@ -1,5 +1,5 @@
 /**
- * SUBIT-CHESS v3.0.7 — Uncertainty profile U(P) and Decision Certificate
+ * SUBIT-CHESS v3.0.8 — Uncertainty profile U(P) and Decision Certificate
  *
  * Spec basis:
  *   docs/theory/37_UNCERTAINTY_&_CONFIDENCE_THEORY §5-§6  (eight types, the vector)
@@ -245,13 +245,17 @@ export function buildCertificate(input = {}) {
   const {
     fen = '', version = 0, move = null, san = null, legal = true, legalCount = 0,
     depth = 0, completed = false, nodes = 0, pv = [], score = 0,
-    profile = null, paramVersion = '3.0.7', algorithmVersion = '3.0.7'
+    profile = null, paramVersion = '3.0.8', algorithmVersion = '3.0.8'
   } = input;
 
   let status;
+  // The order matters (audit v3.0.6 §8.3): an unfinished search is UNVERIFIED
+  // whatever its score looks like. A mate score from a partial iteration is
+  // not a proven mate — the line was cut, not resolved — so `completed` must
+  // be checked before the mate threshold.
   if (!legal) status = STATUS.REFUTED;
-  else if (Math.abs(score) > MATE_LIMIT) status = STATUS.FORCED_WITHIN_SCOPE;
   else if (!completed) status = STATUS.UNVERIFIED;
+  else if (Math.abs(score) > MATE_LIMIT) status = STATUS.FORCED_WITHIN_SCOPE;
   else status = STATUS.SEARCH_SUPPORTED;
 
   return {

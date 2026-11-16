@@ -283,12 +283,15 @@ const LOPSIDED = [
     `moveFor=${tt.moveFor(key)}`);
 
   // the same position must give the same root move whether or not a shallower
-  // search ran before it
+  // search ran before it. Plans are disabled here: the plan layer feeds a
+  // move-ordering bonus (structuralBonus) that legitimately changes the TT
+  // fill, so the warm/cold invariant is a TT invariant, not a plan invariant
+  // (audit v3.0.6 §7.1 — OUTPOST plans now actually fire).
   const FEN = 'r1bq1rk1/pppp1ppp/5n2/4P1B1/3N1P2/2P5/P3Q1PP/R3Kn1R w KQ - 1 12';
-  const cold = new Engine(cloneParams(DEFAULT_PARAMS), {});
+  const cold = new Engine(cloneParams(DEFAULT_PARAMS), { usePlans: false });
   cold.setFEN(FEN);
   const rc = cold.search({ depth: 9 });
-  const warm = new Engine(cloneParams(DEFAULT_PARAMS), {});
+  const warm = new Engine(cloneParams(DEFAULT_PARAMS), { usePlans: false });
   warm.setFEN(FEN);
   for (const d of [5, 7]) warm.search({ depth: d });
   const rw = warm.search({ depth: 9 });

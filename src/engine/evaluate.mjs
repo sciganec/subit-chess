@@ -721,7 +721,9 @@ export class Evaluation {
 
   /** Full structural tier. Returns { E, vector, context, confidence, structure }. */
   structural(pos) {
-    const key = pos.key;
+    // the cache key includes the halfmove bucket: the same geometry with a
+    // different clock is a different position for the 50-move rule (audit §3.2)
+    const key = pos.ttKey;
     if (this.cache) {
       const hit = this.cache.get(key);
       if (hit) return hit;

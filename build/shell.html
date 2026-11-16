@@ -110,6 +110,8 @@ border:6px solid var(--legal);border-radius:50%;box-sizing:border-box}
 .sq.hint{animation:hintPulse 1s infinite}
 @keyframes hintPulse{0%,100%{box-shadow:inset 0 0 0 0 rgba(129,182,76,0)}
 50%{box-shadow:inset 0 0 0 6px rgba(129,182,76,.85)}}
+.sq.cursor{outline:3px solid var(--info,#3b82f6);outline-offset:-3px;z-index:4}
+.sq:focus-visible{outline:3px solid var(--info,#3b82f6);outline-offset:-3px;z-index:4}
 .coord{position:absolute;font-size:10px;font-weight:800;pointer-events:none;
 z-index:3;font-family:var(--font-mono);letter-spacing:.5px}
 .coord-file{bottom:2px;right:4px}
@@ -558,11 +560,66 @@ for (const t of ['K', 'Q', 'R', 'B', 'N', 'P']) {
 const PIECE_NAMES = { K: 'Король', Q: 'Ферзь', R: 'Тура', B: 'Слон', N: 'Кінь', P: 'Пішак' };
 const PIECE_VALUE = { P: 1, N: 3, B: 3, R: 5, Q: 9, K: 0 };
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-const START_COUNTS = { P: 8, N: 2, B: 2, R: 2, Q: 1 };
 
 const $ = (id) => document.getElementById(id);
 const boardEl = $('board');
 const arrowLayer = $('arrow-layer');
+
+/* the engine bundle as a string, so the same code can run in a Web Worker off
+   the main thread; bundle.mjs substitutes the real engine source here */
+const ENGINE_SRC = /*__ENGINE_SRC__*/'';
+
+/* the engine answers on a worker thread when the browser allows it: the search
+   no longer blocks the main thread, so the clock keeps ticking and the board
+   stays responsive. jsdom has no Worker, so the tests exercise the fallback. */
+function makeEngineWorker() {
+  if (typeof Worker === 'undefined' || typeof Blob === 'undefined') return null;
+  try {
+    const pump = '\nvar workerEngine = null;\n' +
+      'self.onmessage = function (e) {\n' +
+      '  var d = e.data || {};\n' +
+      '  try {\n' +
+      '    if (!workerEngine) workerEngine = new Engine();\n' +
+      '    if (d.reset) { workerEngine.memory.clear(); workerEngine.tt.clear(); }\n' +
+      '    workerEngine.setFEN(d.fen);\n' +
+      '    self.postMessage({ id: d.id, ok: true, result: workerEngine.search({ depth: d.depth, timeMs: d.timeMs }) });\n' +
+      '  } catch (err) {\n' +
+      '    self.postMessage({ id: d.id, ok: false, error: String((err && err.message) || err) });\n' +
+      '  }\n' +
+      '};\n';
+    const url = URL.createObjectURL(new Blob([ENGINE_SRC + pump], { type: 'text/javascript' }));
+    const worker = new Worker(url, { type: 'module' });
+    // the worker has its own copy of the source; the blob URL is no longer needed
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    worker.onmessage = onWorkerMessage;
+    worker.onerror = (ev) => {
+      console.warn('[SUBIT] worker failed, searching on the main thread', ev.message);
+      state.worker = null;
+    };
+    return worker;
+  } catch (err) {
+    console.warn('[SUBIT] no worker available, searching on the main thread', err && err.message);
+    return null;
+  }
+}
+
+function onWorkerMessage(e) {
+  const data = e.data || {};
+  if (data.id !== state.workerReq) return;   // a stale reply from an abandoned search
+  state.workerReq = 0;
+  state.thinking = false;
+  $('thinking').classList.remove('on');
+  if (!data.ok) {
+    console.warn('[SUBIT] worker search failed', data.error);
+    engineMoveFallback();
+    return;
+  }
+  renderSearch(data.result);
+  if (!data.result || !data.result.move) { updateStatus(); return; }
+  playMove(data.result.move);
+  $('status-sub').textContent = data.result.timeMs + ' ms · d' + data.result.depth +
+    ' · n=' + data.result.nodes + ' · ' + data.result.risk;
+}
 
 /* ---------------- state ---------------- */
 
@@ -580,7 +637,15 @@ const state = {
   clockB: 600,
   lastTick: 0,
   timer: null,
+  cursor: 116,        // e1: keyboard cursor square (0x88 index, rank 0 = rank 8)
+  modalReturn: null,   // element that had focus before the modal opened
   searchId: 0,
+  worker: null,          // Web Worker running the engine, or null for the fallback
+  workerReq: 0,          // id of the search the worker is currently running
+  workerReset: true,     // the next worker request starts from a clean Memory/TT
+  baseFen: START_FEN,    // FEN the current game started from (custom or standard)
+  resigned: false,       // player (white) resigned: the result is 0-1 whatever the turn
+  started: false,        // the clock starts with the first move of the game
   settings: { coords: 'on', legal: 'on', arrows: 'on', level: 3, theme: 'classic', evalmode: 'fast' }
 };
 
@@ -658,6 +723,10 @@ function renderBoard() {
       el.dataset.sq = String(sq);
       el.setAttribute('role', 'gridcell');
       el.setAttribute('aria-label', squareName(sq) + (piece ? ' ' + pieceTypeChar(piece) : ''));
+      // roving tabindex: one square is in the tab order, arrows move the cursor,
+      // so the whole board is reachable without a mouse
+      el.tabIndex = sq === state.cursor ? 0 : -1;
+      if (sq === state.cursor) el.classList.add('cursor');
       el.addEventListener('click', () => onSquare(sq));
 
       if (piece) {
@@ -736,6 +805,19 @@ function renderArrow() {
 
 /* ---------------- captured pieces ---------------- */
 
+// piece counts of the game start position; a custom FEN changes the baseline,
+// so "captured" is always measured against baseFen, never the standard set
+function pieceCountsFromFen(fen) {
+  const counts = { w: { P: 0, N: 0, B: 0, R: 0, Q: 0 }, b: { P: 0, N: 0, B: 0, R: 0, Q: 0 } };
+  const placement = (fen || START_FEN).split(' ')[0];
+  for (const ch of placement) {
+    const up = ch.toUpperCase();
+    if (counts.w[up] === undefined) continue;
+    counts[ch === up ? 'w' : 'b'][up]++;
+  }
+  return counts;
+}
+
 function capturedLists() {
   const pos = engine.pos;
   const alive = { w: {}, b: {} };
@@ -747,11 +829,12 @@ function capturedLists() {
     const t = pieceTypeChar(p);
     alive[color][t] = (alive[color][t] || 0) + 1;
   }
+  const base = pieceCountsFromFen(state.baseFen);
   const gone = (color) => {
     const out = [];
     const other = color === 'w' ? 'b' : 'w';
     for (const t of ['Q', 'R', 'B', 'N', 'P']) {
-      const missing = START_COUNTS[t] - (alive[other][t] || 0);
+      const missing = base[other][t] - (alive[other][t] || 0);
       for (let i = 0; i < missing; i++) out.push(other === 'w' ? t : t.toLowerCase());
     }
     return out;
@@ -853,14 +936,16 @@ function tick() {
   const now = performance.now();
   const elapsed = (now - state.lastTick) / 1000;
   state.lastTick = now;
-  if (state.over || state.thinking) return;
+  // the clock runs for whoever is to move, including while the engine thinks:
+  // skipping the tick during a search gave the engine free time
+  if (!state.started || state.over) return;
   if (engine.pos.turn === WHITE) state.clockW = Math.max(0, state.clockW - elapsed);
   else state.clockB = Math.max(0, state.clockB - elapsed);
   renderClocks();
   if (state.clockW === 0 || state.clockB === 0) {
     state.over = true;
     stopTimer();
-    $('status').textContent = engine.pos.turn === WHITE ? 'Час вичерпано' : 'Час вичерпано';
+    $('status').textContent = 'Час вичерпано';
     $('status-sub').textContent = engine.pos.turn === WHITE ? 'Перемога чорних' : 'Перемога білих';
   }
 }
@@ -994,6 +1079,7 @@ function playMove(m) {
   state.hint = null;
   state.selected = null;
   state.legal = new Map();
+  state.started = true;      // the clock starts with the first move of the game
   refreshPanels();
   if (state.over) return true;
   scheduleEngineMove();
@@ -1037,6 +1123,7 @@ function showPromotion(cands) {
 
 function onSquare(sq) {
   if (state.thinking || state.over || state.pendingPromo) return;
+  state.cursor = sq;   // keep the keyboard cursor where the player acted
   const pos = engine.pos;
   const piece = pos.board[sq];
   const myTurn = pos.turn === WHITE;
@@ -1137,11 +1224,33 @@ function engineMove() {
   $('worker-status').className = 'worker-status busy';
   const myId = ++state.searchId;
 
+  // difficulty: depth is the hard limit, the clock is a safety net so a deep
+  // search cannot freeze the page (LEVELS above, levels 1..5)
+  const lvl = Math.max(1, Math.min(5, Number(state.settings.level) || 3));
+  const plan = LEVELS[lvl - 1];
+
+  if (state.worker) {
+    state.workerReq = myId;
+    $('worker-status').textContent = 'worker';
+    // a new game must not inherit the previous game's TT/Memory entries
+    state.worker.postMessage({
+      id: myId, fen: engine.pos.fen(), depth: plan.depth, timeMs: plan.timeMs,
+      reset: !!state.workerReset
+    });
+    state.workerReset = false;
+    return;
+  }
+  engineMoveFallback(myId);
+}
+
+// main-thread fallback: used when the browser has no Worker (jsdom), when the
+// worker failed to start, or when a worker search errored. The search is deferred
+// one tick so "thinking" is painted first.
+function engineMoveFallback(myId) {
+  const id = myId || state.searchId;
+  const lvl = Math.max(1, Math.min(5, Number(state.settings.level) || 3));
+  const plan = LEVELS[lvl - 1];
   setTimeout(() => {
-    // difficulty: depth is the hard limit, the clock is a safety net so a deep
-    // search cannot freeze the page (LEVELS above, levels 1..5)
-    const lvl = Math.max(1, Math.min(5, Number(state.settings.level) || 3));
-    const plan = LEVELS[lvl - 1];
     let r = null;
     try { r = engine.search({ depth: plan.depth, timeMs: plan.timeMs }); } catch (err) { console.warn('[SUBIT] search failed', err); }
     state.thinking = false;
@@ -1161,8 +1270,11 @@ function engineMove() {
 
 function newGame(fen) {
   state.searchId++;
+  state.workerReq = 0;   // abandon any search the worker is still running
+  state.workerReset = true;
   state.thinking = false;
   state.over = false;
+  state.resigned = false;
   state.selected = null;
   state.legal = new Map();
   state.lastMove = null;
@@ -1170,8 +1282,12 @@ function newGame(fen) {
   state.pendingPromo = null;
   state.clockW = 600;
   state.clockB = 600;
+  state.started = false;
+  state.lastTick = performance.now();
   engine.history.length = 0;
+  // the game start FEN is the undo anchor and the PGN/HA base, not always START_FEN
   try { engine.setFEN(fen || START_FEN); } catch (err) { console.warn('[SUBIT] bad FEN', err); return; }
+  state.baseFen = engine.pos.fen();
   $('thinking').classList.remove('on');
   renderSearch(null);
   refreshPanels();
@@ -1184,11 +1300,14 @@ function undoMove() {
   const h = engine.history;
   if (!h.length) return;
   state.searchId++;
+  state.workerReq = 0;
   const steps = h.length >= 2 && engine.pos.turn === WHITE ? 2 : 1;
   const targetIndex = h.length - steps - 1;
-  const fen = targetIndex >= 0 ? h[targetIndex].fen : START_FEN;
+  const fen = targetIndex >= 0 ? h[targetIndex].fen : state.baseFen;
   h.splice(Math.max(0, h.length - steps));
   engine.setFEN(fen);
+  state.started = engine.history.length > 0;
+  state.lastTick = performance.now();
   state.selected = null;
   state.legal = new Map();
   state.lastMove = null;
@@ -1220,6 +1339,7 @@ function hint() {
 function resign() {
   if (state.over) return;
   state.over = true;
+  state.resigned = true;
   state.searchId++;
   stopTimer();
   $('status').textContent = 'Ви здалися';
@@ -1227,16 +1347,47 @@ function resign() {
   $('thinking').classList.remove('on');
 }
 
-function exportPGN() {
+// PGN result tag: the side to move is the one that is mated or out of time,
+// while a resignation is always the player (white) losing
+function gameResult() {
+  if (!state.over) return '*';
+  if (state.resigned) return '0-1';
+  return engine.pos.turn === WHITE ? '0-1' : '1-0';
+}
+
+// the PGN text is built as a pure string so the test can read it without a
+// download; exportPGN only wraps it in a file
+function buildPGN() {
   const date = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+  // a custom start position is not the standard array: PGN needs SetUp/FEN so
+  // the file replays, and the move numbering must follow the base FEN move number
+  const custom = state.baseFen !== START_FEN;
+  const baseTurn = state.baseFen.split(' ')[1] || 'w';
+  const startMove = Number(state.baseFen.split(' ')[5]) || 1;
+  const whiteStarts = baseTurn === 'w';
+  const result = gameResult();
   let pgn = '[Event "SUBIT-CHESS v3"]\n[Site "Browser"]\n[Date "' + date + '"]\n' +
-    '[White "Player"]\n[Black "SUBIT Engine"]\n[Result "*"]\n\n';
+    '[White "Player"]\n[Black "SUBIT Engine"]\n[Result "' + result + '"]\n';
+  if (custom) {
+    pgn += '[SetUp "1"]\n[FEN "' + state.baseFen + '"]\n';
+  }
+  pgn += '\n';
   const h = engine.history;
   for (let i = 0; i < h.length; i++) {
-    if (i % 2 === 0) pgn += (Math.floor(i / 2) + 1) + '. ';
+    const isWhite = (i % 2 === 0) === whiteStarts;
+    if (isWhite) {
+      pgn += (startMove + Math.floor((i + (whiteStarts ? 0 : 1)) / 2)) + '. ';
+    } else if (i === 0) {
+      pgn += startMove + '... ';
+    }
     pgn += h[i].san + ' ';
   }
-  const blob = new Blob([pgn], { type: 'text/plain;charset=utf-8' });
+  pgn += result + '\n';
+  return pgn;
+}
+
+function exportPGN() {
+  const blob = new Blob([buildPGN()], { type: 'text/plain;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -1247,14 +1398,52 @@ function exportPGN() {
 
 /* ---------------- modals & settings ---------------- */
 
-function openModal(id) { $(id).classList.add('on'); }
-function closeModal(id) { $(id).classList.remove('on'); }
+// settings survive a reload: the user should not re-pick theme/level/board mode
+const SETTINGS_KEY = 'subit.settings.v3';
+
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings)); } catch (e) { /* private mode */ }
+}
+
+function loadSettings() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null'); } catch (e) { /* ignore */ }
+  if (saved && typeof saved === 'object') Object.assign(state.settings, saved);
+  // reflect the stored settings in the controls
+  $('coords-select').value = state.settings.coords;
+  $('legal-select').value = state.settings.legal;
+  $('arrow-select').value = state.settings.arrows;
+  $('theme-select').value = state.settings.theme;
+  $('level-select').value = String(state.settings.level);
+  $('evalmode-select').value = state.settings.evalmode;
+}
+
+// modals take the focus while open and give it back on close, so a keyboard
+// user is not stranded behind the backdrop
+function openModal(id) {
+  const el = $(id);
+  if (!el) return;
+  state.modalReturn = document.activeElement;
+  el.classList.add('on');
+  const target = el.querySelector('input, select, button, textarea, [tabindex]');
+  if (target) target.focus();
+}
+
+function closeModal(id) {
+  const el = $(id);
+  if (!el) return;
+  el.classList.remove('on');
+  const back = state.modalReturn;
+  state.modalReturn = null;
+  if (back && typeof back.focus === 'function') back.focus();
+}
 
 function applyTheme(name) {
   const th = THEMES[name] || THEMES.classic;
   document.documentElement.style.setProperty('--light-sq', th.light);
   document.documentElement.style.setProperty('--dark-sq', th.dark);
   state.settings.theme = name;
+  saveSettings();
 }
 
 function setLevel(level) {
@@ -1265,6 +1454,7 @@ function setLevel(level) {
   $('level-select').value = String(state.settings.level);
   const plan = LEVELS[state.settings.level - 1];
   $('engine-sub').textContent = 'Рівень ' + state.settings.level + ' · d' + plan.depth;
+  saveSettings();
 }
 
 function bindEvents() {
@@ -1279,6 +1469,36 @@ function bindEvents() {
   window.addEventListener('pointermove', onPointerMove);
   window.addEventListener('pointerup', onPointerUp);
   window.addEventListener('pointercancel', onPointerCancel);
+
+  // keyboard play: arrows move the cursor, Enter/Space selects or plays
+  boardEl.addEventListener('keydown', (e) => {
+    const deltas = { ArrowUp: -16, ArrowDown: 16, ArrowLeft: -1, ArrowRight: 1 };
+    if (e.key in deltas) {
+      e.preventDefault();
+      let next = state.cursor + deltas[e.key];
+      // do not wrap across the board edge on a file move
+      if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
+          Math.floor(next / 16) !== Math.floor(state.cursor / 16)) return;
+      if (next < 0 || next > 119) return;
+      if (next & 0x88) return;
+      state.cursor = next;
+      renderBoard();
+      const cell = boardEl.querySelector('.sq[data-sq="' + next + '"]');
+      if (cell) cell.focus();
+      return;
+    }
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      onSquare(state.cursor);
+    }
+  });
+
+  // Escape closes the topmost modal
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    const open = document.querySelector('.modal-backdrop.on');
+    if (open) closeModal(open.id);
+  });
 
   $('new-game').addEventListener('click', () => newGame(START_FEN));
   $('undo').addEventListener('click', undoMove);
@@ -1308,18 +1528,19 @@ function bindEvents() {
   });
 
   $('coords-select').addEventListener('change', (e) => {
-    state.settings.coords = e.target.value; renderBoard();
+    state.settings.coords = e.target.value; renderBoard(); saveSettings();
   });
   $('legal-select').addEventListener('change', (e) => {
-    state.settings.legal = e.target.value; renderBoard();
+    state.settings.legal = e.target.value; renderBoard(); saveSettings();
   });
   $('arrow-select').addEventListener('change', (e) => {
-    state.settings.arrows = e.target.value; renderBoard();
+    state.settings.arrows = e.target.value; renderBoard(); saveSettings();
   });
   $('theme-select').addEventListener('change', (e) => applyTheme(e.target.value));
   $('level-select').addEventListener('change', (e) => setLevel(e.target.value));
   $('evalmode-select').addEventListener('change', (e) => {
     if (engine.setEvalMode) engine.setEvalMode(e.target.value); else engine.evaluation.opts.mode = e.target.value;
+    saveSettings();
     analyze();
   });
   document.querySelectorAll('.level-pill').forEach((el) => {
@@ -1331,8 +1552,12 @@ function bindEvents() {
 
 function init() {
   bindEvents();
-  applyTheme('classic');
-  setLevel(3);
+  loadSettings();
+  state.worker = makeEngineWorker();
+  applyTheme(state.settings.theme || 'classic');
+  setLevel(state.settings.level || 3);
+  if (engine.setEvalMode) engine.setEvalMode(state.settings.evalmode);
+  else engine.evaluation.opts.mode = state.settings.evalmode;
   newGame(START_FEN);
 }
 
@@ -1353,6 +1578,12 @@ window.__subit = {
   setLevel,
   get history() { return engine.history; },
   get fen() { return engine.pos.fen(); },
+  get baseFen() { return state.baseFen; },
+  get cursor() { return state.cursor; },
+  setCursor(sq) { state.cursor = sq; renderBoard(); },
+  get settings() { return state.settings; },
+  buildPGN,
+  focusCursor() { const c = boardEl.querySelector('.sq[data-sq="' + state.cursor + '"]'); if (c) c.focus(); return !!c; },
   move(uci) {
     const m = engine.findMoveByUci(uci);
     return m ? playMove(m) : false;

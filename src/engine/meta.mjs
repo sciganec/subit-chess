@@ -60,15 +60,49 @@ export function adaptiveDepth({ complexity = 0.5, uncertainty = 0.3, baseDepth =
   return Math.max(2, Math.min(maxDepth, baseDepth + bonus - 2));
 }
 
-/** Move-quality risk from the search result (score spread, PV length, mate distance). */
+/**
+ * Move-quality risk from the search result (audit v3.0.6 §8.2).
+ *
+ * The comment on the original implementation promised score spread, PV length
+ * and mate distance; the code used score, completed, nodes and seldepth. This
+ * is the corrected classifier: every factor the description names is read.
+ *
+ *   - scoreSpread  the gap between the best and second-best root move. A small
+ *                  spread means the choice is not clear and a deeper search
+ *                  could flip it.
+ *   - pvLength     the length of the principal variation. A PV much shorter
+ *                  than the depth means the line was truncated (a bound, not
+ *                  an exact score), which is a risk even when `completed`.
+ *   - mateDistance how far the mate is. A mate in many moves is less forcing
+ *                  than a mate in one, even when the score says MATE.
+ */
 export function riskOf(searchResult, depth) {
   if (!searchResult) return RISK.CRITICAL;
-  const { score, completed, nodes, seldepth } = searchResult;
+  const { score, completed, nodes, seldepth, scoreSpread, pv, flag } = searchResult;
   if (!completed) return RISK.HIGH;
-  if (Math.abs(score) > 90000 - 1000) return RISK.NONE;      // forced mate found
-  if (seldepth > depth + 6) return RISK.MODERATE;            // tree exploded
+  // a proven mate: the score no longer depends on depth. A mate in one is
+  // NONE; a mate in many is LOW because the side can still go wrong.
+  const isMate = Math.abs(score) > 90000 - 1000;
+  if (isMate) {
+    const mateIn = Math.round((90000 - Math.abs(score)));
+    return mateIn <= 2 ? RISK.NONE : RISK.LOW;
+  }
+  // a bound, not an exact score: the aspiration window did not contain the
+  // true value, so the published score is a ceiling or a floor
+  if (flag !== 0 && flag != null) return RISK.MODERATE;
+  // the tree exploded: selective depth far beyond nominal depth means the
+  // search spent its budget on extensions, and the result is less trustworthy
+  if (seldepth > depth + 6) return RISK.MODERATE;
   if (nodes > 40000000) return RISK.MODERATE;
-  if (Math.abs(score) < 40) return RISK.LOW;                 // equal position, any move
+  // a truncated PV: the line is shorter than the depth, so the tail of the
+  // search was cut by a bound rather than resolved exactly
+  const pvLen = pv ? pv.length : 0;
+  if (pvLen > 0 && pvLen < depth) return RISK.MODERATE;
+  // a small score spread means the second-best move is close: the choice is
+  // not clear and a deeper search could change it
+  if (typeof scoreSpread === 'number' && scoreSpread < 30) return RISK.MODERATE;
+  // an equal position: any move is fine, low risk
+  if (Math.abs(score) < 40) return RISK.LOW;
   return RISK.LOW;
 }
 

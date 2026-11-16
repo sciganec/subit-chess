@@ -76,8 +76,11 @@ for (const [name, fen] of Object.entries(POSITIONS)) {
   check('every accepted plan is rule- and structure-feasible', plans.every((p) => p.feasible.rule && p.feasible.structural));
   check('rejected plans are reported, not silently dropped',
     Array.isArray(plans.rejected), `accepted=${plans.length} rejected=${plans.rejected.length}`);
-  check('rejected plans are exactly the rule/structure failures',
-    plans.rejected.every((p) => !p.feasible.rule || !p.feasible.structural));
+  check('rejected plans carry their full feasibility vector',
+    plans.rejected.every((p) => p.feasible && typeof p.feasible === 'object'),
+    `rejected=${plans.rejected.length}`);
+  check('every accepted plan passes all five feasibility axes',
+    plans.every((p) => p.feasible.rule && p.feasible.structural && p.feasible.tactical && p.feasible.temporal && p.feasible.strategic));
   check('every plan has evidence', plans.every((p) => p.evidence.length > 0));
 }
 
