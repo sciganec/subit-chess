@@ -19,7 +19,7 @@
 
 import {
   WHITE, PAWN, KNIGHT, KING, MATERIAL, pieceType, pieceColor, rankOf, fileOf, opposite,
-  MOVE_FROM, MOVE_TO, MOVE_FLAGS, FLAG_CAPTURE, FLAG_PROMO
+  MOVE_FROM, MOVE_TO, MOVE_FLAGS, FLAG_CAPTURE, FLAG_PROMO, FLAG_EP
 } from './core.mjs';
 import { REL, REL_KEY, REL_KEY_TYPE, REL_KEY_FROM } from './structure.mjs';
 
@@ -194,13 +194,20 @@ function genTrade(pos, percept, structure, legalMoves) {
   const enemy = opposite(side);
   const wins = [];
   for (const m of legalMoves) {
-    if (!(MOVE_FLAGS(m) & (FLAG_CAPTURE | FLAG_PROMO))) continue;
+    const flags = MOVE_FLAGS(m);
+    if (!(flags & (FLAG_CAPTURE | FLAG_PROMO))) continue;
     const to = MOVE_TO(m);
-    const victim = pos.board[to];
-    if (victim === 0) continue;
+    // en passant removes a pawn from a different square than the destination,
+    // so reading pos.board[to] skipped every en passant capture
+    // (audit v3.0.6 §7.2)
+    const isEp = !!(flags & FLAG_EP);
+    const victim = isEp ? pos.board[to + (side === WHITE ? 16 : -16)] : pos.board[to];
+    if (!victim) continue;
     const attacker = pos.board[MOVE_FROM(m)];
     const gain = MATERIAL[pieceType(victim)] - MATERIAL[pieceType(attacker)];
-    const defended = percept.atk.defenders(to, enemy);
+    const defended = isEp
+      ? percept.atk.cnt[enemy][to]
+      : percept.atk.defenders(to, enemy);
     if (defended === 0 || gain > 0) wins.push({ m, gain, defended });
   }
   if (wins.length === 0) return plans;
@@ -221,7 +228,10 @@ function genTrade(pos, percept, structure, legalMoves) {
 function genKing(pos, percept, structure, legalMoves) {
   const side = pos.turn;
   const enemy = opposite(side);
-  const kz = percept.kingZoneAttacks[side];
+  // kingZoneAttacks[c] is the pressure on king c, so the pressure on the enemy
+  // king is indexed by `enemy`. Indexing by `side` produced an attack plan
+  // whenever my OWN king was under pressure (audit v3.0.6 §5.1/§7.3).
+  const kz = percept.kingZoneAttacks[enemy];
   const kingSq = percept.kingSq[enemy];
   const enemyPawns = percept.pawns[enemy].filter((n) => n > 0).length;
   if (kz === 0 && enemyPawns >= 3) return [];
@@ -281,12 +291,21 @@ function genOutpost(pos, percept, structure, legalMoves) {
     const advanced = side === WHITE ? r <= 3 : r >= 4;
     if (!advanced) continue;
     if (fileOf(to) < 1 || fileOf(to) > 6) continue;
-    if (percept.atk.defenders(to, side) === 0) continue;   // must be protected
-    // no enemy pawn can ever attack this square again
+    // The square must be protected *after* the knight lands on it. `defenders()`
+    // counts defenders of a piece already standing on the square, so on an empty
+    // destination it is always 0 and no outpost was ever generated
+    // (audit v3.0.6 §7.1). Control is what matters here.
+    const guarded = percept.atk.cnt[side][to];
+    if (guarded === 0) continue;
+    // no enemy pawn can ever attack this square again: a black pawn on psq
+    // attacks (psq + 1, file +- 1), a white pawn attacks (psq - 1, file +- 1)
     let safe = true;
     const enemy = opposite(side);
     for (const psq of percept.pawnSquares[enemy]) {
-      if (Math.abs(fileOf(psq) - fileOf(to)) <= 1 && (side === WHITE ? rankOf(psq) > r : rankOf(psq) < r)) { safe = false; break; }
+      const pr = rankOf(psq);
+      const df = Math.abs(fileOf(psq) - fileOf(to));
+      const attacks = side === WHITE ? (pr === r - 1 && df === 1) : (pr === r + 1 && df === 1);
+      if (attacks) { safe = false; break; }
     }
     if (!safe) continue;
     plans.push(new Plan({
@@ -295,8 +314,8 @@ function genOutpost(pos, percept, structure, legalMoves) {
       title: `plant a knight on ${'abcdefgh'[fileOf(to)]}${8 - r}`,
       goal: { squares: [to], text: 'occupy a protected square no enemy pawn can attack' },
       moves: [m],
-      evidence: [`defended ${percept.atk.defenders(to, side)}x`, 'immune to pawn attacks'],
-      features: { rank: r }
+      evidence: [`guarded by ${guarded} own piece(s)`, 'immune to pawn attacks'],
+      features: { rank: r, guarded }
     }));
   }
   return plans;
@@ -380,7 +399,7 @@ export function checkFeasibility(pos, percept, structure, plan, opts = {}) {
       f.tactical = plan.moves.length > 0;
       break;
     case PLAN.KING:
-      f.structural = percept.kingZoneAttacks[side] > 0 || plan.features.shelter <= 2;
+      f.structural = plan.features.zone > 0 || plan.features.shelter <= 2;
       f.tactical = plan.moves.length > 0;
       break;
     case PLAN.ACTIVATE:

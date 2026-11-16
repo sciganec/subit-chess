@@ -1,5 +1,5 @@
 /**
- * SUBIT-CHESS v3.0.6 — Uncertainty profile U(P) and Decision Certificate
+ * SUBIT-CHESS v3.0.7 — Uncertainty profile U(P) and Decision Certificate
  *
  * Spec basis:
  *   docs/theory/37_UNCERTAINTY_&_CONFIDENCE_THEORY §5-§6  (eight types, the vector)
@@ -138,7 +138,9 @@ export function computeProfile(input = {}) {
       note = `SVF estimate ${u.toFixed(2)}`;
     } else if (evaluation && pos) {
       const ev = evaluation.structural(pos);
-      u = ev && ev.uncertainty ? ev.uncertainty : 0.3;
+      // a measured 0.0 is evidence, not a missing measurement: testing
+      // truthiness turned "the evaluation is certain" into the 0.3 default
+      u = ev && typeof ev.uncertainty === 'number' ? ev.uncertainty : 0.3;
       note = `SVF estimate ${u.toFixed(2)}`;
     }
     values[2] = clamp01(u);
@@ -243,7 +245,7 @@ export function buildCertificate(input = {}) {
   const {
     fen = '', version = 0, move = null, san = null, legal = true, legalCount = 0,
     depth = 0, completed = false, nodes = 0, pv = [], score = 0,
-    profile = null, paramVersion = '3.0.6', algorithmVersion = '3.0.6'
+    profile = null, paramVersion = '3.0.7', algorithmVersion = '3.0.7'
   } = input;
 
   let status;

@@ -114,7 +114,10 @@ for (const fen of FENS) {
 /* an impossible position is detected */
 {
   const pos = new Position();
-  pos.setFEN('4k3/8/8/8/8/8/8/4K1K1 w - - 0 1');
+  // the validator rejects this FEN before it can be loaded, so the verifier is
+  // given the position directly: proving that verifyPosition() sees the two
+  // kings is the point of this check
+  pos.setFEN('4k3/8/8/8/8/8/8/4K1K1 w - - 0 1', { validate: false });
   const f = verifyPosition(pos);
   check('two kings of one colour are rejected', f.length > 0, report(f));
 }

@@ -1,6 +1,6 @@
 # Roadmap
 
-Direction for **subit-chess** after v3.0.6.
+Direction for **subit-chess** after v3.0.7.
 
 Guiding principles (unchanged):
 - **Evidence over ambition.** Every next step has a pre-registered gate.
@@ -14,7 +14,7 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.6 (2026-11-15)
+## Current state — v3.0.7 (2026-11-16)
 
 **Status:** Engine core rewrite + correctness pass. Strength demonstrated so far is a
 single large fix (evaluation perspective); everything else is still inside the noise band.
@@ -34,6 +34,7 @@ single large fix (evaluation perspective); everything else is still inside the n
 | The same position and depth give the same move | `tests/engine.eval.mjs` §12, ADR 0017, v3.0.4 |
 | The leaf tier is faster without changing its value | ADR 0018, v3.0.5: 472k → 589k eval/s, +7.4% nodes/s, identical values on 10 positions, identical tree (503402 nodes) |
 | Uncertainty is a vector with evidence, not a penalty | ADR 0019, v3.0.6: 36 checks, no scalar blend, certificate on every search result, deterministic profile |
+| The engine validates its input before touching the board | ADR 0020, v3.0.7: 66 checks in `tests/engine.audit.mjs`, atomic FEN validation, claimable draws stay playable |
 
 **What is not yet known:**
 - Does a ply of depth convert into strength? (the `--a base@5 --b base@4` regression)

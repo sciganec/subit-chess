@@ -272,6 +272,7 @@ export class Searcher {
     this.pvTable = new Int32Array(128 * 64);   // triangular PV: pvTable[ply*64 + i]
     this.pvLength = new Int32Array(128);
     this.seldepth = 0;
+    this.qStalemate = true;   // horizon stalemate check (audit v3.0.6 §4.1)
     this.useTT = true;
     this.useNull = true;
     this.useLMR = true;
@@ -299,6 +300,9 @@ export class Searcher {
     const t0 = Date.now();
     this.pos = pos;
     this.nodes = 0;
+    // the selective depth belongs to one search: carrying the previous maximum
+    // into the next result corrupts the risk estimate and the Us component
+    this.seldepth = 0;
     this.stop = false;
     this.maxDepth = Math.min(64, opts.depth || this.maxDepth || 8);
     this.deadline = opts.timeMs ? t0 + opts.timeMs : 0;
@@ -508,13 +512,6 @@ export class Searcher {
       const flags = MOVE_FLAGS(m);
       const isQuiet = !(flags & (FLAG_CAPTURE | FLAG_PROMO)) && pos.board[MOVE_TO(m)] === 0;
 
-      // futility pruning at the frontier (controlled, never at the PV)
-      if (this.useFutility && futility.enabled && depth <= futility.maxDepth &&
-          !pvNode && isQuiet && !inCheck && bestScore > -INF) {
-        const staticScore = this.ev.evaluate(pos, depth);
-        if (staticScore + futility.margin <= alpha) { pruned++; continue; }
-      }
-
       pos.pushRep();
       const undo = pos.makeMove(m);
 
@@ -524,11 +521,28 @@ export class Searcher {
         pos.popRep();
         continue;
       }
+
+      const givesCheck = pos.inCheck();
+
+      // Futility pruning at the frontier (controlled, never at the PV). It runs
+      // after the move is made, because a quiet move that gives check must
+      // survive the frontier: a quiet mate in one is exactly the move that
+      // `isQuiet` cannot rule out (audit v3.0.6 §4.4).
+      if (this.useFutility && futility.enabled && depth <= futility.maxDepth &&
+          !pvNode && isQuiet && !inCheck && !givesCheck && bestScore > -INF) {
+        const staticScore = this.ev.evaluate(pos, depth);
+        if (staticScore + futility.margin <= alpha) {
+          pruned++;
+          pos.unmakeMove(undo);
+          pos.popRep();
+          continue;
+        }
+      }
+
       legal++;
       this.nodes++;
 
       let score;
-      const givesCheck = pos.inCheck();
       let reduction = 0;
       if (this.useLMR && lmr.enabled && depth >= lmr.minDepth && i >= lmr.minMoveIndex &&
           isQuiet && !inCheck && !givesCheck) {
@@ -621,6 +635,12 @@ export class Searcher {
     if (this.checkStop()) return 0;
     if (ply > this.seldepth) this.seldepth = ply;
 
+    // Automatic draws are terminal whatever the depth (FIDE 9.6): the 75-move
+    // rule and fivefold repetition end the game, so the horizon must score 0
+    // instead of a static evaluation.
+    if (pos.halfmove >= 150) return 0;
+    if (ply > 0 && pos.repetitionCount() >= 5) return 0;
+
     const inCheck = pos.inCheck();
     let best;
     let moves;
@@ -639,6 +659,13 @@ export class Searcher {
       if (stand > alpha) alpha = stand;
       best = stand;
       moves = pos.generateMoves(true);
+      // Stalemate at the horizon. A quiet position without captures is not
+      // evidence of a legal move, and a static score here would report a won
+      // game as drawn (or the reverse) with no bound to show for it. The check
+      // runs only at the first ply and only when no capture exists, so the
+      // common tactical path pays nothing.
+      if (moves.length === 0 && qdepth === 0 && this.qStalemate &&
+          pos.legalMoves().length === 0) return 0;
     }
     if (qdepth > 8) return best;
 

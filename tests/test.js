@@ -515,9 +515,15 @@ async function main(){
               `${FULL ? ' + full' : ''}`);
 
   const projectRoot = path.resolve(__dirname, '..');
-  const defaultHtml = fs.existsSync(path.join(projectRoot, 'src', 'subit_chess_v2.2.0.html'))
-    ? path.join(projectRoot, 'src', 'subit_chess_v2.2.0.html')
-    : path.join(projectRoot, 'src', 'subit_chess_v1.9.1.html');
+  // the historical single-file builds live in ver/ (the src/ folder only keeps
+  // the current release), so the legacy harness looks in both places
+  const candidates = [
+    path.join(projectRoot, 'src', 'subit_chess_v2.2.0.html'),
+    path.join(projectRoot, 'ver', 'subit_chess_v2.2.0.html'),
+    path.join(projectRoot, 'src', 'subit_chess_v1.9.1.html'),
+    path.join(projectRoot, 'ver', 'subit_chess_v1.9.1.html')
+  ];
+  const defaultHtml = candidates.find((p) => fs.existsSync(p)) || candidates[0];
   const html = ARGS.html || ARGS.engine || defaultHtml;
   console.log(`engine: ${html}`);
 

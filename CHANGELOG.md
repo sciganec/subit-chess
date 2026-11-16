@@ -25,6 +25,8 @@ Strength and measurement items for the v3 engine (measured, not cosmetic):
   `meta` thresholds (docs 31/32/33/36).
 - **Search hygiene:** dead `contextBonus`
   in `index.mjs` (always returns 0), `Score.diff` never set.
+- **P2 UI/engine:** Web Worker search, clock, PGN `SetUp`/`FEN`/result, undo to
+  custom FEN, captured-piece counting, keyboard accessibility, settings persistence.
 
 ### Added
 
@@ -55,6 +57,71 @@ plies, median 212.5, 1/6 games at the 300-ply cap, reasons `checkmate: 5, max pl
 
 ---
 ---
+
+## [3.0.7] — 2026-11-16
+
+A correctness release driven by the v3.0.6 audit. Eleven defects were fixed across the
+FEN layer, the search horizon, the context engine, the plan generators and the meta
+layer, each with a regression test in `tests/engine.audit.mjs` (66 checks). The engine
+now validates its input before touching the board, scores claimable draws as playable,
+and reports a real risk instead of a constant.
+
+### Fixed
+
+- **§3.1 FEN validator (`src/engine/fen.mjs`, new).** A malformed FEN no longer
+  half-changes the board: `validateFEN()` runs every check (syntax, board, kings,
+  castling home squares, en-passant rank, counters, the side-not-to-move-in-check rule)
+  *before* `Position.setFEN` mutates anything, and a rejected FEN leaves the previous
+  position byte-identical. `setFEN(fen, { validate: false })` is the escape hatch the
+  verifier uses to build impossible positions on purpose.
+- **§4.1 horizon stalemate.** Quiescence now detects stalemate at `qdepth === 0` when
+  no capture exists, instead of returning a static score for a drawn position.
+- **§4.2 claimable vs automatic draws.** The 50-move rule (100 halfmoves) and threefold
+  repetition stay playable; only the 75-move rule (150) and fivefold repetition end the
+  game (`Position.status()`). The quiescence horizon scores them 0 as well.
+- **§5.1 context directions.** `computeContext` now indexes the pressure on *my* king by
+  `pos.turn` and the pressure on the *enemy* king by `opposite(pos.turn)`. The old code
+  inverted the ATTACK and DEFENCE components whenever the kings were asymmetric.
+- **§6.1 structural context.** `Evaluation.structural()` builds the `Structure` before
+  calling `computeContext`, so the context is computed from a structure that exists.
+- **§6.2 measured uncertainty.** `uncertaintyOf` accepts `0.0` as a measured value
+  (`typeof ev.uncertainty === 'number'`) instead of treating it as missing and falling
+  back to the 0.3 default.
+- **§7.1 outpost control.** `genOutpost` checks `percept.atk.cnt[side][to]` (control of
+  the destination) rather than `defenders(to)`, which counts defenders of a piece
+  already on the square and was therefore always 0 for a landing square.
+- **§7.6 Pareto set.** `Engine.analyze()` reports the full Pareto set with a `total`
+  field, and lists the plans rejected by the filter next to the ones rejected earlier.
+- **§8.1 analyze() risk.** `analyze()` reports the position's own uncertainty (via
+  `RISK_NAME[round(u * 4)]`) when no search has run, instead of the constant
+  `CRITICAL` that `riskOf(null, 0)` returned.
+- **§3.2 futility + checks.** Futility pruning skips a quiet move that gives check, so a
+  quiet mate is no longer pruned by the margin test.
+- **§4.3 seldepth reset.** `Searcher.search()` resets `seldepth = 0` at the start of each
+  search, so the previous search's maximum no longer corrupts the risk estimate and the
+  `Us` component of U(P).
+- **§5.2 insufficient material.** `K+B vs K+B` is dead only when both bishops stand on
+  the same colour complex; with opposite colours a helpmate exists, so the position stays
+  playable. `K+N vs K+N`, `K+B vs K+N` and `K+2N vs K` are not dead either.
+- **§6.3 53-bit Zobrist key.** `Position.key` composes the two 32-bit halves into a
+  single 53-bit safe integer (`hashLo * 2^21 + (hashHi & 0x1fffff)`), so the
+  `Float64Array` transposition table stores the full key without collision.
+  `Structure.hashKeys` uses the same composition.
+
+### Added
+
+- `tests/engine.audit.mjs`: 66 regression checks, one per audited defect. Wired into
+  `npm test` / `npm run test:engine` and exposed as `npm run test:audit`.
+- `docs/DECISIONS.md` ADR 0020: the claimable-draw rationale (50-move / 3-fold stay
+  playable) with the search/quiescence split.
+
+### Notes
+
+- The quiescence stalemate check stays enabled. A controlled d7 measurement
+  (`2kr1b1r/p1p2pp1/1pn2q1p/1QPp4/3PbB2/2P2N2/PR2BPPP/5RK1 b - - 1 16`) found 488236 nodes
+  with the check on and off, and the wall time inside the noise band (~2.3-2.4 s), so
+  the common tactical path pays nothing for the correctness it buys.
+
 ---
 
 ## [3.0.6] — 2026-11-15

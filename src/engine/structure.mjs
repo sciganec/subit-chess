@@ -264,7 +264,7 @@ export const ATTR_NAMES = [
   'nAttack', 'nDefend', 'nControl', 'nPin'
 ];
 
-/** 53-bit non-cryptographic hash of a set of integer keys. */
+/** 53-bit non-cryptographic hash of a set of integer keys (32 low + 21 high bits). */
 export function hashKeys(keys) {
   let lo = 0x811c9dc5 >>> 0;
   let hi = 0x1000193 >>> 0;
@@ -274,7 +274,7 @@ export function hashKeys(keys) {
     hi = (Math.imul(hi ^ ((k >>> 8) & 0xffffff), 2246822519)) >>> 0;
     lo = (lo ^ (lo >>> 13)) >>> 0;
   }
-  return lo * 2048 + (hi & 2047);
+  return lo * 2097152 + (hi & 0x1fffff);
 }
 
 export function jaccardDistance(A, B) {

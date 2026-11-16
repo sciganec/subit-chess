@@ -727,8 +727,12 @@ export class Evaluation {
       if (hit) return hit;
     }
     const percept = new Percept(pos);
-    const ctx = computeContext(pos, percept, null);
     const structure = buildStructureSafe(pos, percept);
+    // the temporal axis of the context reads the structural hyper-counts
+    // (forks), so the structural tier must build the context from the same
+    // structure the engine uses; passing null made the two disagree
+    // (audit v3.0.6 §6.1)
+    const ctx = computeContext(pos, percept, structure);
     const vec = structuralVector(pos, percept, structure, ctx, this.params);
     const { E, E0, Ei, Ec } = scalarize(vec, ctx, this.params);
     const uncertainty = estimateUncertainty(pos, percept, structure, vec);

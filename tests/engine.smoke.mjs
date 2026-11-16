@@ -23,7 +23,7 @@ const MATES = {
   'back rank': '6k1/5ppp/8/8/8/8/8/R5K1 w - - 0 1',
   'smothered': '6rk/6pp/8/6N1/8/8/8/6K1 w - - 0 1',
   'quiet mate': '6k1/8/6K1/8/8/8/8/7R w - - 0 1',
-  'ladder mate': '7k/8/8/8/8/8/1R6/K6R w - - 0 1'
+  'ladder mate': '7k/R7/8/8/8/8/8/1R5K w - - 0 1'
 };
 
 /* ---------------- layer wiring ---------------- */
@@ -97,9 +97,15 @@ console.log(fails === 0 ? '\nALL PASS' : `\n${fails} FAILURE(S)`);
 process.exit(fails === 0 ? 0 : 1);
 
 function startMirror(fen) {
-  const [board, turn, rest] = fen.split(' ');
+  // the validator requires a complete FEN, so the mirrored position is emitted
+  // with all six fields: board, turn, castling, en passant, halfmove, fullmove
+  const [board, turn, castling, ep, half, full] = fen.split(/\s+/);
   const rows = board.split('/');
   const swap = { P: 'p', p: 'P', N: 'n', n: 'N', B: 'b', b: 'B', R: 'r', r: 'R', Q: 'q', q: 'Q', K: 'k', k: 'K' };
   const flipped = rows.reverse().map((r) => r.split('').map((c) => (swap[c] || c)).join('')).join('/');
-  return `${flipped} ${turn === 'w' ? 'b' : 'w'} ${rest || ''}`.trim();
+  const rights = castling && castling !== '-'
+    ? castling.split('').map((c) => (c === c.toUpperCase() ? c.toLowerCase() : c.toUpperCase())).join('')
+    : '-';
+  const mirroredEp = ep && ep !== '-' ? ep[0] + (9 - Number(ep[1])) : '-';
+  return `${flipped} ${turn === 'w' ? 'b' : 'w'} ${rights} ${mirroredEp} ${half || 0} ${full || 1}`;
 }

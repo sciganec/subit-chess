@@ -1,13 +1,13 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v3.0.6**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.7**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
 
 Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s policy vector,
 teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
-ADR 0009+ describe v3.0.6 and are the binding decisions for the current engine.
+ADR 0009+ describe v3.0.7 and are the binding decisions for the current engine.
 
 ---
 
@@ -807,4 +807,42 @@ tactically lost, and one scalar cannot say which.
 
 ---
 
-*End of DECISIONS.md — v3.0.6*
+## ADR 0020 — claimable draws stay playable; only automatic draws end the game
+
+**Status:** Accepted (v3.0.7)
+
+### Context
+
+Doc 32 §FEN treats the position as evidence, and the rule authority (`Position.status()`)
+must not contradict the search's own terminal detection. The pre-3.0.7 code returned
+`{ over: true, result: 'draw' }` for the 50-move rule (halfmove >= 100) and for threefold
+repetition, and the quiescence horizon scored those positions 0. That is wrong under
+FIDE: the 50-move rule (9.3) and threefold repetition (9.2) are *claimable* — the game
+continues until a player claims, and a position where a player can still win is not a
+dead draw. Treating them as automatic both mis-scores the horizon and lets the engine
+accept a draw it does not have to.
+
+### Decision
+
+- `Position.status()` ends the game only for the *automatic* draws: checkmate, stalemate,
+  the 75-move rule (halfmove >= 150, FIDE 9.6.2), fivefold repetition (9.6.1), and dead
+  material. The 50-move rule and threefold repetition return `null` — the position stays
+  playable, and the search/quiescence treats it as a normal position.
+- The quiescence horizon returns 0 for the 75-move rule and fivefold repetition, the same
+  two automatic draws `status()` honours, so a search can never claim a 0 it cannot reach.
+- `insufficientMaterial()` is tightened to FIDE 5.2.2: `K+B vs K+B` is dead only when both
+  bishops stand on the same colour complex. With opposite colours, or with any knight
+  present, a helpmate exists and the position is not dead.
+
+### Consequences
+
+- The engine no longer accepts a 50-move or threefold draw it is entitled to claim, so its
+  search scores reflect positions that are actually still winnable or losable.
+- The search and the rule authority share one definition of "automatic draw", so the
+  horizon and `status()` cannot disagree.
+- Claiming a draw is now a UI/policy decision (the player or the engine's own claim logic),
+  not a hidden terminal condition in the rule authority.
+
+---
+
+*End of DECISIONS.md — v3.0.7*

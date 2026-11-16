@@ -16,6 +16,8 @@
  * Encoding: sq = rank * 16 + file, rank 0 = 8th rank, file 0 = a..h.
  */
 
+import { validateFEN } from './fen.mjs';
+
 /* ------------------------------------------------------------------ *
  * Constants
  * ------------------------------------------------------------------ */
@@ -261,7 +263,22 @@ export class Position {
     return Position.fromFEN('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
   }
 
-  setFEN(fen) {
+  /**
+   * Load a position from FEN. The string is validated first (src/engine/fen.mjs),
+   * so a rejected FEN leaves this position untouched — a caller that catches the
+   * error can keep using the old position instead of a half-parsed board.
+   *
+   * `validate: false` loads the FEN as given. It exists for the verifier itself,
+   * which must be able to build an impossible position in order to prove that it
+   * detects one; no engine path uses it.
+   *
+   * @throws {Error} when the FEN is not a legal position
+   */
+  setFEN(fen, opts = {}) {
+    if (opts.validate !== false) {
+      const check = validateFEN(fen);
+      if (!check.ok) throw new Error(`invalid FEN (${check.status}): ${check.reason}`);
+    }
     this.board.fill(0);
     const parts = fen.trim().split(/\s+/);
     const rows = parts[0].split('/');
@@ -408,9 +425,9 @@ export class Position {
     this.hashHi = hi >>> 0;
   }
 
-  /** 53-bit exact integer key (safe for JS Number). */
+  /** 53-bit exact integer key (safe for JS Number): 32 low bits + 21 high bits. */
   get key() {
-    return this.hashLo * 2048 + (this.hashHi & 2047);
+    return this.hashLo * 2097152 + (this.hashHi & 0x1fffff);
   }
 
   recomputePhaseMaterial() {
@@ -905,18 +922,35 @@ export class Position {
   pushRep() { this.rep.push(this.hashLo); this.repHi.push(this.hashHi); }
   popRep() { this.rep.pop(); this.repHi.pop(); }
 
+  /**
+   * Dead-material check (FIDE 5.2.2): the game is over only when no sequence of
+   * legal moves can lead to mate, not when the material is merely small.
+   *
+   * K+B vs K+B is dead only when both bishops stand on the same colour complex;
+   * with opposite colours a helpmate exists, so the position stays playable.
+   * K+N vs K+N, K+B vs K+N and K+2N vs K are not dead either: mate is reachable
+   * with help, even though it cannot be forced.
+   */
   insufficientMaterial() {
     const w = [], b = [];
     for (const color of [WHITE, BLACK]) {
       for (let i = 0; i < this.listCnt[color]; i++) {
-        const t = pieceType(this.board[this.listSq[color][i]]);
-        if (t !== KING) (color === WHITE ? w : b).push(t);
+        const sq = this.listSq[color][i];
+        const t = pieceType(this.board[sq]);
+        if (t === KING) continue;
+        (color === WHITE ? w : b).push({ t, sq });
       }
     }
+    const minorOnly = (list) =>
+      list.length === 0 || (list.length === 1 && (list[0].t === KNIGHT || list[0].t === BISHOP));
     if (w.length === 0 && b.length === 0) return true;
-    if (w.length === 1 && (w[0] === KNIGHT || w[0] === BISHOP) && b.length === 0) return true;
-    if (b.length === 1 && (b[0] === KNIGHT || b[0] === BISHOP) && w.length === 0) return true;
-    if (w.length === 1 && b.length === 1 && w[0] === BISHOP && b[0] === BISHOP) return true;
+    if (minorOnly(w) && b.length === 0) return true;
+    if (minorOnly(b) && w.length === 0) return true;
+    if (w.length === 1 && b.length === 1 && w[0].t === BISHOP && b[0].t === BISHOP) {
+      const cw = ((w[0].sq >> 4) + (w[0].sq & 7)) & 1;
+      const cb = ((b[0].sq >> 4) + (b[0].sq & 7)) & 1;
+      return cw === cb;
+    }
     return false;
   }
 

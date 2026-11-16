@@ -69,18 +69,24 @@ export function computeContext(pos, percept, structure) {
   /* ---- interaction coordinate I ---- */
   const myMoves = pc.mobility[pos.turn];
   const oppMoves = pc.mobility[opposite(pos.turn)];
-  const checks = pc.inCheck[opposite(pos.turn)] ? 1 : 0;
-  const hanging = pc.hanging[opposite(pos.turn)].length;
-  const zoneAttacks = pc.kingZoneAttacks[pos.turn];
+  // `kingZoneAttacks[c]` counts enemy attacks on the squares around king c, so
+  // the pressure ON my king is [pos.turn] and the pressure on the enemy king is
+  // [opposite(pos.turn)]. Mixing the two inverted the ATTACK and DEFENCE
+  // components (audit v3.0.6 §5.1).
+  const pressureOnMyKing = pc.kingZoneAttacks[pos.turn];
+  const pressureOnEnemyKing = pc.kingZoneAttacks[opposite(pos.turn)];
+  const myHanging = pc.hanging[pos.turn].length;
+  const enemyHanging = pc.hanging[opposite(pos.turn)].length;
+  const myInCheck = pc.inCheck[pos.turn] ? 1 : 0;
+  const enemyInCheck = pc.inCheck[opposite(pos.turn)] ? 1 : 0;
   const mobRatio = myMoves / Math.max(1, myMoves + oppMoves);
 
-  const quiet = clamp01(1 - (hanging * 0.35 + zoneAttacks * 0.12 + checks * 0.5));
-  const defence = clamp01(pc.hanging[pos.turn].length * 0.3 +
-    (pc.inCheck[pos.turn] ? 0.6 : 0) + pc.kingZoneAttacks[opposite(pos.turn)] * 0.1);
-  const attack = clamp01(zoneAttacks * 0.18 + hanging * 0.25 + checks * 0.4 +
+  const quiet = clamp01(1 - (myHanging * 0.35 + pressureOnMyKing * 0.12 + myInCheck * 0.5));
+  const defence = clamp01(myHanging * 0.3 + myInCheck * 0.6 + pressureOnMyKing * 0.1);
+  const attack = clamp01(pressureOnEnemyKing * 0.18 + enemyHanging * 0.25 + enemyInCheck * 0.4 +
     (mobRatio > 0.55 ? (mobRatio - 0.55) * 1.2 : 0));
   const pressure = clamp01((1 - Math.abs(mobRatio - 0.5) * 2) * 0.4 +
-    hanging * 0.1 + (pc.centerControl[pos.turn] - pc.centerControl[opposite(pos.turn)]) * 0.04);
+    myHanging * 0.1 + (pc.centerControl[pos.turn] - pc.centerControl[opposite(pos.turn)]) * 0.04);
 
   ctx.w[I_QUIET] = quiet;
   ctx.w[I_DEFENCE] = defence;

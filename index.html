@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
-<title>SUBIT-CHESS v3.0.6</title>
+<title>SUBIT-CHESS v3.0.7</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -323,7 +323,7 @@ outline:2px solid var(--accent);outline-offset:2px}
 <header class="header">
   <div class="logo">
     <div class="logo-mark">Σ</div>
-    <div><h1>SUBIT-CHESS v3.0.6</h1>
+    <div><h1>SUBIT-CHESS v3.0.7</h1>
     <small>S₀ = I × Z × Φ · SVF v3 · структурний пошук</small></div>
   </div>
   <div class="header-actions">
@@ -529,6 +529,217 @@ outline:2px solid var(--accent);outline-offset:2px}
 <div class="promo-backdrop" id="promo-modal"><div class="promo-box" id="promo-box"></div></div>
 
 <script type="module">
+
+/* ===== src/engine/fen.mjs ===== */
+export const FEN_STATUS = {
+  VALID: 'VALID',
+  INVALID_SYNTAX: 'INVALID_SYNTAX',
+  INVALID_BOARD: 'INVALID_BOARD',
+  INVALID_KINGS: 'INVALID_KINGS',
+  INVALID_CASTLING: 'INVALID_CASTLING',
+  INVALID_EN_PASSANT: 'INVALID_EN_PASSANT',
+  INVALID_COUNTERS: 'INVALID_COUNTERS',
+  INVALID_POSITION: 'INVALID_POSITION'
+};
+
+const PIECE_CHARS = 'pnbrqk';
+const FILES = 'abcdefgh';
+const KNIGHT_STEPS = [[-2, -1], [-2, 1], [-1, -2], [-1, 2], [1, -2], [1, 2], [2, -1], [2, 1]];
+const KING_STEPS = [[-1, -1], [-1, 0], [-1, 1], [0, -1], [0, 1], [1, -1], [1, 0], [1, 1]];
+const FEN_BISHOP_DIRS = [[-1, -1], [-1, 1], [1, -1], [1, 1]];
+const FEN_ROOK_DIRS = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+const inside = (r, f) => r >= 0 && r < 8 && f >= 0 && f < 8;
+
+const fail = (status, reason) => ({ ok: false, status, reason });
+const ok = () => ({ ok: true, status: FEN_STATUS.VALID, reason: '' });
+
+/** Is `sq` (r,f) attacked by `by` on a plain 64-entry board? */
+function attackedBy(board, r, f, by) {
+  const white = by === 'w';
+  // pawns: white pawns move toward rank 8 (decreasing r), so they attack from r+1
+  const pawnR = white ? r + 1 : r - 1;
+  for (const df of [-1, 1]) {
+    if (!inside(pawnR, f + df)) continue;
+    const p = board[pawnR * 8 + f + df];
+    if (p === (white ? 'P' : 'p')) return true;
+  }
+  for (const [dr, df] of KNIGHT_STEPS) {
+    if (!inside(r + dr, f + df)) continue;
+    if (board[(r + dr) * 8 + f + df] === (white ? 'N' : 'n')) return true;
+  }
+  for (const [dr, df] of KING_STEPS) {
+    if (!inside(r + dr, f + df)) continue;
+    if (board[(r + dr) * 8 + f + df] === (white ? 'K' : 'k')) return true;
+  }
+  for (const [dr, df] of FEN_BISHOP_DIRS) {
+    let rr = r + dr, ff = f + df;
+    while (inside(rr, ff)) {
+      const p = board[rr * 8 + ff];
+      if (p !== null) {
+        if (white ? (p === 'B' || p === 'Q') : (p === 'b' || p === 'q')) return true;
+        break;
+      }
+      rr += dr; ff += df;
+    }
+  }
+  for (const [dr, df] of FEN_ROOK_DIRS) {
+    let rr = r + dr, ff = f + df;
+    while (inside(rr, ff)) {
+      const p = board[rr * 8 + ff];
+      if (p !== null) {
+        if (white ? (p === 'R' || p === 'Q') : (p === 'r' || p === 'q')) return true;
+        break;
+      }
+      rr += dr; ff += df;
+    }
+  }
+  return false;
+}
+
+/**
+ * Validate a FEN without touching any position.
+ * @returns {{ok: boolean, status: string, reason: string}}
+ */
+export function validateFEN(fen) {
+  if (typeof fen !== 'string' || fen.trim() === '') {
+    return fail(FEN_STATUS.INVALID_SYNTAX, 'empty FEN');
+  }
+  const parts = fen.trim().split(/\s+/);
+  if (parts.length < 4 || parts.length > 6) {
+    return fail(FEN_STATUS.INVALID_SYNTAX, `expected 4-6 fields, got ${parts.length}`);
+  }
+
+  /* ---- board: 8 ranks, 8 files each, known pieces, kings, pawn ranks ---- */
+  const rows = parts[0].split('/');
+  if (rows.length !== 8) {
+    return fail(FEN_STATUS.INVALID_BOARD, `expected 8 ranks, got ${rows.length}`);
+  }
+  const board = new Array(64).fill(null);
+  let whiteKing = -1, blackKing = -1;
+  for (let r = 0; r < 8; r++) {
+    const rankName = 8 - r;
+    let f = 0;
+    for (const ch of rows[r]) {
+      if (ch >= '1' && ch <= '8') { f += Number(ch); continue; }
+      const lower = ch.toLowerCase();
+      if (PIECE_CHARS.indexOf(lower) === -1) {
+        return fail(FEN_STATUS.INVALID_BOARD, `unknown piece '${ch}' on rank ${rankName}`);
+      }
+      if (f > 7) {
+        return fail(FEN_STATUS.INVALID_BOARD, `rank ${rankName} has more than 8 files`);
+      }
+      const color = ch === lower ? 'b' : 'w';
+      const sq = r * 8 + f;
+      if (lower === 'p' && (r === 0 || r === 7)) {
+        return fail(FEN_STATUS.INVALID_BOARD, `pawn on rank ${rankName}`);
+      }
+      if (lower === 'k') {
+        if (color === 'w') {
+          if (whiteKing >= 0) return fail(FEN_STATUS.INVALID_KINGS, 'two white kings');
+          whiteKing = sq;
+        } else {
+          if (blackKing >= 0) return fail(FEN_STATUS.INVALID_KINGS, 'two black kings');
+          blackKing = sq;
+        }
+      }
+      board[sq] = color === 'w' ? ch : lower;
+      f++;
+    }
+    if (f !== 8) {
+      return fail(FEN_STATUS.INVALID_BOARD, `rank ${rankName} has ${f} files`);
+    }
+  }
+  if (whiteKing < 0 || blackKing < 0) {
+    return fail(FEN_STATUS.INVALID_KINGS, 'both kings are required');
+  }
+  const wr = whiteKing >> 3, wf = whiteKing & 7;
+  const br = blackKing >> 3, bf = blackKing & 7;
+  if (Math.abs(wr - br) <= 1 && Math.abs(wf - bf) <= 1) {
+    return fail(FEN_STATUS.INVALID_POSITION, 'the kings are adjacent');
+  }
+
+  /* ---- side to move ---- */
+  const turn = parts[1];
+  if (turn !== 'w' && turn !== 'b') {
+    return fail(FEN_STATUS.INVALID_SYNTAX, `side to move '${turn}'`);
+  }
+
+  /* ---- castling rights: syntax, no duplicates, rights imply home squares ---- */
+  const castling = parts[2];
+  if (castling === '-') {
+    // no rights
+  } else if (!/^[KQkq]+$/.test(castling)) {
+    return fail(FEN_STATUS.INVALID_CASTLING, `castling field '${castling}'`);
+  } else {
+    for (const ch of ['K', 'Q', 'k', 'q']) {
+      if (castling.split(ch).length > 2) {
+        return fail(FEN_STATUS.INVALID_CASTLING, `duplicate castling right '${ch}'`);
+      }
+    }
+    const home = { K: ['w', 60, 63], Q: ['w', 60, 56], k: ['b', 4, 7], q: ['b', 4, 0] };
+    for (const ch of castling) {
+      const [color, kingSq, rookSq] = home[ch];
+      const king = board[kingSq];
+      const rook = board[rookSq];
+      if (king !== (color === 'w' ? 'K' : 'k')) {
+        return fail(FEN_STATUS.INVALID_CASTLING, `right '${ch}' without the king on its home square`);
+      }
+      if (rook !== (color === 'w' ? 'R' : 'r')) {
+        return fail(FEN_STATUS.INVALID_CASTLING, `right '${ch}' without the rook on its home square`);
+      }
+    }
+  }
+
+  /* ---- en passant: syntax, rank matches the side to move, capture exists ---- */
+  const ep = parts[3];
+  if (ep !== '-') {
+    if (!/^[a-h][36]$/.test(ep)) {
+      return fail(FEN_STATUS.INVALID_EN_PASSANT, `en passant square '${ep}'`);
+    }
+    const ef = FILES.indexOf(ep[0]);
+    const er = ep[1] === '6' ? 2 : 5;          // rank 6 -> r=2, rank 3 -> r=5
+    if (turn === 'w' && ep[1] !== '6') {
+      return fail(FEN_STATUS.INVALID_EN_PASSANT, 'white to move requires the en passant square on rank 6');
+    }
+    if (turn === 'b' && ep[1] !== '3') {
+      return fail(FEN_STATUS.INVALID_EN_PASSANT, 'black to move requires the en passant square on rank 3');
+    }
+    if (board[er * 8 + ef] !== null) {
+      return fail(FEN_STATUS.INVALID_EN_PASSANT, 'the en passant square is occupied');
+    }
+    // the pawn that just moved two squares stands directly in front of it
+    const pushedR = turn === 'w' ? 3 : 4;      // white captures to rank 6 (pawn on rank 5)
+    if (board[pushedR * 8 + ef] !== (turn === 'w' ? 'p' : 'P')) {
+      return fail(FEN_STATUS.INVALID_EN_PASSANT, 'no enemy pawn stands beside the en passant square');
+    }
+    // The target square is recorded after every double push, whether or not a
+    // capture is available (PGN standard), so a missing capturer is not an
+    // error — the move generator decides whether the capture is legal.
+  }
+
+  /* ---- counters ---- */
+  if (parts.length >= 5) {
+    if (!/^\d+$/.test(parts[4])) {
+      return fail(FEN_STATUS.INVALID_COUNTERS, `halfmove clock '${parts[4]}'`);
+    }
+  }
+  if (parts.length >= 6) {
+    if (!/^\d+$/.test(parts[5]) || Number(parts[5]) < 1) {
+      return fail(FEN_STATUS.INVALID_COUNTERS, `fullmove number '${parts[5]}'`);
+    }
+  }
+
+  /* ---- the side that is not to move may not be in check ---- */
+  const mover = turn;
+  const other = turn === 'w' ? 'b' : 'w';
+  const otherKing = other === 'w' ? whiteKing : blackKing;
+  if (attackedBy(board, otherKing >> 3, otherKing & 7, mover)) {
+    return fail(FEN_STATUS.INVALID_POSITION, `${other === 'w' ? 'white' : 'black'} is in check but does not move`);
+  }
+
+  return ok();
+}
+
 
 /* ===== src/engine/core.mjs ===== */
 /* ------------------------------------------------------------------ *
@@ -776,7 +987,22 @@ export class Position {
     return Position.fromFEN('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
   }
 
-  setFEN(fen) {
+  /**
+   * Load a position from FEN. The string is validated first (src/engine/fen.mjs),
+   * so a rejected FEN leaves this position untouched — a caller that catches the
+   * error can keep using the old position instead of a half-parsed board.
+   *
+   * `validate: false` loads the FEN as given. It exists for the verifier itself,
+   * which must be able to build an impossible position in order to prove that it
+   * detects one; no engine path uses it.
+   *
+   * @throws {Error} when the FEN is not a legal position
+   */
+  setFEN(fen, opts = {}) {
+    if (opts.validate !== false) {
+      const check = validateFEN(fen);
+      if (!check.ok) throw new Error(`invalid FEN (${check.status}): ${check.reason}`);
+    }
     this.board.fill(0);
     const parts = fen.trim().split(/\s+/);
     const rows = parts[0].split('/');
@@ -923,9 +1149,9 @@ export class Position {
     this.hashHi = hi >>> 0;
   }
 
-  /** 53-bit exact integer key (safe for JS Number). */
+  /** 53-bit exact integer key (safe for JS Number): 32 low bits + 21 high bits. */
   get key() {
-    return this.hashLo * 2048 + (this.hashHi & 2047);
+    return this.hashLo * 2097152 + (this.hashHi & 0x1fffff);
   }
 
   recomputePhaseMaterial() {
@@ -1420,18 +1646,35 @@ export class Position {
   pushRep() { this.rep.push(this.hashLo); this.repHi.push(this.hashHi); }
   popRep() { this.rep.pop(); this.repHi.pop(); }
 
+  /**
+   * Dead-material check (FIDE 5.2.2): the game is over only when no sequence of
+   * legal moves can lead to mate, not when the material is merely small.
+   *
+   * K+B vs K+B is dead only when both bishops stand on the same colour complex;
+   * with opposite colours a helpmate exists, so the position stays playable.
+   * K+N vs K+N, K+B vs K+N and K+2N vs K are not dead either: mate is reachable
+   * with help, even though it cannot be forced.
+   */
   insufficientMaterial() {
     const w = [], b = [];
     for (const color of [WHITE, BLACK]) {
       for (let i = 0; i < this.listCnt[color]; i++) {
-        const t = pieceType(this.board[this.listSq[color][i]]);
-        if (t !== KING) (color === WHITE ? w : b).push(t);
+        const sq = this.listSq[color][i];
+        const t = pieceType(this.board[sq]);
+        if (t === KING) continue;
+        (color === WHITE ? w : b).push({ t, sq });
       }
     }
+    const minorOnly = (list) =>
+      list.length === 0 || (list.length === 1 && (list[0].t === KNIGHT || list[0].t === BISHOP));
     if (w.length === 0 && b.length === 0) return true;
-    if (w.length === 1 && (w[0] === KNIGHT || w[0] === BISHOP) && b.length === 0) return true;
-    if (b.length === 1 && (b[0] === KNIGHT || b[0] === BISHOP) && w.length === 0) return true;
-    if (w.length === 1 && b.length === 1 && w[0] === BISHOP && b[0] === BISHOP) return true;
+    if (minorOnly(w) && b.length === 0) return true;
+    if (minorOnly(b) && w.length === 0) return true;
+    if (w.length === 1 && b.length === 1 && w[0].t === BISHOP && b[0].t === BISHOP) {
+      const cw = ((w[0].sq >> 4) + (w[0].sq & 7)) & 1;
+      const cb = ((b[0].sq >> 4) + (b[0].sq & 7)) & 1;
+      return cw === cb;
+    }
     return false;
   }
 
@@ -2038,7 +2281,7 @@ export const ATTR_NAMES = [
   'nAttack', 'nDefend', 'nControl', 'nPin'
 ];
 
-/** 53-bit non-cryptographic hash of a set of integer keys. */
+/** 53-bit non-cryptographic hash of a set of integer keys (32 low + 21 high bits). */
 export function hashKeys(keys) {
   let lo = 0x811c9dc5 >>> 0;
   let hi = 0x1000193 >>> 0;
@@ -2048,7 +2291,7 @@ export function hashKeys(keys) {
     hi = (Math.imul(hi ^ ((k >>> 8) & 0xffffff), 2246822519)) >>> 0;
     lo = (lo ^ (lo >>> 13)) >>> 0;
   }
-  return lo * 2048 + (hi & 2047);
+  return lo * 2097152 + (hi & 0x1fffff);
 }
 
 export function jaccardDistance(A, B) {
@@ -2221,18 +2464,24 @@ export function computeContext(pos, percept, structure) {
   /* ---- interaction coordinate I ---- */
   const myMoves = pc.mobility[pos.turn];
   const oppMoves = pc.mobility[opposite(pos.turn)];
-  const checks = pc.inCheck[opposite(pos.turn)] ? 1 : 0;
-  const hanging = pc.hanging[opposite(pos.turn)].length;
-  const zoneAttacks = pc.kingZoneAttacks[pos.turn];
+  // `kingZoneAttacks[c]` counts enemy attacks on the squares around king c, so
+  // the pressure ON my king is [pos.turn] and the pressure on the enemy king is
+  // [opposite(pos.turn)]. Mixing the two inverted the ATTACK and DEFENCE
+  // components (audit v3.0.6 §5.1).
+  const pressureOnMyKing = pc.kingZoneAttacks[pos.turn];
+  const pressureOnEnemyKing = pc.kingZoneAttacks[opposite(pos.turn)];
+  const myHanging = pc.hanging[pos.turn].length;
+  const enemyHanging = pc.hanging[opposite(pos.turn)].length;
+  const myInCheck = pc.inCheck[pos.turn] ? 1 : 0;
+  const enemyInCheck = pc.inCheck[opposite(pos.turn)] ? 1 : 0;
   const mobRatio = myMoves / Math.max(1, myMoves + oppMoves);
 
-  const quiet = clamp01(1 - (hanging * 0.35 + zoneAttacks * 0.12 + checks * 0.5));
-  const defence = clamp01(pc.hanging[pos.turn].length * 0.3 +
-    (pc.inCheck[pos.turn] ? 0.6 : 0) + pc.kingZoneAttacks[opposite(pos.turn)] * 0.1);
-  const attack = clamp01(zoneAttacks * 0.18 + hanging * 0.25 + checks * 0.4 +
+  const quiet = clamp01(1 - (myHanging * 0.35 + pressureOnMyKing * 0.12 + myInCheck * 0.5));
+  const defence = clamp01(myHanging * 0.3 + myInCheck * 0.6 + pressureOnMyKing * 0.1);
+  const attack = clamp01(pressureOnEnemyKing * 0.18 + enemyHanging * 0.25 + enemyInCheck * 0.4 +
     (mobRatio > 0.55 ? (mobRatio - 0.55) * 1.2 : 0));
   const pressure = clamp01((1 - Math.abs(mobRatio - 0.5) * 2) * 0.4 +
-    hanging * 0.1 + (pc.centerControl[pos.turn] - pc.centerControl[opposite(pos.turn)]) * 0.04);
+    myHanging * 0.1 + (pc.centerControl[pos.turn] - pc.centerControl[opposite(pos.turn)]) * 0.04);
 
   ctx.w[I_QUIET] = quiet;
   ctx.w[I_DEFENCE] = defence;
@@ -3011,8 +3260,12 @@ export class Evaluation {
       if (hit) return hit;
     }
     const percept = new Percept(pos);
-    const ctx = computeContext(pos, percept, null);
     const structure = buildStructureSafe(pos, percept);
+    // the temporal axis of the context reads the structural hyper-counts
+    // (forks), so the structural tier must build the context from the same
+    // structure the engine uses; passing null made the two disagree
+    // (audit v3.0.6 §6.1)
+    const ctx = computeContext(pos, percept, structure);
     const vec = structuralVector(pos, percept, structure, ctx, this.params);
     const { E, E0, Ei, Ec } = scalarize(vec, ctx, this.params);
     const uncertainty = estimateUncertainty(pos, percept, structure, vec);
@@ -3329,6 +3582,7 @@ export class Searcher {
     this.pvTable = new Int32Array(128 * 64);   // triangular PV: pvTable[ply*64 + i]
     this.pvLength = new Int32Array(128);
     this.seldepth = 0;
+    this.qStalemate = true;   // horizon stalemate check (audit v3.0.6 §4.1)
     this.useTT = true;
     this.useNull = true;
     this.useLMR = true;
@@ -3356,6 +3610,9 @@ export class Searcher {
     const t0 = Date.now();
     this.pos = pos;
     this.nodes = 0;
+    // the selective depth belongs to one search: carrying the previous maximum
+    // into the next result corrupts the risk estimate and the Us component
+    this.seldepth = 0;
     this.stop = false;
     this.maxDepth = Math.min(64, opts.depth || this.maxDepth || 8);
     this.deadline = opts.timeMs ? t0 + opts.timeMs : 0;
@@ -3565,13 +3822,6 @@ export class Searcher {
       const flags = MOVE_FLAGS(m);
       const isQuiet = !(flags & (FLAG_CAPTURE | FLAG_PROMO)) && pos.board[MOVE_TO(m)] === 0;
 
-      // futility pruning at the frontier (controlled, never at the PV)
-      if (this.useFutility && futility.enabled && depth <= futility.maxDepth &&
-          !pvNode && isQuiet && !inCheck && bestScore > -INF) {
-        const staticScore = this.ev.evaluate(pos, depth);
-        if (staticScore + futility.margin <= alpha) { pruned++; continue; }
-      }
-
       pos.pushRep();
       const undo = pos.makeMove(m);
 
@@ -3581,11 +3831,28 @@ export class Searcher {
         pos.popRep();
         continue;
       }
+
+      const givesCheck = pos.inCheck();
+
+      // Futility pruning at the frontier (controlled, never at the PV). It runs
+      // after the move is made, because a quiet move that gives check must
+      // survive the frontier: a quiet mate in one is exactly the move that
+      // `isQuiet` cannot rule out (audit v3.0.6 §4.4).
+      if (this.useFutility && futility.enabled && depth <= futility.maxDepth &&
+          !pvNode && isQuiet && !inCheck && !givesCheck && bestScore > -INF) {
+        const staticScore = this.ev.evaluate(pos, depth);
+        if (staticScore + futility.margin <= alpha) {
+          pruned++;
+          pos.unmakeMove(undo);
+          pos.popRep();
+          continue;
+        }
+      }
+
       legal++;
       this.nodes++;
 
       let score;
-      const givesCheck = pos.inCheck();
       let reduction = 0;
       if (this.useLMR && lmr.enabled && depth >= lmr.minDepth && i >= lmr.minMoveIndex &&
           isQuiet && !inCheck && !givesCheck) {
@@ -3678,6 +3945,12 @@ export class Searcher {
     if (this.checkStop()) return 0;
     if (ply > this.seldepth) this.seldepth = ply;
 
+    // Automatic draws are terminal whatever the depth (FIDE 9.6): the 75-move
+    // rule and fivefold repetition end the game, so the horizon must score 0
+    // instead of a static evaluation.
+    if (pos.halfmove >= 150) return 0;
+    if (ply > 0 && pos.repetitionCount() >= 5) return 0;
+
     const inCheck = pos.inCheck();
     let best;
     let moves;
@@ -3696,6 +3969,13 @@ export class Searcher {
       if (stand > alpha) alpha = stand;
       best = stand;
       moves = pos.generateMoves(true);
+      // Stalemate at the horizon. A quiet position without captures is not
+      // evidence of a legal move, and a static score here would report a won
+      // game as drawn (or the reverse) with no bound to show for it. The check
+      // runs only at the first ply and only when no capture exists, so the
+      // common tactical path pays nothing.
+      if (moves.length === 0 && qdepth === 0 && this.qStalemate &&
+          pos.legalMoves().length === 0) return 0;
     }
     if (qdepth > 8) return best;
 
@@ -3920,13 +4200,20 @@ function genTrade(pos, percept, structure, legalMoves) {
   const enemy = opposite(side);
   const wins = [];
   for (const m of legalMoves) {
-    if (!(MOVE_FLAGS(m) & (FLAG_CAPTURE | FLAG_PROMO))) continue;
+    const flags = MOVE_FLAGS(m);
+    if (!(flags & (FLAG_CAPTURE | FLAG_PROMO))) continue;
     const to = MOVE_TO(m);
-    const victim = pos.board[to];
-    if (victim === 0) continue;
+    // en passant removes a pawn from a different square than the destination,
+    // so reading pos.board[to] skipped every en passant capture
+    // (audit v3.0.6 §7.2)
+    const isEp = !!(flags & FLAG_EP);
+    const victim = isEp ? pos.board[to + (side === WHITE ? 16 : -16)] : pos.board[to];
+    if (!victim) continue;
     const attacker = pos.board[MOVE_FROM(m)];
     const gain = MATERIAL[pieceType(victim)] - MATERIAL[pieceType(attacker)];
-    const defended = percept.atk.defenders(to, enemy);
+    const defended = isEp
+      ? percept.atk.cnt[enemy][to]
+      : percept.atk.defenders(to, enemy);
     if (defended === 0 || gain > 0) wins.push({ m, gain, defended });
   }
   if (wins.length === 0) return plans;
@@ -3947,7 +4234,10 @@ function genTrade(pos, percept, structure, legalMoves) {
 function genKing(pos, percept, structure, legalMoves) {
   const side = pos.turn;
   const enemy = opposite(side);
-  const kz = percept.kingZoneAttacks[side];
+  // kingZoneAttacks[c] is the pressure on king c, so the pressure on the enemy
+  // king is indexed by `enemy`. Indexing by `side` produced an attack plan
+  // whenever my OWN king was under pressure (audit v3.0.6 §5.1/§7.3).
+  const kz = percept.kingZoneAttacks[enemy];
   const kingSq = percept.kingSq[enemy];
   const enemyPawns = percept.pawns[enemy].filter((n) => n > 0).length;
   if (kz === 0 && enemyPawns >= 3) return [];
@@ -4007,12 +4297,21 @@ function genOutpost(pos, percept, structure, legalMoves) {
     const advanced = side === WHITE ? r <= 3 : r >= 4;
     if (!advanced) continue;
     if (fileOf(to) < 1 || fileOf(to) > 6) continue;
-    if (percept.atk.defenders(to, side) === 0) continue;   // must be protected
-    // no enemy pawn can ever attack this square again
+    // The square must be protected *after* the knight lands on it. `defenders()`
+    // counts defenders of a piece already standing on the square, so on an empty
+    // destination it is always 0 and no outpost was ever generated
+    // (audit v3.0.6 §7.1). Control is what matters here.
+    const guarded = percept.atk.cnt[side][to];
+    if (guarded === 0) continue;
+    // no enemy pawn can ever attack this square again: a black pawn on psq
+    // attacks (psq + 1, file +- 1), a white pawn attacks (psq - 1, file +- 1)
     let safe = true;
     const enemy = opposite(side);
     for (const psq of percept.pawnSquares[enemy]) {
-      if (Math.abs(fileOf(psq) - fileOf(to)) <= 1 && (side === WHITE ? rankOf(psq) > r : rankOf(psq) < r)) { safe = false; break; }
+      const pr = rankOf(psq);
+      const df = Math.abs(fileOf(psq) - fileOf(to));
+      const attacks = side === WHITE ? (pr === r - 1 && df === 1) : (pr === r + 1 && df === 1);
+      if (attacks) { safe = false; break; }
     }
     if (!safe) continue;
     plans.push(new Plan({
@@ -4021,8 +4320,8 @@ function genOutpost(pos, percept, structure, legalMoves) {
       title: `plant a knight on ${'abcdefgh'[fileOf(to)]}${8 - r}`,
       goal: { squares: [to], text: 'occupy a protected square no enemy pawn can attack' },
       moves: [m],
-      evidence: [`defended ${percept.atk.defenders(to, side)}x`, 'immune to pawn attacks'],
-      features: { rank: r }
+      evidence: [`guarded by ${guarded} own piece(s)`, 'immune to pawn attacks'],
+      features: { rank: r, guarded }
     }));
   }
   return plans;
@@ -4106,7 +4405,7 @@ export function checkFeasibility(pos, percept, structure, plan, opts = {}) {
       f.tactical = plan.moves.length > 0;
       break;
     case PLAN.KING:
-      f.structural = percept.kingZoneAttacks[side] > 0 || plan.features.shelter <= 2;
+      f.structural = plan.features.zone > 0 || plan.features.shelter <= 2;
       f.tactical = plan.moves.length > 0;
       break;
     case PLAN.ACTIVATE:
@@ -4264,7 +4563,9 @@ export function complexityOf(pos, percept, structure, ctx) {
 
 /** Evaluation uncertainty in [0,1] (doc 08). */
 export function uncertaintyOf(ev, pos, percept, structure) {
-  if (!ev || !ev.uncertainty) return 0.3;
+  // a measured 0.0 is a result, not a missing one: `!ev.uncertainty` turned a
+  // certain position into the 0.3 default (audit v3.0.6 §6.2)
+  if (!ev || typeof ev.uncertainty !== 'number') return 0.3;
   const base = ev.uncertainty;
   const pieces = pos.listCnt[0] + pos.listCnt[1];
   const sparse = pieces < 12 ? 0.15 : 0;
@@ -4449,7 +4750,9 @@ export function computeProfile(input = {}) {
       note = `SVF estimate ${u.toFixed(2)}`;
     } else if (evaluation && pos) {
       const ev = evaluation.structural(pos);
-      u = ev && ev.uncertainty ? ev.uncertainty : 0.3;
+      // a measured 0.0 is evidence, not a missing measurement: testing
+      // truthiness turned "the evaluation is certain" into the 0.3 default
+      u = ev && typeof ev.uncertainty === 'number' ? ev.uncertainty : 0.3;
       note = `SVF estimate ${u.toFixed(2)}`;
     }
     values[2] = clamp01(u);
@@ -4554,7 +4857,7 @@ export function buildCertificate(input = {}) {
   const {
     fen = '', version = 0, move = null, san = null, legal = true, legalCount = 0,
     depth = 0, completed = false, nodes = 0, pv = [], score = 0,
-    profile = null, paramVersion = '3.0.6', algorithmVersion = '3.0.6'
+    profile = null, paramVersion = '3.0.7', algorithmVersion = '3.0.7'
   } = input;
 
   let status;
@@ -4591,7 +4894,7 @@ export function certificateLine(cert) {
 
 
 /* ===== src/engine/index.mjs ===== */
-export const VERSION = '3.0.6';
+export const VERSION = '3.0.7';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -4661,6 +4964,7 @@ export class Engine {
     this.context = null;
     this.plans = [];
     this.lastAnalysis = null;
+    this.lastSearch = null;   // { result, depth, risk } — the last completed search
     this.history = [];      // [{ fen, move, san, score, depth, nodes }]
     // position version for the decision certificate (doc 45 §20.2): every
     // setFEN/play() produces a new version, so a certificate can never be
@@ -4692,6 +4996,14 @@ export class Engine {
   analyze() {
     if (!this.percept) this.setFEN(this.pos.fen());
     const ev = this.evaluation.structural(this.pos);
+    const uncertainty = uncertaintyOf(ev, this.pos, this.percept, this.structure);
+    // The panel is labelled Pareto, so it must show the Pareto set; the plans
+    // dropped by the filter are reported next to the ones rejected earlier
+    // (audit v3.0.6 §7.6)
+    const allPlans = this.plans;
+    const kept = pareto(allPlans);
+    kept.rejected = (allPlans.rejected || []).concat(allPlans.filter((p) => !kept.includes(p)));
+    kept.total = allPlans.total;
     const analysis = {
       fen: this.fen,
       turn: this.pos.turn === WHITE ? 'white' : 'black',
@@ -4705,10 +5017,13 @@ export class Engine {
         .slice(0, 8)
         .map((c) => ({ sq: squareName(c.sq), color: c.color === WHITE ? 'w' : 'b', q: Number(c.q.toFixed(3)) })),
       legalMoves: this.pos.legalMoves().length,
-      plans: this.plans,
-      risk: RISK_NAME[riskOf(null, 0)],
+      plans: kept,
+      // Without a search there is no move-quality risk; report the position's
+      // own uncertainty instead of the constant CRITICAL that riskOf(null, 0)
+      // returns (audit v3.0.6 §8.1)
+      risk: this.lastSearch ? this.lastSearch.risk : RISK_NAME[Math.min(4, Math.round(uncertainty * 4))],
       complexity: complexityOf(this.pos, this.percept, this.structure, this.context),
-      uncertainty: uncertaintyOf(ev, this.pos, this.percept, this.structure),
+      uncertainty,
       uncertaintyProfile: this.uncertaintyProfile(null, {}, ev.uncertainty)
     };
     this.lastAnalysis = analysis;
@@ -4794,6 +5109,10 @@ export class Engine {
       score: result.score, profile: uncertainty,
       paramVersion: VERSION, algorithmVersion: VERSION
     });
+
+    // the analysis panel reports the risk of the last search, not a constant:
+    // riskOf(null, 0) is CRITICAL, so `analyze()` always said "critical"
+    this.lastSearch = { result, depth, risk: RISK_NAME[risk] };
 
     return {
       move: result.move,

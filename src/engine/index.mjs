@@ -25,7 +25,7 @@ import { generatePlans, describePlans, makePlanOrderer, pareto, PLAN } from './p
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
 
-export const VERSION = '3.0.6';
+export const VERSION = '3.0.7';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -95,6 +95,7 @@ export class Engine {
     this.context = null;
     this.plans = [];
     this.lastAnalysis = null;
+    this.lastSearch = null;   // { result, depth, risk } — the last completed search
     this.history = [];      // [{ fen, move, san, score, depth, nodes }]
     // position version for the decision certificate (doc 45 §20.2): every
     // setFEN/play() produces a new version, so a certificate can never be
@@ -126,6 +127,14 @@ export class Engine {
   analyze() {
     if (!this.percept) this.setFEN(this.pos.fen());
     const ev = this.evaluation.structural(this.pos);
+    const uncertainty = uncertaintyOf(ev, this.pos, this.percept, this.structure);
+    // The panel is labelled Pareto, so it must show the Pareto set; the plans
+    // dropped by the filter are reported next to the ones rejected earlier
+    // (audit v3.0.6 §7.6)
+    const allPlans = this.plans;
+    const kept = pareto(allPlans);
+    kept.rejected = (allPlans.rejected || []).concat(allPlans.filter((p) => !kept.includes(p)));
+    kept.total = allPlans.total;
     const analysis = {
       fen: this.fen,
       turn: this.pos.turn === WHITE ? 'white' : 'black',
@@ -139,10 +148,13 @@ export class Engine {
         .slice(0, 8)
         .map((c) => ({ sq: squareName(c.sq), color: c.color === WHITE ? 'w' : 'b', q: Number(c.q.toFixed(3)) })),
       legalMoves: this.pos.legalMoves().length,
-      plans: this.plans,
-      risk: RISK_NAME[riskOf(null, 0)],
+      plans: kept,
+      // Without a search there is no move-quality risk; report the position's
+      // own uncertainty instead of the constant CRITICAL that riskOf(null, 0)
+      // returns (audit v3.0.6 §8.1)
+      risk: this.lastSearch ? this.lastSearch.risk : RISK_NAME[Math.min(4, Math.round(uncertainty * 4))],
       complexity: complexityOf(this.pos, this.percept, this.structure, this.context),
-      uncertainty: uncertaintyOf(ev, this.pos, this.percept, this.structure),
+      uncertainty,
       uncertaintyProfile: this.uncertaintyProfile(null, {}, ev.uncertainty)
     };
     this.lastAnalysis = analysis;
@@ -228,6 +240,10 @@ export class Engine {
       score: result.score, profile: uncertainty,
       paramVersion: VERSION, algorithmVersion: VERSION
     });
+
+    // the analysis panel reports the risk of the last search, not a constant:
+    // riskOf(null, 0) is CRITICAL, so `analyze()` always said "critical"
+    this.lastSearch = { result, depth, risk: RISK_NAME[risk] };
 
     return {
       move: result.move,

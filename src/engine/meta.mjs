@@ -38,7 +38,9 @@ export function complexityOf(pos, percept, structure, ctx) {
 
 /** Evaluation uncertainty in [0,1] (doc 08). */
 export function uncertaintyOf(ev, pos, percept, structure) {
-  if (!ev || !ev.uncertainty) return 0.3;
+  // a measured 0.0 is a result, not a missing one: `!ev.uncertainty` turned a
+  // certain position into the 0.3 default (audit v3.0.6 §6.2)
+  if (!ev || typeof ev.uncertainty !== 'number') return 0.3;
   const base = ev.uncertainty;
   const pieces = pos.listCnt[0] + pos.listCnt[1];
   const sparse = pieces < 12 ? 0.15 : 0;

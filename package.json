@@ -1,6 +1,6 @@
 {
   "name": "subit-chess",
-  "version": "3.0.6",
+  "version": "3.0.7",
   "description": "Browser chess engine v3: modular ES-module core, SVF positional vector, structural plans, budgeted alpha-beta search; ships as a single offline HTML file",
   "keywords": [
     "chess",
@@ -43,12 +43,13 @@
   },
   "scripts": {
     "build": "node build/bundle.mjs",
-    "test": "node tests/core.perft.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs && node tests/app.dom.mjs",
-    "test:engine": "node tests/core.perft.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs",
+    "test": "node tests/core.perft.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.audit.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs && node tests/app.dom.mjs",
+    "test:engine": "node tests/core.perft.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.audit.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs",
     "test:app": "node tests/app.dom.mjs",
     "test:perft": "node tests/core.perft.mjs",
     "test:eval": "node tests/engine.eval.mjs",
     "test:invariants": "node tests/engine.verify.mjs",
+    "test:audit": "node tests/engine.audit.mjs",
     "test:legacy": "node tests/test.js",
     "bench:engine": "node src/engine/index.mjs bench",
     "analyze:engine": "node src/engine/index.mjs analyze",
