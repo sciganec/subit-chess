@@ -25,6 +25,7 @@ const CONFIGS = {
   noctx:     { params: { context: { enabled: false } }, opts: {} },
   nostruct:  { params: { search: { ordering: { struct: 0 } } }, opts: {} },
   noplans:   { params: {}, opts: { usePlans: false } },
+  adaptive:  { params: {}, opts: { adaptiveTime: true } },
   planord:   { params: {}, opts: { planOrdering: true } },
   nofut:     { params: { search: { futility: { enabled: false } } }, opts: {} },
   nopruning: { params: { search: { nullMove: { enabled: false }, lmr: { enabled: false }, futility: { enabled: false } } }, opts: {} }
@@ -91,6 +92,7 @@ function go(tokens) {
   if (g.nodes) opts.nodes = Number(g.nodes);
   const white = engine.fen.split(' ')[1] === 'w';
   const ms = g.movetime ? Number(g.movetime) : budgetFromClock(g, white);
+  if (g.movetime) opts.fixedTime = true;      // UCI movetime is exact; only clock play is adaptive
   if (ms) opts.timeMs = ms;
   if (!opts.depth && !opts.nodes && !opts.timeMs) opts.depth = 5;   // never run unbounded
 

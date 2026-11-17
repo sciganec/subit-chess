@@ -16,6 +16,14 @@ Statuses:
 
 ## [Unreleased] — 3.0.9 (measured at 100-300 ms/move; 60 games each, harness noise ~ +-6.5 pp)
 
+### Added
+- **Adaptive search budget, SEARCH-15 (`src/engine/budget.mjs`; docs/theory 40 §11-13, 05 §17.1).** After each
+  completed iteration the engine checks root-move change, bound type, score drift and the gap to the
+  runner-up; a stable, clear decision stops early and banks the time, an unstable one may spend up to a
+  hard cap (<=3x nominal). Mean time per move stays nominal. Default ON for clock/`timeMs` search; UCI
+  `movetime` and `fixedTime` stay exact. Measured vs base at equal 100 ms/move, 120 games: 63-20-37,
+  +76 Elo [+20,+137], z=2.67, time ratio 1.02. Tests: `tests/engine.budget.mjs` (29 checks).
+
 ### Fixed
 - **Futility pruning sign (search.mjs).** The frontier test ran after `makeMove` but compared the
   opponent-relative static score with `alpha`, pruning the best quiet moves (since v3.0.6 §4.4).

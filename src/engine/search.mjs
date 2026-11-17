@@ -16,6 +16,7 @@
  *   UCA-INV-013  reproducible decisions in deterministic mode
  */
 
+import { shouldStop } from './budget.mjs';
 import {
   WHITE, BLACK, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
   MATERIAL, pieceType, opposite, moveToUci, MOVE_FROM, MOVE_TO, MOVE_FLAGS,
@@ -325,7 +326,11 @@ export class Searcher {
     // aspiration window and the first move ordering (doc 05 §21, P3.1)
     let prevScore = typeof opts.prevScore === 'number' && Number.isFinite(opts.prevScore) ? opts.prevScore : 0;
 
+    const budget = opts.budget || null;          // { softMs, hardMs } (SEARCH-15), else fixed budget
+    const history = [];
+    let iterStart = t0;
     for (let depth = 1; depth <= this.maxDepth; depth++) {
+      iterStart = Date.now();
       const window = this.params.search.aspiration;
       let alpha = depth >= 4 ? prevScore - window.window : -INF;
       let beta = depth >= 4 ? prevScore + window.window : INF;
@@ -358,6 +363,18 @@ export class Searcher {
       if (this.checkStop()) break;
       if (Math.abs(bestScore) >= MATE_THRESHOLD) break;
       if (Date.now() - t0 > (opts.softTimeMs || 0) && opts.softTimeMs) break;
+      if (budget && result && result.completed && lastCompleted) {
+        history.push({ depth, move: lastCompleted.move, score: lastCompleted.score,
+          spread: lastCompleted.secondScore === -INF || lastCompleted.secondScore === undefined
+            ? 0 : Math.abs(lastCompleted.score - lastCompleted.secondScore),
+          flag: lastCompleted.flag });
+        // a single legal move has nothing to decide (but let a mate-in-1 surface first)
+        if (rootMoves.length === 1 && depth >= 3) break;
+        const now = Date.now();
+        const verdict = shouldStop({ elapsedMs: now - t0, softMs: budget.softMs, hardMs: budget.hardMs,
+          lastIterMs: now - iterStart, history });
+        if (verdict.stop) { this.budgetReason = verdict.reason; break; }
+      }
     }
 
     const elapsed = Date.now() - t0;

@@ -22,6 +22,7 @@ import { computeContext } from './context.mjs';
 import { Evaluation, DEFAULT_PARAMS, cloneParams, paramsFromJSON, SVF_COMPONENTS } from './evaluate.mjs';
 import { Searcher, TranspositionTable, MoveOrder, MATE, searchBudget } from './search.mjs';
 import { generatePlans, describePlans, makePlanOrderer, pareto, PLAN } from './plans.mjs';
+import { allocateTime, updateBank } from './budget.mjs';
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
 
@@ -76,6 +77,7 @@ export class Engine {
     this.opts = Object.assign({
       ttBits: 18,
       usePlans: true,
+      adaptiveTime: true,   // v3.0.9 SEARCH-15: stable decisions stop early and bank time (measured +76 Elo, equal mean time)
       planOrdering: false,   // v3.0.9: plans are generated for display; using them to order moves cost 1.3-6x nodes
       useMeta: true,
       evalMode: params.search ? params.search.evalMode : 'fast'
@@ -95,6 +97,7 @@ export class Engine {
     this.structure = null;
     this.context = null;
     this.plans = [];
+    this.timeBank = 0;     // ms saved by earlier moves (SEARCH-15), reset with a new Engine
     this.lastAnalysis = null;
     this.lastSearch = null;   // { result, depth, risk } — the last completed search
     this.history = [];      // [{ fen, move, san, score, depth, nodes }]
@@ -219,18 +222,29 @@ export class Engine {
       this.searcher.structuralBonus = null;
     }
 
-    this.searcher.setLimits({ depth, timeMs, nodes: opts.nodes || 0 });
+    // SEARCH-15 (doc 40 §11-13): under a clock the budget is an allowance, not a
+    // fixed slice. A stable, clear decision stops early and banks the time; an
+    // unstable one may use up to a hard cap. `fixedTime` (UCI movetime) opts out.
+    let budget = null;
+    let hardMs = timeMs;
+    if (this.opts.adaptiveTime && timeMs > 0 && !opts.fixedTime) {
+      const a = allocateTime({ nominalMs: timeMs, bankMs: this.timeBank });
+      budget = { softMs: a.softMs, hardMs: a.hardMs };
+      hardMs = a.hardMs;
+    }
+    this.searcher.setLimits({ depth, timeMs: hardMs, nodes: opts.nodes || 0 });
     // Memory is not write-only: a remembered move and score for this position
     // seed the root ordering and the aspiration window (audit v3.0.6 P3.1)
     const remembered = this.memory.lookup(this.pos);
     // the searcher re-reads its limits from the options it is given, so the node
     // budget has to travel with them -- setLimits() alone is silently reset
     const result = this.searcher.search(this.pos, {
-      depth, timeMs, nodes: opts.nodes || 0,
+      depth, timeMs: hardMs, nodes: opts.nodes || 0, budget,
       prevBest: remembered ? remembered.move : 0,
       prevScore: remembered ? remembered.score : 0
     });
 
+    if (budget) this.timeBank = updateBank(this.timeBank, timeMs, result.timeMs);
     const risk = riskOf(result, result.depth);
     this.memory.remember(this.pos, {
       depth: result.depth, score: result.score, move: result.move

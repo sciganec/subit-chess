@@ -113,6 +113,12 @@ export const CONFIGS = {
     params: { search: { lmr: { enabled: false } } },
     opts: {}
   },
+  adaptive: {
+    label: 'adaptive time budget (SEARCH-15): stable decisions stop early and bank time',
+    params: {},
+    opts: { adaptiveTime: true }
+  },
+
   planord: {
     label: 'plan-based move ordering ON (pre-3.0.9 default)',
     params: {},
@@ -234,6 +240,7 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, pinA = false, pinB = false,
   let maxDepth = 0;
   const plies = [];
   const depthSeen = { white: 0, black: 0 };
+  const ms = { white: 0, black: 0 }, mv = { white: 0, black: 0 };
 
   for (let ply = 0; ply < maxPlies; ply++) {
     const side = engines.white.pos.turn === WHITE ? 'white' : 'black';
@@ -254,6 +261,7 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, pinA = false, pinB = false,
     }
     if (res.depth > depthSeen[side]) depthSeen[side] = res.depth;
     nodes += res.nodes || 0;
+    ms[side] += res.timeMs || 0; mv[side]++;
     if (res.depth > maxDepth) maxDepth = res.depth;
 
     const played = engine.play(res.uci);
@@ -268,9 +276,9 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, pinA = false, pinB = false,
     engines.black.setFEN(now);
 
     const st = engines.white.pos.status();
-    if (st && st.over) return { over: st, plies, nodes, maxDepth, depthSeen };
+    if (st && st.over) return { over: st, plies, nodes, maxDepth, depthSeen, ms, mv };
   }
-  return { over: { over: true, result: 'draw', reason: 'max plies' }, plies, nodes, maxDepth, depthSeen };
+  return { over: { over: true, result: 'draw', reason: 'max plies' }, plies, nodes, maxDepth, depthSeen, ms, mv };
 }
 
 
@@ -381,6 +389,16 @@ export function runMatch(opts) {
   }
 
   const summaryA = summarize(games, 'A');
+  // mean thinking time per move of each side: a time policy is only fairly compared
+  // against a fixed budget if both spend the same on average (SEARCH-15)
+  let msA = 0, mvA = 0, msB = 0, mvB = 0;
+  for (const g of games) {
+    if (!g.ms) continue;
+    const a = g.aWhite ? 'white' : 'black', b = g.aWhite ? 'black' : 'white';
+    msA += g.ms[a]; mvA += g.mv[a]; msB += g.ms[b]; mvB += g.mv[b];
+  }
+  summaryA.msPerMoveA = mvA ? msA / mvA : 0;
+  summaryA.msPerMoveB = mvB ? msB / mvB : 0;
   return { configs: { a: opts.a, b: opts.b }, opts, games, summary: { a: summaryA } };
 }
 
@@ -408,6 +426,7 @@ function main() {
   console.log(`  score   ${(s.score * 100).toFixed(1)}%  ±${(s.ci95 * 100).toFixed(1)}  (${s.wins}W ${s.draws}D ${s.losses}L)`);
   console.log(`  errors  ${s.errors}`);
   console.log(`  nodes   ${Math.round(s.avgNodes)} per game`);
+  if (s.msPerMoveA) console.log(`  time    A ${s.msPerMoveA.toFixed(1)} ms/move  B ${s.msPerMoveB.toFixed(1)} ms/move  (A/B ${(s.msPerMoveA / s.msPerMoveB).toFixed(3)})`);
   console.log(`  length  mean ${s.avgPlies.toFixed(0)}  median ${s.medianPlies}  max ${s.maxPlies}  capped ${s.capped}/${s.n}  (${Object.entries(s.reasons).map(([k, v]) => `${k}: ${v}`).join(", ")})`);
 
   if (opts.out) {
