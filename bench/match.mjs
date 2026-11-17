@@ -113,6 +113,12 @@ export const CONFIGS = {
     params: { search: { lmr: { enabled: false } } },
     opts: {}
   },
+  nofut: {
+    label: 'no futility pruning (null-move and LMR kept)',
+    params: { search: { futility: { enabled: false } } },
+    opts: {}
+  },
+
   noasp: {
     label: 'no aspiration windows (full window every iteration)',
     params: { search: { aspiration: { window: 1000000, widen: 1000000, maxWiden: 8 } } },

@@ -544,8 +544,7 @@ export class Searcher {
       // `isQuiet` cannot rule out (audit v3.0.6 §4.4).
       if (this.useFutility && futility.enabled && depth <= futility.maxDepth &&
           !pvNode && isQuiet && !inCheck && !givesCheck && bestScore > -INF) {
-        const staticScore = this.ev.evaluate(pos, depth);
-        if (staticScore + futility.margin <= alpha) {
+        if (this.futile(pos, alpha, futility.margin, depth)) {
           pruned++;
           pos.unmakeMove(undo);
           pos.popRep();
@@ -625,6 +624,18 @@ export class Searcher {
     const idx = (pos.ttKey % this.tt.size) | 0;
     if (this.tt.keys[idx] !== pos.ttKey) return 0;
     return this.tt.depths[idx] >= depth ? this.tt.moves[idx] : 0;
+  }
+
+  /**
+   * Frontier futility predicate. Called AFTER the move was made, so `pos.turn` is
+   * the opponent and the static evaluation is from THEIR point of view. The
+   * test compares the mover's score with the mover's alpha, hence the sign:
+   * v3.0.6-3.0.8 compared the opponent's score with alpha and therefore pruned
+   * the best quiet moves (nofut beat base 51-3-6 at 100 ms/move, +338 Elo).
+   */
+  futile(pos, alpha, margin, depth) {
+    const moverScore = -this.ev.evaluate(pos, depth);
+    return moverScore + margin <= alpha;
   }
 
   canNull(pos, depth, inCheck, pvNode) {
