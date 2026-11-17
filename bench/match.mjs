@@ -113,6 +113,12 @@ export const CONFIGS = {
     params: { search: { lmr: { enabled: false } } },
     opts: {}
   },
+  planord: {
+    label: 'plan-based move ordering ON (pre-3.0.9 default)',
+    params: {},
+    opts: { planOrdering: true }
+  },
+
   nofut: {
     label: 'no futility pruning (null-move and LMR kept)',
     params: { search: { futility: { enabled: false } } },
@@ -216,7 +222,7 @@ function mergeInto(target, patch) {
 }
 
 /** Play one game; `aWhite` decides which config has the white pieces. */
-function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite, timeMs = 0 }) {
+function playGame(cfgA, cfgB, fen, { depthA, depthB, pinA = false, pinB = false, maxPlies, aWhite, timeMs = 0 }) {
   const engines = {
     white: newEngine(aWhite ? cfgA : cfgB, aWhite ? depthA : depthB),
     black: newEngine(aWhite ? cfgB : cfgA, aWhite ? depthB : depthA)
@@ -236,7 +242,9 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite, timeMs = 
     const wantDepth = side === "white" ? depthA : depthB;
     // time-limited play: the engine gets a clock instead of a depth, which is how
     // the UI plays and the only fair way to compare two pruning settings
-    const want = timeMs ? { timeMs } : { depth: wantDepth };
+    // "name@N" under --time pins a depth cap next to the clock (measures the cap itself)
+    const pinned = ((side === 'white') === aWhite) ? pinA : pinB;
+    const want = timeMs ? (pinned ? { timeMs, depth: wantDepth } : { timeMs }) : { depth: wantDepth };
 
     let res;
     try {
@@ -362,7 +370,7 @@ export function runMatch(opts) {
     const fen = suite[i % suite.length];
     const aWhite = i % 2 === 0;                 // colour balance
     const r = playGame(cfgA, cfgB, fen, {
-      depthA, depthB, maxPlies: opts.maxPlies, aWhite, timeMs: opts.time
+      depthA, depthB, pinA: a.depth !== null, pinB: b.depth !== null, maxPlies: opts.maxPlies, aWhite, timeMs: opts.time
     });
     const over = r.over || { result: 'draw' };
     // `over.result` is the winner by name; convert to A's score

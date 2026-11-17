@@ -76,6 +76,7 @@ export class Engine {
     this.opts = Object.assign({
       ttBits: 18,
       usePlans: true,
+      planOrdering: false,   // v3.0.9: plans are generated for display; using them to order moves cost 1.3-6x nodes
       useMeta: true,
       evalMode: params.search ? params.search.evalMode : 'fast'
     }, opts);
@@ -198,19 +199,22 @@ export class Engine {
       });
     }
 
-    const depth = opts.depth !== undefined ? opts.depth
-      : plan ? plan.depth : 8;
     const timeMs = opts.timeMs !== undefined ? opts.timeMs
       : plan ? plan.timeMs : 0;
+    // v3.0.9: a clock- or node-limited search is bounded by that limit, not by a
+    // hidden depth-8 default (a 1 s move used to stop at depth 8 and idle)
+    const depth = opts.depth !== undefined ? opts.depth
+      : plan ? plan.depth
+      : (opts.timeMs !== undefined || opts.nodes) ? 64 : 8;
 
     // only the meta-controller picks a tier; an explicit user choice (setEvalMode,
     // or the UI writing evaluation.opts.mode) must survive the next search
     if (plan) this.evaluation.opts.mode = plan.evalMode;
 
-    if (this.opts.usePlans && this.plans.length) {
-      const orderer = makePlanOrderer(this.plans, this.pos.turn);
-      this.searcher.structuralBonus = orderer;
-      this.searcher.contextBonus = (m) => (this.context.tactical > 0.5 && this.context.key().includes('ATTACK') ? 0 : 0);
+    // the dead contextBonus closure (always 0) is gone: a per-move call that did nothing
+    this.searcher.contextBonus = null;
+    if (this.opts.usePlans && this.opts.planOrdering && this.plans.length) {
+      this.searcher.structuralBonus = makePlanOrderer(this.plans, this.pos.turn);
     } else {
       this.searcher.structuralBonus = null;
     }

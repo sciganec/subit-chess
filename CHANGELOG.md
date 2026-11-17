@@ -13,6 +13,33 @@ Statuses:
 
 ---
 
+
+## [Unreleased] — 3.0.9 (measured at 100-300 ms/move; 60 games each, harness noise ~ +-6.5 pp)
+
+### Fixed
+- **Futility pruning sign (search.mjs).** The frontier test ran after `makeMove` but compared the
+  opponent-relative static score with `alpha`, pruning the best quiet moves (since v3.0.6 §4.4).
+  `nofut` beat `base` 51-3-6 (+338 Elo); with the fix `base` vs Stockfish@1500 rose 60.0% -> 77.5%
+  (paired +17.5 pp, z=2.36). Predicate extracted as `Searcher.futile()`; regression test eval §13.
+- **Hidden depth-8 cap under a clock/node limit (index.mjs).** `search({timeMs})` defaulted to depth 8.
+  Uncapped vs capped at 300 ms: 41-11-8, +215 Elo [+134,+325].
+
+### Changed
+- `planOrdering` option (default **false**): plans are still generated for display, but no longer order
+  moves. Same move at depth 6 with 1.3-6.4x fewer nodes; in play +29 Elo [-51,+113] (not significant).
+- Removed the dead `contextBonus` closure (always 0).
+
+### Added
+- `bench/uci.mjs` (UCI front-end, `Config` option) and `bench/anchor.py` (Stockfish UCI_Elo ladder).
+- `match.mjs`: `nofut`, `planord` configs; `name@N` now also pins a depth cap next to `--time`.
+
+### Notes
+- `noctx` is bit-identical to `base` in search (same moves and nodes): the context layer has no effect on play.
+  A 60-game `base` vs `noctx` match gave 38.3% and `base` vs `base` gave 47.5%: that spread is pure noise.
+- Gate 3 after the futility fix (base score): vs plain 38.3%, noctx 38.3%, noplans 42.5%, nostruct 48.3%.
+  Not evidence that the layers help; the plan-ordering node cost is the only deterministic effect found.
+- Stockfish UCI_Elo is calibrated at ~60 s/game, so absolute Elo at 100 ms is indicative only.
+
 ## [Unreleased]
 
 Strength and measurement items for the v3 engine (measured, not cosmetic):

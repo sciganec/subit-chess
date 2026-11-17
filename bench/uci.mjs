@@ -25,6 +25,7 @@ const CONFIGS = {
   noctx:     { params: { context: { enabled: false } }, opts: {} },
   nostruct:  { params: { search: { ordering: { struct: 0 } } }, opts: {} },
   noplans:   { params: {}, opts: { usePlans: false } },
+  planord:   { params: {}, opts: { planOrdering: true } },
   nofut:     { params: { search: { futility: { enabled: false } } }, opts: {} },
   nopruning: { params: { search: { nullMove: { enabled: false }, lmr: { enabled: false }, futility: { enabled: false } } }, opts: {} }
 };
