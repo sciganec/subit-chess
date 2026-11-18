@@ -117,6 +117,10 @@ export const CONFIGS = {
     label: 'structural extension (SEARCH-14): pawn to 7th extends one ply',
     params: { search: { structExtension: { enabled: true } } }, opts: {}
   },
+  structeval: {
+    label: 'structural SVF-9 evaluation tier at every leaf (OPEN-001 test: do the nine components beat the fast tier?)',
+    params: {}, opts: { evalMode: 'structural' }
+  },
   adaptive: {
     label: 'adaptive time budget (SEARCH-15): stable decisions stop early and bank time',
     params: {},

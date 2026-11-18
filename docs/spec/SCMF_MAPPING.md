@@ -27,3 +27,12 @@ left UNVERIFIED rather than guessed. "TESTED" never means PROVEN.
 Measured value of search-side theory (equal time, vs base): adaptive budget SEARCH-15 +76 Elo [+20,+137] at
 100 ms (120 games), +80 [-15,+187] at 300 ms (40 games), no difference vs Stockfish anchor (48 games);
 structural extension SEARCH-14 -83 Elo [-178,+2] (60 games), left OFF.
+
+## OPEN-001 data point (2026-11-18)
+
+The nine-component SVF (`evalMode: 'structural'`, every leaf) vs the shipped fast evaluator, equal 100 ms/move,
+60 games: **2-0-58, 3.3%, -585 Elo [-920,-426]**. Time per move equal (100 vs 94 ms). The structural tier is far
+weaker *at this time control*, mostly because it is much slower per leaf (fewer nodes in the same time), so this
+does not show the nine components are worse as a function of position. It does show they are not yet usable as
+the search evaluator. Fair next test: fixed depth/nodes (`--depth`), which removes the speed confound.
+The default fast tier does not read the component weights `w` or the interaction terms at all.
