@@ -45,7 +45,7 @@ def make_openings(n, seed, plies=6):
 
 
 def play(job):
-    fen, subit_white, level, movetime, max_plies, depth, config = job
+    fen, subit_white, level, movetime, max_plies, depth, config, clock = job
     sub = chess.engine.SimpleEngine.popen_uci(UCI_NODE, timeout=60)
     sf = chess.engine.SimpleEngine.popen_uci(SF, timeout=60)
     sf.configure({"Threads": 1, "Hash": 16, "UCI_LimitStrength": True, "UCI_Elo": level})
@@ -53,7 +53,11 @@ def play(job):
     if depth:
         sub.configure({"Depth": depth})
     b = chess.Board(fen)
-    lim = chess.engine.Limit(time=movetime / 1000.0)
+    if clock:   # clock play (wtime/btime): nominal = clock/30 = movetime, so SUBIT's adaptive budget is active
+        c = movetime * 30 / 1000.0
+        lim = chess.engine.Limit(white_clock=c, black_clock=c)
+    else:
+        lim = chess.engine.Limit(time=movetime / 1000.0)
     plies = 0
     try:
         while not b.is_game_over(claim_draw=True) and plies < max_plies:
@@ -84,12 +88,13 @@ def main():
     ap.add_argument("--seed", type=int, default=2026)
     ap.add_argument("--depth", type=int, default=0, help="fixed SUBIT depth (0 = movetime only)")
     ap.add_argument("--configs", default="base", help="comma list: base,plain,noctx,nostruct,noplans,nopruning")
+    ap.add_argument("--clock", action="store_true", help="give clocks instead of movetime (enables adaptive time)")
     ap.add_argument("--out", default="results/anchor.json")
     a = ap.parse_args()
     levels = [int(x) for x in a.levels.split(",")]
     fens = make_openings(a.pairs, a.seed)
     cfgs = a.configs.split(",")
-    jobs = [(f, sw, L, a.movetime, a.max_plies, a.depth, c) for c in cfgs for L in levels for f in fens for sw in (True, False)]
+    jobs = [(f, sw, L, a.movetime, a.max_plies, a.depth, c, a.clock) for c in cfgs for L in levels for f in fens for sw in (True, False)]
     t0 = time.time(); rows = []
     with ProcessPoolExecutor(a.workers) as ex:
         for i, r in enumerate(ex.map(play, jobs), 1):
