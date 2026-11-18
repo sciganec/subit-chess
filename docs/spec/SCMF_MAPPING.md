@@ -13,7 +13,7 @@ left UNVERIFIED rather than guessed. "TESTED" never means PROVEN.
 | INV-013 | terminal priority, shortest mate | `search.mjs` | TESTED | back-rank mate-in-1 scores MATE-1 |
 | INV-014 | draw rules from full state/history | `core.mjs`, `search.mjs` | PARTIAL | repetition and 50/75-move handled in search; not covered by a dedicated SCMF test |
 | INV-006/007/008 | structural completeness, context, no double counting | `structure.mjs`, `context.mjs` | UNVERIFIED | measured: the context layer has zero effect on play (noctx bit-identical to base), so INV-007 is *implemented but inert* |
-| INV-010 | metric correctness | `structure.mjs` | UNVERIFIED | `structuralDelta` / criticality distance exist; triangle inequality and pseudometric status not tested |
+| INV-010 | metric correctness | `structure.mjs` | TESTED (empirical) | `tests/scmf.metric.mjs`: each component Dv Dr Da Dq Dt Dh has identity, symmetry, non-negativity and the triangle inequality on 4 seeds x 28 positions x 21952 triples, 0 violations. Dc was not exercised (no context vectors passed, so it is 0). Evidence from random positions, not a proof; Dq is normalised by a pair-dependent count, so a proof is still needed. OPEN-002 (is Euclidean enough) is untouched |
 | INV-012 | opponent reply considered | `search.mjs` | TESTED (implicitly) | negamax |
 | INV-015/018 | provenance, reproducibility | `learn.mjs` | PARTIAL | seeded RNG; no full Prov(P) tuple |
 | INV-016 | no external teacher | `learn.mjs`, `bench/` | PARTIAL | learning module is self-play; Stockfish is used in `bench/anchor.py` only to *measure* and to filter openings, never as a training label |
