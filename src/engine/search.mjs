@@ -278,6 +278,7 @@ export class Searcher {
     this.useNull = true;
     this.useLMR = true;
     this.useFutility = true;
+    this.qSee = (params.search.qSee && params.search.qSee.enabled) ? params.search.qSee : null;
     this.trace = null;
     this.lastIteration = null;
     this.structuralBonus = null;   // (m) => number, provided by the plan layer
@@ -511,6 +512,14 @@ export class Searcher {
       if (entry && entry.move) this.tt.cutoffs++;
     }
 
+    // reverse futility (static null move), non-PV, not in check, shallow: a position that is already
+    // `margin * depth` above beta is not worth searching. Off by default (v3.0.9 experiment).
+    const rfp = this.params.search.rfp;
+    if (rfp && rfp.enabled && !pvNode && !inCheck && depth <= rfp.maxDepth && Math.abs(beta) < MATE_THRESHOLD) {
+      const st = this.ev.evaluate(pos, depth);
+      if (st - rfp.margin * depth >= beta) return st - rfp.margin * depth;
+    }
+
     // null move pruning (never a legal chess move — search-only)
     if (this.useNull && this.canNull(pos, depth, inCheck, pvNode)) {
       const R = Math.min(this.params.search.nullMove.maxReduction,
@@ -735,6 +744,13 @@ export class Searcher {
         const victim = pos.board[MOVE_TO(m)];
         const victimValue = (flags & FLAG_EP) ? MATERIAL[PAWN] : (victim ? MATERIAL[pieceType(victim)] : 0);
         if (best + victimValue + 200 < alpha && !(flags & FLAG_PROMO)) continue;
+        // SEE-lite (v3.0.9 experiment): a capture that gives a more valuable piece for a cheaper one on a
+        // defended square loses material; skip it. Cheap, one attack test, no swap list.
+        if (this.qSee && !(flags & FLAG_PROMO) && !(flags & FLAG_EP) && victim) {
+          const att = MATERIAL[pieceType(pos.board[MOVE_FROM(m)])];
+          if (att > victimValue + this.qSee.slack && pieceType(pos.board[MOVE_FROM(m)]) !== KING &&
+              pos.isAttacked(MOVE_TO(m), them)) continue;
+        }
       }
       pos.pushRep();
       const undo = pos.makeMove(m);

@@ -23,7 +23,7 @@ const FENS = [
 const exactParams = () => {
   const p = cloneParams(DEFAULT_PARAMS);
   p.search.nullMove.enabled = false; p.search.lmr.enabled = false;
-  p.search.futility.enabled = false; p.search.checkExtension = 0;
+  p.search.futility.enabled = false; p.search.checkExtension = 0; p.search.rfp.enabled = false; p.search.qSee.enabled = false;
   return p;
 };
 function plainEngine(fen) {

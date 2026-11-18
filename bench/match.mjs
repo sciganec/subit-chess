@@ -129,6 +129,8 @@ export const CONFIGS = {
     label: 'structural SVF re-selection among near-equal root moves (margin 25 cp, lambda 0.25)',
     params: {}, opts: { rootStruct: { margin: 25, lambda: 0.25, maxCand: 4 } }
   },
+  rfp: { label: 'reverse futility (depth<=3, 120cp/ply)', params: { search: { rfp: { enabled: true } } }, opts: {} },
+  qsee: { label: 'SEE-lite capture pruning in quiescence', params: { search: { qSee: { enabled: true } } }, opts: {} },
   adaptive: {
     label: 'adaptive time budget (SEARCH-15): stable decisions stop early and bank time',
     params: {},

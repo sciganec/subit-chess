@@ -17,6 +17,12 @@ Statuses:
 ## [Unreleased] — 3.0.9 (measured at 100-300 ms/move; 60 games each, harness noise ~ +-6.5 pp)
 
 ### Added
+- **Reverse futility pruning (search.mjs, `search.rfp`, default ON).** Non-PV, not in check, depth <= 3, |beta| not a mate
+  score: if static eval - 120*depth >= beta, return that bound. Equal time (100 ms/move) vs the build without it, three
+  independent batches 61-20-39 of 120 games: +64 Elo [+8,+125], z=2.24; batches individually +89, +53 (same sign).
+  Note: several features were tried this release; this is the one that passed, so its p-value is not corrected for that.
+- **SEE-lite capture pruning in quiescence (`search.qSee`, default OFF).** Skip a capture whose attacker is worth more than
+  the victim + 50 cp when the target square is defended. 40 games vs base: -89 Elo [-209,+13]; rejected.
 - **Evaluation cache for the fast tier (evaluate.mjs, `evalCacheBits`, default 17).** Direct-mapped, verified with the full
   key; evaluateFast is a pure function of the position, so a hit is exact (test: identical move/score/node count with the
   cache on and off, hit rate ~33%). Benchmark d7: 340k -> 364k nodes/s (+7%). Call `clearEvalCache()` after mutating params.
