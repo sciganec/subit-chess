@@ -17,6 +17,9 @@ Statuses:
 ## [Unreleased] — 3.0.9 (measured at 100-300 ms/move; 60 games each, harness noise ~ +-6.5 pp)
 
 ### Added
+- **Evaluation cache for the fast tier (evaluate.mjs, `evalCacheBits`, default 17).** Direct-mapped, verified with the full
+  key; evaluateFast is a pure function of the position, so a hit is exact (test: identical move/score/node count with the
+  cache on and off, hit rate ~33%). Benchmark d7: 340k -> 364k nodes/s (+7%). Call `clearEvalCache()` after mutating params.
 - **Adaptive search budget, SEARCH-15 (`src/engine/budget.mjs`; docs/theory 40 §11-13, 05 §17.1).** After each
   completed iteration the engine checks root-move change, bound type, score drift and the gap to the
   runner-up; a stable, clear decision stops early and banks the time, an unstable one may spend up to a
@@ -29,6 +32,13 @@ Statuses:
   60 games: 21-4-35, -83 Elo [-178,+2], z=-1.91: no gain, probable loss, so it stays disabled.
 
 ### Fixed
+- **Zobrist key had ~32 effective bits (core.mjs).** `lo` and `hi` were consecutive outputs of one xorshift32; xorshift is
+  linear over GF(2), so `hi = L(lo)` for every table entry and (keys are XOR sums) for every position. The 53-bit key
+  therefore behaved as a 32-bit key (GF(2) rank 32 instead of 64): distinct positions with equal keys appeared
+  at ~4 per 239k positions in a depth-7 search, and the transposition table verifies hits with this key. Two independent
+  non-linear streams (mulberry32) now feed `lo` and `hi`; regression test `tests/core.zobrist.mjs`. Head-to-head
+  vs v3.0.8-fix build at 100 ms, 60 games: 20-18-22, -12 Elo [-88,+63] (no detectable strength change; this is a
+  correctness fix; effect on rare TT false hits is below what 60 games can resolve).
 - **Futility pruning sign (search.mjs).** The frontier test ran after `makeMove` but compared the
   opponent-relative static score with `alpha`, pruning the best quiet moves (since v3.0.6 §4.4).
   `nofut` beat `base` 51-3-6 (+338 Elo); with the fix `base` vs Stockfish@1500 rose 60.0% -> 77.5%

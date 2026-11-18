@@ -148,14 +148,22 @@ export function moveToSan(pos, m) {
 export const ZOBRIST = buildZobrist();
 
 function buildZobrist() {
-  let s = 0x1a2b3c4d >>> 0;
-  const rnd = () => {
-    s ^= (s << 13) >>> 0; s >>>= 0;
-    s ^= s >>> 17;
-    s ^= (s << 5) >>> 0; s >>>= 0;
-    return s;
+  // lo and hi must come from two independent, NON-linear streams. v3.0.8 took both from consecutive outputs of
+  // one xorshift32: that generator is linear over GF(2), so hi = L(lo) held for every table entry and, because
+  // keys are XOR sums, for every position; the 53-bit key had only ~32 effective bits (distinct positions with
+  // equal keys appeared at ~1 per 60k positions in a depth-7 search, and the TT verifies with this key).
+  const mulberry = (seed) => {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return (t ^ (t >>> 14)) >>> 0;
+    };
   };
-  const pair = () => ({ lo: rnd(), hi: rnd() });
+  const rndLo = mulberry(0x1a2b3c4d), rndHi = mulberry(0x9e3779b9);
+  const pair = () => ({ lo: rndLo(), hi: rndHi() });
 
   const piece = [];
   for (let p = 0; p < 16; p++) {

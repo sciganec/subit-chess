@@ -713,7 +713,16 @@ export class Evaluation {
       cache: false
     }, opts);
     this.cache = this.opts.cache ? new Map() : null;
+    // fast-tier evaluation cache (v3.0.9, ROADMAP Gate 6): speed only. evaluateFast is a pure function of
+    // the position (placement, turn, castling, ep; not the clocks) and of `params`, so a hit is exact.
+    // Direct-mapped, verified against the full 53-bit key. Call clearEvalCache() after mutating params.
+    this.evalBits = this.opts.evalCacheBits === undefined ? 17 : this.opts.evalCacheBits;
+    this.evalKeys = this.evalBits ? new Float64Array(1 << this.evalBits).fill(-1) : null;
+    this.evalVals = this.evalBits ? new Float64Array(1 << this.evalBits) : null;
+    this.evalHits = 0; this.evalProbes = 0;
   }
+
+  clearEvalCache() { if (this.evalKeys) this.evalKeys.fill(-1); }
 
   /** Fast tier. Side-to-move perspective, centipawns. */
   fast(pos) {
@@ -762,10 +771,22 @@ export class Evaluation {
 
   /** Hybrid tier used by the search. */
   evaluate(pos, remainingDepth) {
-    if (this.opts.mode === 'fast') return evaluateFast(pos, this.params);
+    if (this.opts.mode === 'fast') return this.fastCached(pos);
     if (this.opts.mode === 'structural') return this.structural(pos).E;
     if (remainingDepth <= this.opts.structuralDepth) return this.structural(pos).E;
-    return evaluateFast(pos, this.params);
+    return this.fastCached(pos);
+  }
+
+  fastCached(pos) {
+    const keys = this.evalKeys;
+    if (!keys) return evaluateFast(pos, this.params);
+    const k = pos.key;
+    const i = pos.hashLo & ((1 << this.evalBits) - 1);
+    this.evalProbes++;
+    if (keys[i] === k) { this.evalHits++; return this.evalVals[i]; }
+    const v = evaluateFast(pos, this.params);
+    keys[i] = k; this.evalVals[i] = v;
+    return v;
   }
 }
 
