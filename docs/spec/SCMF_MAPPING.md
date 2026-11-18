@@ -36,3 +36,9 @@ weaker *at this time control*, mostly because it is much slower per leaf (fewer 
 does not show the nine components are worse as a function of position. It does show they are not yet usable as
 the search evaluator. Fair next test: fixed depth/nodes (`--depth`), which removes the speed confound.
 The default fast tier does not read the component weights `w` or the interaction terms at all.
+
+**Same test at fixed depth 4 (speed confound removed):** 30 games, 0-12-18, 20.0%, **-241 Elo [-362,-156]**, while using
+26x the time per move (320 ms vs 12 ms). So the nine-component SVF is worse than the fast evaluator even at equal
+depth, and about 26x more expensive. It is therefore not only slow: as currently weighted it is also less accurate as
+a search evaluator. Weights `w`, saturation `s` and interactions are untuned defaults (all w = 1), so this is a verdict
+on the current parameters, not on the Ω idea (OPEN-001/004 stay open). Tuning is the natural next experiment.
