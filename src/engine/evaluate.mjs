@@ -80,6 +80,7 @@ export const DEFAULT_PARAMS = {
     // maxDepth 3, and as -99996 with maxDepth <= 1).
     futility: { enabled: true, margin: 120, maxDepth: 1 },
     checkExtension: 1,
+    structExtension: { enabled: false, maxPly: 8 },   // SEARCH-14: pawn to 7th extends one ply
     extensionBudget: 6,
     aspiration: { window: 25, widen: 40, maxWiden: 8 },
     maxDepth: 64,

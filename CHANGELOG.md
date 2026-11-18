@@ -24,6 +24,10 @@ Statuses:
   `movetime` and `fixedTime` stay exact. Measured vs base at equal 100 ms/move, 120 games: 63-20-37,
   +76 Elo [+20,+137], z=2.67, time ratio 1.02. Tests: `tests/engine.budget.mjs` (29 checks).
 
+- **Structural extension, SEARCH-14 (opt-in, `search.structExtension`, default OFF).** A pawn reaching the 7th
+  rank extends one ply (doc 05 §16.3, which requires test confirmation first). Measured vs base at 100 ms/move,
+  60 games: 21-4-35, -83 Elo [-178,+2], z=-1.91: no gain, probable loss, so it stays disabled.
+
 ### Fixed
 - **Futility pruning sign (search.mjs).** The frontier test ran after `makeMove` but compared the
   opponent-relative static score with `alpha`, pruning the best quiet moves (since v3.0.6 §4.4).

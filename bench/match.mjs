@@ -113,6 +113,10 @@ export const CONFIGS = {
     params: { search: { lmr: { enabled: false } } },
     opts: {}
   },
+  structext: {
+    label: 'structural extension (SEARCH-14): pawn to 7th extends one ply',
+    params: { search: { structExtension: { enabled: true } } }, opts: {}
+  },
   adaptive: {
     label: 'adaptive time budget (SEARCH-15): stable decisions stop early and bank time',
     params: {},

@@ -19,7 +19,7 @@
 import { shouldStop } from './budget.mjs';
 import {
   WHITE, BLACK, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
-  MATERIAL, pieceType, opposite, moveToUci, MOVE_FROM, MOVE_TO, MOVE_FLAGS,
+  MATERIAL, pieceType, rankOf, opposite, moveToUci, MOVE_FROM, MOVE_TO, MOVE_FLAGS,
   MOVE_PROMO, FLAG_CAPTURE, FLAG_PROMO, FLAG_EP, FLAG_CASTLE
 } from './core.mjs';
 
@@ -580,7 +580,13 @@ export class Searcher {
         if (depth - reduction < 1) reduction = depth - 1;
       }
 
-      const ext = (givesCheck && this.params.search.checkExtension > 0 && ply < 8) ? 1 : 0;
+      let ext = (givesCheck && this.params.search.checkExtension > 0 && ply < 8) ? 1 : 0;
+      // SEARCH-14 (doc 05 §16.3): a pawn reaching the 7th rank changes the critical
+      // structure (promotion threat); extended once, bounded by ply, off by default.
+      if (!ext && this.params.search.structExtension.enabled && ply < this.params.search.structExtension.maxPly) {
+        const to = MOVE_TO(m);
+        if (pieceType(pos.board[to]) === PAWN && rankOf(to) === (us === WHITE ? 1 : 6)) ext = 1;
+      }
       const nextDepth = Math.max(0, depth - 1 - reduction + ext);
 
       if (legal === 1) {
