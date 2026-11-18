@@ -125,6 +125,10 @@ export const CONFIGS = {
     label: 'structural tier with weights fitted to own depth-2 search (bench/fit_svf.mjs)',
     params: { w: JSON.parse(readFileSync(new URL('../results/svf_weights.json', import.meta.url), 'utf8')).w }, opts: { evalMode: 'structural' }
   },
+  rootstruct: {
+    label: 'structural SVF re-selection among near-equal root moves (margin 25 cp, lambda 0.25)',
+    params: {}, opts: { rootStruct: { margin: 25, lambda: 0.25, maxCand: 4 } }
+  },
   adaptive: {
     label: 'adaptive time budget (SEARCH-15): stable decisions stop early and bank time',
     params: {},

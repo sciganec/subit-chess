@@ -77,6 +77,7 @@ export class Engine {
     this.opts = Object.assign({
       ttBits: 18,
       usePlans: true,
+      rootStruct: null,       // v3.0.9 experiment: { margin, lambda, maxCand } structural re-selection among near-equal root moves
       adaptiveTime: true,   // v3.0.9 SEARCH-15: stable decisions stop early and bank time (measured +76 Elo, equal mean time)
       planOrdering: false,   // v3.0.9: plans are generated for display; using them to order moves cost 1.3-6x nodes
       useMeta: true,
@@ -126,6 +127,34 @@ export class Engine {
   legalMoves() { return this.pos.legalMoves(); }
 
   /* ---------------- analysis ---------------- */
+
+  /**
+   * Root re-selection (doc 01 SVF, doc 05 §16; experiment). Among root moves whose search value is within
+   * `margin` cp of the best, prefer the one whose resulting position has the higher structural value.
+   * Only near-equal moves compete, so a tactical difference is never overridden.
+   */
+  rootStructReselect(result) {
+    const { margin = 25, lambda = 0.25, maxCand = 4 } = this.opts.rootStruct;
+    const pos = this.pos, d = Math.max(1, result.depth - 2);
+    const scored = [];
+    for (const m of pos.legalMoves()) {
+      pos.pushRep();
+      const u = pos.makeMove(m);
+      const r = this.searcher.search(pos, { depth: d, timeMs: 0, nodes: 0 });
+      const v = -r.score;
+      let E = 0;
+      if (m !== result.move && v >= result.score - margin - 20 || m === result.move) E = -this.evaluation.structural(pos).E;
+      pos.unmakeMove(u); pos.popRep();
+      scored.push({ m, v, E });
+    }
+    const bestV = Math.max(...scored.map((x) => x.v));
+    const cands = scored.filter((x) => x.v >= bestV - margin).sort((a, b) => b.v - a.v).slice(0, maxCand);
+    if (!cands.some((x) => x.m === result.move)) cands.push(scored.find((x) => x.m === result.move));
+    let pick = cands[0], pv = -Infinity;
+    for (const c of cands) { const val = c.v + lambda * c.E; if (val > pv) { pv = val; pick = c; } }
+    this.lastRootStruct = { changed: pick.m !== result.move, cands: cands.length };
+    if (pick.m !== result.move) { result.move = pick.m; result.pv = [pick.m]; }
+  }
 
   /** Full structural picture: SVF, context, relations, plans, criticality. */
   analyze() {
@@ -245,6 +274,7 @@ export class Engine {
     });
 
     if (budget) this.timeBank = updateBank(this.timeBank, timeMs, result.timeMs);
+    if (this.opts.rootStruct && result.move && result.completed && result.depth >= 3) this.rootStructReselect(result);
     const risk = riskOf(result, result.depth);
     this.memory.remember(this.pos, {
       depth: result.depth, score: result.score, move: result.move

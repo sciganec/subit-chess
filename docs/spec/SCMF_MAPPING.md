@@ -50,3 +50,10 @@ a linear target that the saturated components do not span. Match at fixed depth 
 **-176 Elo [-268,-102]** (default weights: -241 [-362,-156]); the two intervals overlap, so the improvement is not
 established. Conclusion: re-weighting alone does not make SVF-9 competitive with the fast evaluator; what the fast tier
 has (tapered piece-square terms, mobility, pawn structure) is not representable by the nine saturated sums.
+
+**Structural root re-selection (experiment, `rootStruct` option, default OFF; `rootstruct` match config):** among root moves
+within 25 cp of the best (max 4), pick the one maximising value + 0.25 * structural E of the resulting position.
+Fixed depth 5 vs base, 40 games: 4-20-16, 35.0%, **-108 Elo [-191,-35]**, at 25 ms vs 20 ms per move.
+So even used only as a tie-break between near-equal moves, the SVF-9 signal at its current parameters lowers play.
+The result is consistent with the evaluator tests above: the structural value does not rank positions as well as
+the search value it is asked to refine. Left disabled.
