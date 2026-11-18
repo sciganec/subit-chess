@@ -121,6 +121,10 @@ export const CONFIGS = {
     label: 'structural SVF-9 evaluation tier at every leaf (OPEN-001 test: do the nine components beat the fast tier?)',
     params: {}, opts: { evalMode: 'structural' }
   },
+  structfit: {
+    label: 'structural tier with weights fitted to own depth-2 search (bench/fit_svf.mjs)',
+    params: { w: JSON.parse(readFileSync(new URL('../results/svf_weights.json', import.meta.url), 'utf8')).w }, opts: { evalMode: 'structural' }
+  },
   adaptive: {
     label: 'adaptive time budget (SEARCH-15): stable decisions stop early and bank time',
     params: {},

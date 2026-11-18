@@ -42,3 +42,11 @@ The default fast tier does not read the component weights `w` or the interaction
 depth, and about 26x more expensive. It is therefore not only slow: as currently weighted it is also less accurate as
 a search evaluator. Weights `w`, saturation `s` and interactions are untuned defaults (all w = 1), so this is a verdict
 on the current parameters, not on the Ω idea (OPEN-001/004 stay open). Tuning is the natural next experiment.
+
+**Fitted weights (`bench/fit_svf.mjs`, teacher = the engine's own depth-2 fast search, ridge LS, 3000 positions, 80/20 split):**
+held-out R² 0.50 (all w = 1) -> 0.62. Fitted weights are unstable across samples (n=800: D=3.0, X=8.5; n=3000: D=10.4, X=4.3;
+Q and R come out negative), consistent with partly collinear components (INV-008 screen: max |r| 0.70) and with
+a linear target that the saturated components do not span. Match at fixed depth 4, 30 games: 0-16-14, 26.7%,
+**-176 Elo [-268,-102]** (default weights: -241 [-362,-156]); the two intervals overlap, so the improvement is not
+established. Conclusion: re-weighting alone does not make SVF-9 competitive with the fast evaluator; what the fast tier
+has (tapered piece-square terms, mobility, pawn structure) is not representable by the nine saturated sums.
