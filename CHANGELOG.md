@@ -17,6 +17,11 @@ Statuses:
 ## [Unreleased] — 3.0.9 (measured at 100-300 ms/move; 60 games each, harness noise ~ +-6.5 pp)
 
 ### Added
+- **Controlled autonomous evolution (`src/engine/evolve.mjs`; SCMF §15, INV-015..019).** Replaces `learn.hillClimb` for any
+  change meant to be kept: hypothesis -> screening -> regression suite -> confirmation on a DISJOINT seed set (z >= 1.64) ->
+  acceptance, with bounded per-step and cumulative drift, a reproducible journal with provenance, a final audit against the
+  baseline and automatic rollback. `hillClimb` accepted a change on the very comparison that selected it (winner's curse) and is
+  marked as such. `tests/engine.evolve.mjs` (14 checks, match function injected).
 - **Decision structure and counterfactual explanation (`src/engine/explain.mjs`, `Engine.explain()`; SCMF §10, §12-§14).**
   D(P) = (a*, V, C, Evidence, Alternatives, Confidence): each alternative is searched, with its best reply, CF(a*,b), ΔΩ and a
   stated reason for rejection; every claim is typed (immediate, structural, tactical, strategic, assumption, counterfactual) and

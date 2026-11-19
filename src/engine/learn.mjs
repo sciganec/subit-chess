@@ -7,6 +7,10 @@
  *   docs/theory/05_SUBIT_SEARCH_ARCHITECTURE §17 (the searcher must be able to
  *   answer "which of two evaluations is better", not only "how good is this")
  *
+ * NOTE (v3.0.9): hillClimb() below accepts a change on the same comparison that selected it (no independent
+ * confirmation, no journal, no rollback), which SCMF §15.4 forbids. Use evolve() in evolve.mjs for any
+ * parameter change that is meant to be kept.
+ *
  * The protocol is deliberately minimal and honest:
  *   - every game is played by the *same* engine code with different parameters;
  *   - the score is a deterministic function of the seed, so a result is
