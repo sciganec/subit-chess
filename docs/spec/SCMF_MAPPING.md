@@ -61,3 +61,14 @@ the search value it is asked to refine. Left disabled.
 | §12 statuses | evidence statuses | `explain.mjs` (`EVIDENCE`) | IMPLEMENTED + TESTED | EXACT / EXHAUSTIVELY_VERIFIED / HEURISTIC / ESTIMATED / HYPOTHETICAL / UNKNOWN attached to every claim; tests forbid EXACT on search or structural claims |
 | §14 causal claims | typed explanation | `explain.mjs` (`CLAIM`) | IMPLEMENTED + TESTED | immediate / structural / tactical / strategic / assumption / counterfactual; strategic claims are declared UNKNOWN, not asserted |
 | §14.2 CF(a,b) | counterfactual | `explain.mjs` | IMPLEMENTED + TESTED | CF = V(P_a) - V(P_b), each side after its best reply; depth disagreements between the reply search and the chosen move are reported as unresolved, never acted on |
+## First real run of the controlled evolution (2026-11-19, `bench/evolve_run.mjs`, seed 1)
+
+40 hypotheses on 11 fast-tier knobs (mobility N/B/R/Q, doubled, isolated, rook files, king shield, tempo, bishop pair), each a
+3-12 % change; screening 24 games, confirmation 60 games on disjoint seeds, depth 3, self-play only, 890 s.
+Result: **0 accepted**. 24 hypotheses failed screening; 16 passed screening (ΔS > 0) and every one of them failed confirmation
+(z between -0.9 and +0.8). The old `hillClimb` rule (accept after one positive significant comparison) would have been fed by the 16
+screening winners: these are the winner's-curse candidates SCMF §15.4 warns about, and independent confirmation removed all of them.
+Reading: the current hand-set parameters sit on a flat part of the objective at this resolution; a change of a few percent moves the
+score by less than ~0.1 per game, which 60 games cannot resolve. Finding a real gain by self-play needs far more games per hypothesis
+(order 1000, ~8 min each at depth 3) or a gradient-style tuner (SPSA); neither is claimed here. Depth-3 self-play also may not transfer
+to 100 ms play.
