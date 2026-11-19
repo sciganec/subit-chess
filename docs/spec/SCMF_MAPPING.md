@@ -61,6 +61,7 @@ the search value it is asked to refine. Left disabled.
 | §12 statuses | evidence statuses | `explain.mjs` (`EVIDENCE`) | IMPLEMENTED + TESTED | EXACT / EXHAUSTIVELY_VERIFIED / HEURISTIC / ESTIMATED / HYPOTHETICAL / UNKNOWN attached to every claim; tests forbid EXACT on search or structural claims |
 | §14 causal claims | typed explanation | `explain.mjs` (`CLAIM`) | IMPLEMENTED + TESTED | immediate / structural / tactical / strategic / assumption / counterfactual; strategic claims are declared UNKNOWN, not asserted |
 | §14.2 CF(a,b) | counterfactual | `explain.mjs` | IMPLEMENTED + TESTED | CF = V(P_a) - V(P_b), each side after its best reply; depth disagreements between the reply search and the chosen move are reported as unresolved, never acted on |
+| SUBIT-∞ §1.4, §7; SPEC §7–8 | Belnap four-valued evidence (⊕, conflict = B) and Ω trace classifier | `belnap.mjs`, `explain.mjs` | IMPLEMENTED + TESTED (proxy) | `tests/engine.belnap.mjs` (236 checks: bilattice laws on all 4/16/64 combinations, thresholds, trace classes, explain keeps the plain-search move). Ω is the SPEC §7 proxy on iteration scores; agreement with the formal Ω is an empirical claim that has not been measured |
 ## First real run of the controlled evolution (2026-11-19, `bench/evolve_run.mjs`, seed 1)
 
 40 hypotheses on 11 fast-tier knobs (mobility N/B/R/Q, doubled, isolated, rook files, king shield, tempo, bishop pair), each a

@@ -15,6 +15,8 @@ import { WHITE, MOVE_FLAGS, FLAG_CAPTURE, FLAG_PROMO, FLAG_EP, FLAG_CASTLE, piec
 import { moveToSan } from './core.mjs';
 import { SVF_COMPONENTS } from './evaluate.mjs';
 import { structuralDelta } from './structure.mjs';
+import { Percept } from './percept.mjs';
+import { evidenceFor, classifyTrace } from './belnap.mjs';
 
 const MATE_LIMIT = 100000 - 1000;
 
@@ -82,6 +84,38 @@ function structuralChange(engine, pos, m) {
     leading: omega.slice(0, 3).filter((x) => Math.abs(x.d) >= 1).map((x) => `${x.k} ${x.d > 0 ? '+' : ''}${x.d.toFixed(1)}`),
     relationsAdded: delta.added.length, relationsRemoved: delta.removed.length
   };
+}
+
+
+/**
+ * Independent sources for "move a is at least as good as move b", each chosen − alternative in cp from the mover's view
+ * (SUBIT-∞ §7 Belnap layer): material on the board, the static fast evaluation, a depth-2 search, the full reply search.
+ * Child positions that end the game have no static value and are left out.
+ */
+function evidenceDiffs(engine, pos, a, b, deepA, deepB) {
+  const side = pos.turn;
+  const probe = (m) => {
+    pos.pushRep();
+    const undo = pos.makeMove(m);
+    let out = null;
+    if (pos.legalMoves().length > 0) {
+      const pc = new Percept(pos);
+      out = { material: pc.material[side] - pc.material[1 - side],
+              static: -engine.evaluation.fast(pos),
+              shallow: -sideValue(engine, pos, 2).score };
+    }
+    pos.unmakeMove(undo);
+    pos.popRep();
+    return out;
+  };
+  const pa = probe(a), pb = probe(b);
+  const diffs = { deep: deepA - deepB };
+  if (pa && pb) {
+    diffs.material = pa.material - pb.material;
+    diffs.static = pa.static - pb.static;
+    diffs.shallow = pa.shallow - pb.shallow;
+  }
+  return diffs;
 }
 
 /**
@@ -157,6 +191,10 @@ export function explainDecision(engine, opts = {}) {
 
   const sc = structuralChange(engine, pos, a);
   const claims = [];
+  const belnap = runnerUp ? evidenceFor(evidenceDiffs(engine, pos, chosenRow.m, runnerUp.m, chosenRow.v, runnerUp.v)) : null;
+  const traceScores = [];
+  for (let d = 1; d <= depth; d++) traceScores.push(sideValue(engine, pos, d).score);
+  const omega = classifyTrace(traceScores);
   for (const f of chosenRow.facts) claims.push({ type: CLAIM.IMMEDIATE, text: `the move ${f}`, status: EVIDENCE.EXACT });
   if (sc.leading.length) claims.push({ type: CLAIM.STRUCTURAL, text: `structural change ΔΩ: ${sc.leading.join(', ')}`, status: EVIDENCE.HEURISTIC });
   claims.push({
@@ -165,6 +203,7 @@ export function explainDecision(engine, opts = {}) {
     status: proven ? EVIDENCE.EXHAUSTIVELY_VERIFIED : EVIDENCE.ESTIMATED
   });
   if (runnerUp) claims.push({ type: CLAIM.COUNTERFACTUAL, text: `best alternative ${san(runnerUp.m)} is ${pawns(gap)} pawns worse`, status: proven ? EVIDENCE.EXHAUSTIVELY_VERIFIED : EVIDENCE.ESTIMATED });
+  if (belnap) claims.push({ type: CLAIM.COUNTERFACTUAL, text: `Belnap value of "${san(a)} is at least as good as ${san(runnerUp.m)}": ${belnap.value} (${Object.entries(belnap.components).map(([k, v]) => k + '=' + v).join(', ')})`, status: EVIDENCE.HEURISTIC });
   claims.push({ type: CLAIM.ASSUMPTION, text: `evaluation is the fast tier; the nine-component structural model is not used for the choice and is untuned`, status: EVIDENCE.HEURISTIC });
   claims.push({ type: CLAIM.STRATEGIC, text: 'long-term consequences beyond the horizon are not claimed', status: EVIDENCE.UNKNOWN });
 
@@ -172,6 +211,8 @@ export function explainDecision(engine, opts = {}) {
   if (!chosen.completed) unresolved.push('search did not complete');
   if (runnerUp && gap < 30) unresolved.push(`runner-up within ${gap} cp: choice not clear`);
   if (better.length) unresolved.push(`depth disagreement: the reply search at depth ${depth - 1} values ${san(better[0].m)} ${pawns(better[0].v - chosenRow.v)} pawns higher than the move the depth-${depth} search chose`);
+  if (belnap && belnap.value === 'B') unresolved.push(`independent sources disagree (Belnap B): ${belnap.conflicting.join(', ')}; more search, not a forced choice`);
+  if (omega.omega === 'CYCLIC' || omega.omega === 'CHAOTIC') unresolved.push(`score trace over depths 1..${depth} is ${omega.omega}: the value is not settled`);
   if (!proven) unresolved.push(`horizon: nothing beyond depth ${depth} was searched`);
 
   return {
@@ -182,6 +223,8 @@ export function explainDecision(engine, opts = {}) {
     confidence: { conf: confidence(gap, chosen.depth, chosen.completed), calibrated: false,
                   note: 'Confidence is not probability (SCMF §13); no calibration has been done (OPEN-006)' },
     structural: sc,
+    belnap,
+    omega,
     unresolved,
     search: { depth: chosen.depth, completed: chosen.completed, nodes: chosen.nodes },
     provenance: { generator: 'explainDecision', version: engine.version, source: 'own search, no external engine' }
