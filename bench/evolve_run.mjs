@@ -5,8 +5,8 @@ import fs from 'node:fs';
 import { DEFAULT_PARAMS, cloneParams } from '../src/engine/evaluate.mjs';
 import { evolve } from '../src/engine/evolve.mjs';
 const arg = (k, d) => { const i = process.argv.indexOf('--' + k); return i > 0 ? process.argv[i + 1] : d; };
-const knobs = ['eval.mobility.N', 'eval.mobility.B', 'eval.mobility.R', 'eval.mobility.Q', 'eval.doubled', 'eval.isolated',
-  'eval.rookOpen', 'eval.rookSemiOpen', 'eval.kingShield', 'tempo', 'eval.bishopPair'];
+const knobs = (arg('knobs', '') ? arg('knobs', '').split(',') : ['eval.mobility.N', 'eval.mobility.B', 'eval.mobility.R', 'eval.mobility.Q', 'eval.doubled', 'eval.isolated',
+  'eval.rookOpen', 'eval.rookSemiOpen', 'eval.kingShield', 'tempo', 'eval.bishopPair']);
 const t0 = Date.now();
 const r = evolve(cloneParams(DEFAULT_PARAMS), {
   steps: Number(arg('steps', 40)), screenGames: Number(arg('screen', 24)), confirmGames: Number(arg('confirm', 60)),

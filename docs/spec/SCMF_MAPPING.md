@@ -72,3 +72,8 @@ Reading: the current hand-set parameters sit on a flat part of the objective at 
 score by less than ~0.1 per game, which 60 games cannot resolve. Finding a real gain by self-play needs far more games per hypothesis
 (order 1000, ~8 min each at depth 3) or a gradient-style tuner (SPSA); neither is claimed here. Depth-3 self-play also may not transfer
 to 100 ms play.
+
+**Second run (seed 7, `--screen 100 --confirm 400`, 6 knobs, 24 hypotheses, 2291 s):** 0 accepted. 18 failed screening; the 6 that
+passed had confirmation ΔS between -0.007 and +0.03 per game (z -0.26..+0.94) on 400 games each. At this resolution (SE ~0.03) none
+of the mobility, king-shield and pawn-structure weights improves when moved by 3-12 %; the hand-set values are on a plateau for
+depth-3 self-play. This is a negative result for these knobs, not evidence that the evaluation is optimal.
