@@ -23,6 +23,7 @@ import { Evaluation, DEFAULT_PARAMS, cloneParams, paramsFromJSON, SVF_COMPONENTS
 import { Searcher, TranspositionTable, MoveOrder, MATE, searchBudget } from './search.mjs';
 import { generatePlans, describePlans, makePlanOrderer, pareto, PLAN } from './plans.mjs';
 import { allocateTime, updateBank } from './budget.mjs';
+import { explainDecision } from './explain.mjs';
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
 
@@ -155,6 +156,9 @@ export class Engine {
     this.lastRootStruct = { changed: pick.m !== result.move, cands: cands.length };
     if (pick.m !== result.move) { result.move = pick.m; result.pv = [pick.m]; }
   }
+
+  /** D(P) = (a*, V, C, Evidence, Alternatives, Confidence) with typed claims and counterfactuals (SCMF §10, §14). */
+  explain(opts = {}) { return explainDecision(this, opts); }
 
   /** Full structural picture: SVF, context, relations, plans, criticality. */
   analyze() {

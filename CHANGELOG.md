@@ -17,6 +17,11 @@ Statuses:
 ## [Unreleased] — 3.0.9 (measured at 100-300 ms/move; 60 games each, harness noise ~ +-6.5 pp)
 
 ### Added
+- **Decision structure and counterfactual explanation (`src/engine/explain.mjs`, `Engine.explain()`; SCMF §10, §12-§14).**
+  D(P) = (a*, V, C, Evidence, Alternatives, Confidence): each alternative is searched, with its best reply, CF(a*,b), ΔΩ and a
+  stated reason for rejection; every claim is typed (immediate, structural, tactical, strategic, assumption, counterfactual) and
+  carries an evidence status (EXACT, EXHAUSTIVELY_VERIFIED, HEURISTIC, ESTIMATED, UNKNOWN); Conf is flagged uncalibrated.
+  It never changes the move (SCMF-INV-011). `tests/engine.explain.mjs`. Mapping table: docs/spec/SCMF_MAPPING.md.
 - **Reverse futility pruning (search.mjs, `search.rfp`, default ON).** Non-PV, not in check, depth <= 3, |beta| not a mate
   score: if static eval - 120*depth >= beta, return that bound. Equal time (100 ms/move) vs the build without it, three
   independent batches 61-20-39 of 120 games: +64 Elo [+8,+125], z=2.24; batches individually +89, +53 (same sign).

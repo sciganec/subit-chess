@@ -21,8 +21,8 @@ left UNVERIFIED rather than guessed. "TESTED" never means PROVEN.
 | INV-017/019 | independent check, rollback | `bench/match.mjs`, git | PARTIAL | A/B matches with control; no automatic rollback in the engine |
 | §3 Ω (9 dims) | structural vector | `evaluate.mjs` (`SVF_COMPONENTS`) | IMPLEMENTED | the engine's SVF vector already has nine components M,K,A,D,C,T,Q,R,X (the 7-dim Ω₇ lives in docs 01-32; code and SCMF agree on nine). OPEN-001 is therefore about the docs, not the code. Earlier version of this row wrongly said 7 |
 | §5 Ctx (4×4×4) | contextual profile | `context.mjs` | IMPLEMENTED | I,Z,Φ present; effect on play not shown |
-| §10 D(P) | decision structure | `index.mjs` (`analyze`, `uncertainty.mjs`) | PARTIAL | |
-| §13 Conf | calibrated confidence | `uncertainty.mjs` | IMPLEMENTED, UNCALIBRATED | no calibration experiment yet (OPEN-006) |
+| §10 D(P) | decision structure (a*, V, C, Evidence, Alternatives, Confidence) | `explain.mjs` (`Engine.explain`) | IMPLEMENTED + TESTED | `tests/engine.explain.mjs` (29 checks). Alternatives are searched (reply search one ply shallower), each with best reply and ΔΩ; the chosen move is exactly the plain search move (INV-011) |
+| §13 Conf | confidence | `explain.mjs` (`confidence`), `uncertainty.mjs` | IMPLEMENTED, UNCALIBRATED | explicitly flagged `calibrated: false`; no calibration experiment (OPEN-006) |
 
 Measured value of search-side theory (equal time, vs base): adaptive budget SEARCH-15 +76 Elo [+20,+137] at
 100 ms (120 games), +80 [-15,+187] at 300 ms (40 games), no difference vs Stockfish anchor (48 games);
@@ -57,3 +57,7 @@ Fixed depth 5 vs base, 40 games: 4-20-16, 35.0%, **-108 Elo [-191,-35]**, at 25 
 So even used only as a tie-break between near-equal moves, the SVF-9 signal at its current parameters lowers play.
 The result is consistent with the evaluator tests above: the structural value does not rank positions as well as
 the search value it is asked to refine. Left disabled.
+
+| §12 statuses | evidence statuses | `explain.mjs` (`EVIDENCE`) | IMPLEMENTED + TESTED | EXACT / EXHAUSTIVELY_VERIFIED / HEURISTIC / ESTIMATED / HYPOTHETICAL / UNKNOWN attached to every claim; tests forbid EXACT on search or structural claims |
+| §14 causal claims | typed explanation | `explain.mjs` (`CLAIM`) | IMPLEMENTED + TESTED | immediate / structural / tactical / strategic / assumption / counterfactual; strategic claims are declared UNKNOWN, not asserted |
+| §14.2 CF(a,b) | counterfactual | `explain.mjs` | IMPLEMENTED + TESTED | CF = V(P_a) - V(P_b), each side after its best reply; depth disagreements between the reply search and the chosen move are reported as unresolved, never acted on |
