@@ -48,6 +48,11 @@ Statuses:
   60 games: 21-4-35, -83 Elo [-178,+2], z=-1.91: no gain, probable loss, so it stays disabled.
 
 ### Fixed
+- **Self-play ignored its seed (learn.mjs).** `playGame` discarded `opts.seed`, so every game started from the initial position
+  and was fully deterministic: a "match of N games" was two distinct games (one per colour) repeated, the standard errors in
+  `compare()`/`hillClimb()` were meaningless and "different seeds" changed nothing. The seed now selects a random 8-ply opening
+  (balanced to +-150 cp); colour-swapped pairs share an opening. Regression tests in `tests/engine.learn.mjs`. Anything
+  accepted by v3.0.x `hillClimb` rests on invalid statistics.
 - **Zobrist key had ~32 effective bits (core.mjs).** `lo` and `hi` were consecutive outputs of one xorshift32; xorshift is
   linear over GF(2), so `hi = L(lo)` for every table entry and (keys are XOR sums) for every position. The 53-bit key
   therefore behaved as a 32-bit key (GF(2) rank 32 instead of 64): distinct positions with equal keys appeared

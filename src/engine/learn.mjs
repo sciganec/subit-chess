@@ -38,6 +38,32 @@ export function makeRng(seed = 1) {
 export const RESULT = { WHITE: 1, DRAW: 0, BLACK: -1 };
 
 /**
+ * A seeded random opening: `plies` random legal moves from the initial position, retried (with the same PRNG
+ * stream, so still deterministic) until the line is not over and the static evaluation is within +-150 cp,
+ * so that a result reflects the parameters and not a lopsided opening.
+ */
+export function openingFen(seed, plies = 8) {
+  if (!plies) return Position.start().fen();
+  const rng = makeRng(seed);
+  const judge = new Engine(undefined, { ttBits: 10, usePlans: false, useMeta: false });
+  let last = Position.start().fen();
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const p = Position.start();
+    let ok = true;
+    for (let i = 0; i < plies; i++) {
+      const ms = p.legalMoves();
+      if (!ms.length) { ok = false; break; }
+      p.makeMove(ms[Math.floor(rng() * ms.length)]);
+    }
+    if (!ok || p.legalMoves().length === 0) continue;
+    last = p.fen();
+    judge.setFEN(last);
+    if (Math.abs(judge.evaluation.fast(judge.pos)) <= 150) return last;
+  }
+  return last;
+}
+
+/**
  * Play one game. `white` and `black` are parameter sets (the same engine code).
  * Returns { result, plies, line, termination, score }.
  * `score` is from White's point of view in centipawns-ish units:
@@ -46,12 +72,15 @@ export const RESULT = { WHITE: 1, DRAW: 0, BLACK: -1 };
 export function playGame(whiteParams, blackParams, opts = {}) {
   const maxPlies = opts.maxPlies || 120;
   const depth = opts.depth || 3;
-  void opts.seed;   // kept in the signature: the game is already deterministic
+  // v3.0.9: the seed now chooses the opening. Before, `seed` was ignored and every game started from the initial
+  // position, so a match of N games was 2 distinct games repeated (one per colour) and the standard errors in
+  // compare()/hillClimb() were meaningless. openingPlies = 0 restores the old single-line behaviour.
+  const startFen = openingFen(opts.seed ?? 1, opts.openingPlies ?? 8);
 
   const white = new Engine(whiteParams, { ttBits: 16, usePlans: false, useMeta: false });
   const black = new Engine(blackParams, { ttBits: 16, usePlans: false, useMeta: false });
 
-  white.setFEN(Position.start().fen());
+  white.setFEN(startFen);
   black.pos.setFEN(white.fen);
 
   const line = [];
@@ -111,7 +140,7 @@ export function compare(championParams, challengerParams, opts = {}) {
     const challengerIsWhite = i % 2 === 0;
     const w = challengerIsWhite ? challengerParams : championParams;
     const b = challengerIsWhite ? championParams : challengerParams;
-    const g = playGame(w, b, { depth, seed: baseSeed + i * 7919, maxPlies: opts.maxPlies });
+    const g = playGame(w, b, { depth, seed: baseSeed + Math.floor(i / 2) * 7919, maxPlies: opts.maxPlies, openingPlies: opts.openingPlies });
     // normalise to the challenger's point of view
     out.push({ ...g, result: challengerIsWhite ? g.result : -g.result });
   }
