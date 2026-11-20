@@ -276,7 +276,10 @@ const LOPSIDED = [
   tt.store(key, 8, 42, TT_EXACT, mv, 0);
   check('a fresh TT entry is probed', tt.probe(key, 4, -INF, INF, 0) !== null);
   tt.newGeneration();
-  check('an entry one generation old is still probed', tt.probe(key, 4, -INF, INF, 0) !== null);
+  // v3.0.9: an entry is usable only inside the search that wrote it. A
+  // one-generation-old entry is rejected as a score *and* as a move hint,
+  // otherwise a shallower search can change the exact score of a later one.
+  check('an entry one generation old is ignored', tt.probe(key, 4, -INF, INF, 0) === null);
   tt.newGeneration();
   check('an entry two generations old is ignored', tt.probe(key, 4, -INF, INF, 0) === null);
   check('the stored move is gone with the stale entry', tt.moveFor(key) === mv,

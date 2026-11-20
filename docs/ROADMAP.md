@@ -1,6 +1,6 @@
 # Roadmap
 
-Direction for **subit-chess** after v3.0.8.
+Direction for **subit-chess** after v3.0.9.
 
 Guiding principles (unchanged):
 - **Evidence over ambition.** Every next step has a pre-registered gate.
@@ -14,7 +14,7 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.8 (2026-11-16)
+## Current state — v3.0.9 (2026-11-19)
 
 **Status:** Engine core rewrite + correctness pass. Strength demonstrated so far is a
 single large fix (evaluation perspective); everything else is still inside the noise band.
@@ -39,6 +39,7 @@ single large fix (evaluation perspective); everything else is still inside the n
 | A plan needs all five feasibility axes to be accepted | v3.0.8: `admitted` (rule + structure) vs `accepted` (all five), rejected plans carry the full vector |
 | The engine searches off the main thread and reads its own Memory | ADR 0021, v3.0.8: `tests/engine.worker.mjs`, one `Engine` per worker, `prevBest`/`prevScore` seeding |
 | The shipped UI survives a custom start position | v3.0.8: PGN `SetUp`/`FEN`/result, undo to the base FEN, captures counted against it, keyboard play |
+| Horizon scores come from searched, legal positions | ADR 0022, v3.0.9: no stand-pat in check, qdepth cap resolves an evasion, stalemate at any qdepth, claimable draws searched, root honours automatic draws; 12 checks in `tests/engine.audit2.mjs` |
 
 **What is not yet known:**
 - Does a ply of depth convert into strength? (the `--a base@5 --b base@4` regression)
@@ -56,10 +57,14 @@ single large fix (evaluation perspective); everything else is still inside the n
   unmeasurable at that size.
 - **Debt:** `contextBonus` in `index.mjs` always returns 0 (dead ordering term);
   `Score.diff` is never written. (TT aging landed in 3.0.4: entries older than one
-  generation are ignored, `tests/engine.eval.mjs` §12.) (`unmakeNullMove` was
+  generation are ignored; v3.0.9 narrows this to one search and applies the same
+  rule to move hints, `tests/engine.eval.mjs` §12.) (`unmakeNullMove` was
   re-checked: it restores `turn` from the undo record, there is no `stm++` bug.)
 - **Audit closure (v3.0.8).** All P1 and all P2 items of the v3.0.6 audit are
-  closed, plus P3.1. The remaining P3 items (self-play loop, parameter control,
+  closed, plus P3.1. The six P0 items (AUD-01…AUD-06) of the v3.0.8 second
+  audit were closed in v3.0.9; AUD-07…AUD-09 (null-move/repetition, dead
+  material in the horizon, null-move state equivalence) remain open P1.
+  The remaining P3 items (self-play loop, parameter control,
   independent validation set, version comparison, strength measurement) are
   served by `bench/match.mjs`, `engine.learn` and `selfplay` but have never been
   run at the sample size Gate 1 requires; they stay on this list rather than

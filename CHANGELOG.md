@@ -27,6 +27,56 @@ Strength and measurement items for the v3 engine (measured, not cosmetic):
 
 ---
 
+## [3.0.9] — 2026-11-19
+
+Correctness increment: the six P0 defects from
+`ver/subit_chess_v3.0.8/subit_chess_v3.0.8_audit_2.md` are closed. No strength
+claim — this release makes published scores describe searched, legal positions.
+No interface change; the shipped file is still one offline HTML.
+
+### Fixed
+
+- **AUD-01 — no stand-pat in check.** `quiescence` used to return a static score
+  of a checked position and could cut it off with beta. A static score is not a
+  legal move; the check now starts from `-INF` so the first searched evasion
+  sets the bound.
+- **AUD-02 — qdepth cap while in check.** At the horizon cap, scoring the
+  unresolved check (or returning `-INF` and fabricating a loss) is replaced by
+  `staticCheckEvasion()`: resolve one legal evasion and score that position
+  statically (mate when none exists). No recursion, so the cap stays a cap.
+- **AUD-03 — horizon stalemate at any qdepth.** The stalemate probe no longer
+  runs only at `qdepth === 0`; it runs whenever no capture was generated, so a
+  deeper quiet horizon cannot publish a material score for a drawn position.
+- **AUD-04 — claimable draws are playable inside the search.** `negamax` keeps
+  only the automatic draws (75-move, fivefold) as terminal. The 50-move and
+  threefold claims stay normal positions, matching ADR 0020. This supersedes
+  the search clause of ADR 0011; its game-status clause is intact.
+- **AUD-05 — root honours automatic draws.** `search()` detects the 75-move
+  rule, fivefold repetition and dead material before searching, returning a
+  terminal result with a `reason` that matches `Position.status()`.
+- **AUD-06 — futility sign.** The post-move static score is negated before it
+  is compared with alpha (the position belongs to the opponent); the previous
+  sign pruned exactly the good quiet moves it should keep.
+
+### Notes
+
+- **TT validity narrows to one search.** `TT_MAX_AGE` is `0` and `ttMoveFor()`
+  now applies the same age check as `probe()`. After the quiescence fix, a
+  one-generation-old move hint reordered the tree and changed the published
+  score (cold `-3`, warm `+25` on the ADR 0011 position). Iterative deepening
+  is unaffected and `Memory` still carries move and score across game moves.
+  See ADR 0022.
+- **ADR 0022** records the search terminal-correctness decisions above.
+- **AUD-07…AUD-09** (null-move/repetition contamination, dead material in the
+  horizon, null-move state equivalence) remain open P1 items.
+
+### Added
+
+- `tests/engine.audit2.mjs` — 12 checks, one or more per P0 defect, wired into
+  `npm test`, `npm run test:engine` and `npm run test:audit2`.
+
+---
+
 ## [3.0.8] — 2026-11-16
 
 Audit follow-up: the remaining P1 items and the whole P2 UI block are closed, and

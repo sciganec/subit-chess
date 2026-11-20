@@ -905,4 +905,67 @@ its own engine:
 
 ---
 
-*End of DECISIONS.md — v3.0.8*
+## ADR 0022 — search terminal correctness (v3.0.8 audit, P0)
+
+**Status:** Accepted (v3.0.9)
+
+### Context
+
+`ver/subit_chess_v3.0.8/subit_chess_v3.0.8_audit_2.md` listed nine defects;
+six were confirmed P0. Their common theme is that a score was published from
+something other than a searched, legal position:
+
+- a **stand-pat** in check (AUD-01) — a static score is not a legal move, yet it
+  could produce a beta cutoff in the horizon;
+- the **qdepth cap while in check** (AUD-02) — the same static score of an
+  unresolved check was returned at the cap (returning `-INF` instead was the
+  v3.0.0 false-loss defect);
+- **stalemate** checked only at `qdepth === 0` (AUD-03) — a deeper quiet
+  horizon could publish a material score for a drawn position;
+- **claimable draws** scored as terminal 0 inside `negamax` (AUD-04) — this
+  contradicted ADR 0020, which had already made them normal playable positions
+  in `Position.status()` and in the horizon;
+- the **root** skipped automatic draws (AUD-05) — it could keep searching a
+  position the game authority already ends;
+- **futility pruning** compared an opponent-perspective static score with the
+  mover's alpha (AUD-06), pruning exactly the good quiet moves it should keep.
+
+### Decision
+
+- In check, `quiescence` starts from `-INF` and has **no stand-pat**; the first
+  searched evasion sets the bound. At the cap, `staticCheckEvasion()` resolves
+  one legal evasion statically (mate when none exists) instead of scoring the
+  checked position or fabricating `-INF`.
+- The horizon stalemate probe runs at **every** qdepth, still only when no
+  capture was generated, so the tactical path pays nothing.
+- `negamax` keeps only the **automatic** draws (75-move, fivefold) as terminal.
+  The 50-move and threefold claims stay playable, as ADR 0020 decided. This
+  supersedes the *search* clause of ADR 0011; its game-status clause is intact.
+- The root detects the automatic draws (75-move, fivefold, dead material)
+  before searching, with a `reason` on the result.
+- Futility negates the post-move static score before comparing it with alpha
+  (the patch carried over from the uncommitted v3.0.8 working tree).
+- **TT validity is one search.** `TT_MAX_AGE` is 0 and `ttMoveFor()` applies the
+  same age check as `probe()`. Without it, a one-generation-old move hint from
+  `ttMoveFor()` reorders the tree after the quiescence fix and the published
+  score depends on which shallower searches ran before (measured: cold `-3`,
+  warm `+25` on the ADR 0011 position). Iterative deepening is unaffected —
+  all its entries share one generation — and `Memory` still carries move and
+  score across game moves. This narrows ADR 0021's "TT survives across moves"
+  to "the table is kept, its entries are not reused across root searches".
+
+### Consequences
+
+- Scores at the horizon now describe positions that were actually reached by a
+  legal move; claimable draws are searched instead of scored as half a point.
+- Root searches of automatically drawn positions return a terminal result with
+  a reason, matching `Position.status()`.
+- Warm and cold searches of the same position again return the same score and
+  move (`tests/engine.eval.mjs` §12), so v3.0.4's reproducibility guarantee is
+  preserved under the corrected quiescence.
+- AUD-07…AUD-09 (null-move/repetition contamination, dead material in the
+  horizon, null-move state equivalence) remain open P1 items.
+
+---
+
+*End of DECISIONS.md — v3.0.9*

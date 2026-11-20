@@ -41,11 +41,15 @@ const HISTORY_MAX = 1 << 20;
  * An entry written by an older search was produced under a different move
  * order, so its bound flags can flip the root choice: on the position after
  * 11...O-O a fresh d12 search reported Kxf1 +81.0, while the same search after
- * d6/d8/d10 reported Nf5 +113.2. Rejecting entries older than one generation
- * makes the result independent of what was searched before (measured: cold and
- * warm now agree, node count within 2% on a 22-ply line at 600 ms/move).
+ * d6/d8/d10 reported Nf5 +113.2. v3.0.4 kept entries one generation old; with
+ * the v3.0.9 quiescence fix (no stand-pat in check) that is no longer enough —
+ * a one-generation-old *move hint* from ttMoveFor() reorders the tree and
+ * changes the published score even though the entry's score is still rejected.
+ * An entry is now usable only inside the search that wrote it. Iterative
+ * deepening is unaffected (one generation per root search); Memory still
+ * carries the move and score across moves of a game.
  */
-const TT_MAX_AGE = 1;
+const TT_MAX_AGE = 0;
 
 /* ------------------------------------------------------------------ *
  * Transposition table
@@ -295,6 +299,18 @@ export class Searcher {
     return false;
   }
 
+  /**
+   * The three automatic draws shared by the root and the rule authority
+   * (`Position.status()`, ADR 0020). A claimable 50-move or threefold draw is
+   * deliberately absent: it is an available claim, not a terminal position.
+   */
+  automaticDrawReason(pos) {
+    if (pos.halfmove >= 150) return 'seventy-five-move rule';
+    if (pos.repetitionCount() >= 5) return 'fivefold repetition';
+    if (pos.insufficientMaterial()) return 'insufficient material';
+    return null;
+  }
+
   /** Root search with iterative deepening. */
   search(pos, opts = {}) {
     const t0 = Date.now();
@@ -314,6 +330,18 @@ export class Searcher {
     const rootMoves = pos.legalMoves();
     if (rootMoves.length === 0) {
       return { move: 0, score: pos.inCheck() ? -MATE : 0, depth: 0, nodes: 0, pv: [], completed: false, reason: 'no legal moves' };
+    }
+    // AUD-05: automatic draws are terminal at the root too. The 75-move rule,
+    // fivefold repetition and dead material end the game whatever the search
+    // would otherwise find; claimable draws (50-move, threefold) stay playable
+    // per ADR 0020 and are searched as normal positions.
+    const autoDraw = this.automaticDrawReason(pos);
+    if (autoDraw) {
+      return {
+        move: 0, score: 0, scoreSpread: 0, secondScore: 0, depth: 0, nodes: 0,
+        pv: [], completed: false, reason: autoDraw, seldepth: 0,
+        timeMs: Date.now() - t0, nps: 0, flag: null, ttHits: 0, ttCutoffs: 0
+      };
     }
     // a single legal move is not special-cased: it still has a real value
     // (it may be a mate-in-1), which the normal loop below reports exactly
@@ -470,17 +498,15 @@ export class Searcher {
     // quiescence for the side to move (it always generates check evasions).
     if (depth <= 0 && !inCheck) return this.quiescence(pos, alpha, beta, ply, 0);
 
-    // Draw rules inside the search. The 75-move rule (FIDE 9.6.2) and fivefold
-    // repetition (9.6.1) are automatic; the 50-move rule (9.3) and threefold
-    // repetition (9.2) are claimable, which in practice means the opponent will
-    // claim them. Both are therefore scored as 0: a side that is better must
-    // avoid the repetition instead of shuffling into a draw.
+    // Draw rules inside the search (AUD-04). Only the automatic draws are
+    // terminal: the 75-move rule (FIDE 9.6.2) and fivefold repetition (9.6.1).
+    // The 50-move rule (9.3) and threefold repetition (9.2) are claimable, not
+    // automatic: the position stays playable and is searched normally. ADR
+    // 0020 already made that distinction for Position.status() and the
+    // horizon; the search now agrees instead of scoring a claimable draw as a
+    // terminal 0 and hiding a still-winnable continuation.
     if (pos.halfmove >= 150) return 0;
-    if (ply > 0) {
-      if (pos.repetitionCount() >= 5) return 0;
-      if (pos.repetitionCount() >= 3) return 0;
-      if (pos.halfmove >= 100) return 0;
-    }
+    if (ply > 0 && pos.repetitionCount() >= 5) return 0;
 
     const pvNode = beta - alpha > 1;
     const alphaOrig = alpha;
@@ -544,7 +570,11 @@ export class Searcher {
       // `isQuiet` cannot rule out (audit v3.0.6 §4.4).
       if (this.useFutility && futility.enabled && depth <= futility.maxDepth &&
           !pvNode && isQuiet && !inCheck && !givesCheck && bestScore > -INF) {
-        const staticScore = this.ev.evaluate(pos, depth);
+        // pos is the position *after* the move, i.e. the opponent's turn, so the
+        // static score is from their perspective and must be negated before it
+        // is compared with alpha (which is the mover's window). Without the
+        // negation a good position for the opponent prunes the mover's move.
+        const staticScore = -this.ev.evaluate(pos, depth);
         if (staticScore + futility.margin <= alpha) {
           pruned++;
           pos.unmakeMove(undo);
@@ -624,6 +654,9 @@ export class Searcher {
     if (!this.useTT) return 0;
     const idx = (pos.ttKey % this.tt.size) | 0;
     if (this.tt.keys[idx] !== pos.ttKey) return 0;
+    // the same age rule as probe(): a stale hint would reorder the tree and
+    // change the score even when the entry's bound is rejected (AUD-01)
+    if (this.tt.generation - this.tt.age[idx] > TT_MAX_AGE) return 0;
     return this.tt.depths[idx] >= depth ? this.tt.moves[idx] : 0;
   }
 
@@ -645,6 +678,35 @@ export class Searcher {
     return hasPiece;
   }
 
+  /**
+   * Horizon fallback for a node still in check at the qsearch cap (AUD-02).
+   * A static score of the checked position is not a legal outcome, and -INF
+   * would fabricate a loss (the v3.0.0 defect). Resolve the check by one legal
+   * evasion and score the resulting position statically; no evasion is mate.
+   * No recursion: the cap stays a cap.
+   */
+  staticCheckEvasion(pos, moves, ply) {
+    const us = pos.turn;
+    const them = opposite(us);
+    let best = -INF;
+    let legal = 0;
+    for (const m of moves) {
+      pos.pushRep();
+      const undo = pos.makeMove(m);
+      if (pos.isAttacked(pos.kingSq[us], them)) {
+        pos.unmakeMove(undo);
+        pos.popRep();
+        continue;
+      }
+      legal++;
+      const score = -this.ev.evaluate(pos, 0);
+      pos.unmakeMove(undo);
+      pos.popRep();
+      if (score > best) best = score;
+    }
+    return legal === 0 ? -MATE + ply : best;
+  }
+
   quiescence(pos, alpha, beta, ply, qdepth) {
     if (this.checkStop()) return 0;
     if (ply > this.seldepth) this.seldepth = ply;
@@ -661,27 +723,30 @@ export class Searcher {
 
     if (inCheck) {
       moves = pos.generateMoves(false);
-      // when the quiescence cap is reached while in check, fall back to the
-      // static evaluation — returning -INF reported a false loss from the
-      // side that is merely unable to resolve the check within the cap
-      best = this.ev.evaluate(pos, 0);
-      if (best >= beta) return best;
-      if (best > alpha) alpha = best;
+      // No stand-pat in check (AUD-01): a static score is not a legal move, so
+      // it cannot produce a beta cutoff. -INF lets the first *searched*
+      // evasion set the real bound; a node where every evasion is bad cannot
+      // be declared good just because the checked position scores well.
+      best = -INF;
     } else {
       const stand = this.ev.evaluate(pos, 0);
       if (stand >= beta) return stand;
       if (stand > alpha) alpha = stand;
       best = stand;
       moves = pos.generateMoves(true);
-      // Stalemate at the horizon. A quiet position without captures is not
-      // evidence of a legal move, and a static score here would report a won
-      // game as drawn (or the reverse) with no bound to show for it. The check
-      // runs only at the first ply and only when no capture exists, so the
-      // common tactical path pays nothing.
-      if (moves.length === 0 && qdepth === 0 && this.qStalemate &&
+      // Stalemate at the horizon, at any qdepth (AUD-03). A quiet position
+      // without captures is not evidence of a legal move, and a static score
+      // would report a won game as drawn (or the reverse). The probe runs only
+      // when no capture was generated, so the common tactical path pays nothing.
+      if (moves.length === 0 && this.qStalemate &&
           pos.legalMoves().length === 0) return 0;
     }
-    if (qdepth > 8) return best;
+
+    // The cap. Not in check, `best` already carries the stand-pat value. In
+    // check it is -INF: returning it fabricates a loss, and returning a static
+    // score of an unresolved check is the AUD-02 defect. Resolve one legal
+    // evasion statically instead.
+    if (qdepth > 8) return inCheck ? this.staticCheckEvasion(pos, moves, ply) : best;
 
     const us = pos.turn;
     const them = opposite(us);

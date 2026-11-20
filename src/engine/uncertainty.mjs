@@ -245,7 +245,7 @@ export function buildCertificate(input = {}) {
   const {
     fen = '', version = 0, move = null, san = null, legal = true, legalCount = 0,
     depth = 0, completed = false, nodes = 0, pv = [], score = 0,
-    profile = null, paramVersion = '3.0.8', algorithmVersion = '3.0.8'
+    profile = null, paramVersion = '3.0.9', algorithmVersion = '3.0.9'
   } = input;
 
   let status;
