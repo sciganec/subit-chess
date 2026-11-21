@@ -9,15 +9,25 @@
  *
  * The protocol is deliberately minimal and honest:
  *   - every game is played by the *same* engine code with different parameters;
- *   - the score is a deterministic function of the seed, so a result is
- *     reproducible and a difference can be attributed to the parameters;
- *   - acceptance is a plain sign test on the mean score, with the standard
- *     error reported next to it, so a "win" cannot be claimed on noise.
+ *   - the seed selects a legal start position and is reported with each game,
+ *     so games are distinct observations and a result is reproducible;
+ *   - colours alternate, so the challenger is tested as White and as Black;
+ *   - acceptance uses only the tuning games; an optional validation sample is
+ *     drawn from a disjoint seed range and is reported, never fed back;
+ *   - the mean score is reported with its standard error and full W/D/L, so a
+ *     "win" cannot be claimed on noise.
  */
 
 import { Position } from './core.mjs';
 import { Engine } from './index.mjs';
 import { cloneParams, DEFAULT_PARAMS } from './evaluate.mjs';
+
+export const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+const TUNING_SEED_STEP = 7919;
+const VALIDATION_SEED_STEP = 104729;
+const VALIDATION_SEED_SALT = 0x9e3779b9;
+const HILLCLIMB_VALIDATION_SALT = 0x85ebca6b;
 
 /** Deterministic PRNG (mulberry32) — results must not depend on Math.random. */
 export function makeRng(seed = 1) {
@@ -34,6 +44,39 @@ export function makeRng(seed = 1) {
 export const RESULT = { WHITE: 1, DRAW: 0, BLACK: -1 };
 
 /**
+ * A legal, reproducible start position for one seeded observation. A few
+ * random plies from the standard start keep material balanced while breaking
+ * the "all games are the same trajectory" problem (AUD-309-04). The bootstrap
+ * history is not part of the game — `setFEN()` resets it when play starts.
+ */
+export function makeStartFEN(seed, plies = 4) {
+  const rng = makeRng(seed);
+  const pos = new Position().setFEN(START_FEN);
+  const n = Math.max(0, Math.floor(plies));
+  for (let i = 0; i < n; i++) {
+    const moves = pos.legalMoves();
+    if (!moves.length) break;
+    const m = moves[Math.floor(rng() * moves.length) % moves.length];
+    pos.makeMove(m);
+  }
+  return pos.fen();
+}
+
+/**
+ * Colour pairing for game `gameIndex`: the challenger is White in even games
+ * and Black in odd games (AUD-309-03). Both branches are explicit so the
+ * assignment cannot silently collapse to champion vs champion.
+ */
+export function pairColors(championParams, challengerParams, gameIndex) {
+  const challengerIsWhite = gameIndex % 2 === 0;
+  return {
+    white: challengerIsWhite ? challengerParams : championParams,
+    black: challengerIsWhite ? championParams : challengerParams,
+    challengerIsWhite
+  };
+}
+
+/**
  * Play one game. `white` and `black` are parameter sets (the same engine code).
  * Returns { result, plies, line, termination, score }.
  * `score` is from White's point of view in centipawns-ish units:
@@ -42,12 +85,13 @@ export const RESULT = { WHITE: 1, DRAW: 0, BLACK: -1 };
 export function playGame(whiteParams, blackParams, opts = {}) {
   const maxPlies = opts.maxPlies || 120;
   const depth = opts.depth || 3;
-  void opts.seed;   // kept in the signature: the game is already deterministic
+  const startFen = opts.startFen ||
+    (opts.seed === undefined ? START_FEN : makeStartFEN(opts.seed, opts.startPlies ?? 4));
 
   const white = new Engine(whiteParams, { ttBits: 16, usePlans: false, useMeta: false });
   const black = new Engine(blackParams, { ttBits: 16, usePlans: false, useMeta: false });
 
-  white.setFEN(Position.start().fen());
+  white.setFEN(startFen);
   black.pos.setFEN(white.fen);
 
   const line = [];
@@ -75,7 +119,10 @@ export function playGame(whiteParams, blackParams, opts = {}) {
     }
   }
 
-  return { result, plies: line.length, line, termination, fen: white.fen };
+  return {
+    result, plies: line.length, line, termination, fen: white.fen,
+    seed: opts.seed ?? null, startFen
+  };
 }
 
 /** Mean score and standard error over a set of games. */
@@ -94,40 +141,91 @@ export function summarize(games) {
   return { n, mean, se: Math.sqrt(variance / n), wins, draws, losses };
 }
 
+function playSeries(championParams, challengerParams, {
+  games, seed, step, series, depth, maxPlies, startPlies
+}) {
+  const out = [];
+  for (let i = 0; i < games; i++) {
+    const pair = pairColors(championParams, challengerParams, i);
+    const g = playGame(pair.white, pair.black, {
+      depth, seed: (seed + i * step) >>> 0, maxPlies, startPlies
+    });
+    // normalise to the challenger's point of view
+    out.push({
+      ...g,
+      challengerColor: pair.challengerIsWhite ? 'w' : 'b',
+      series,
+      result: pair.challengerIsWhite ? g.result : -g.result
+    });
+  }
+  return out;
+}
+
 /**
- * ΔS = S(N) − S(C): play `games` games with alternating colours and return the
- * challenger's mean score with its standard error.
+ * ΔS = S(N) − S(C): play `games` independent, colour-balanced observations and
+ * return the challenger's mean score with its standard error and full W/D/L.
+ * With `validationGames > 0` a second sample is drawn from a disjoint seed
+ * range; it is reported but never used for `significant` or `verdict`, so a
+ * tuning decision cannot leak into the validation estimate.
  */
 export function compare(championParams, challengerParams, opts = {}) {
   const games = opts.games || 10;
+  const validationGames = Math.max(0, opts.validationGames || 0);
   const baseSeed = opts.seed || 1;
   const depth = opts.depth || 3;
-  const out = [];
-  for (let i = 0; i < games; i++) {
-    const challengerIsWhite = i % 2 === 0;
-    const w = challengerIsWhite ? challengerParams : championParams;
-    const b = challengerIsWhite ? championParams : challengerParams;
-    const g = playGame(w, b, { depth, seed: baseSeed + i * 7919, maxPlies: opts.maxPlies });
-    // normalise to the challenger's point of view
-    out.push({ ...g, result: challengerIsWhite ? g.result : -g.result });
-  }
+  const tuningSeed = baseSeed >>> 0;
+  const validationSeed = (baseSeed + VALIDATION_SEED_SALT) >>> 0;
+  const common = { depth, maxPlies: opts.maxPlies, startPlies: opts.startPlies };
+
+  const out = playSeries(championParams, challengerParams, {
+    ...common, games, seed: tuningSeed, step: TUNING_SEED_STEP, series: 'tuning'
+  });
   const s = summarize(out);
   const dS = s.mean;
+  const significant = Math.abs(dS) > 2 * (s.se || 1e-9);
+
+  let validation = null;
+  let split = null;
+  if (validationGames > 0) {
+    const valGames = playSeries(championParams, challengerParams, {
+      ...common, games: validationGames, seed: validationSeed,
+      step: VALIDATION_SEED_STEP, series: 'validation'
+    });
+    validation = summarize(valGames);
+    const tuningStarts = new Set(out.map((g) => g.startFen));
+    const overlap = valGames.filter((g) => tuningStarts.has(g.startFen)).length;
+    split = {
+      tuningSeed, validationSeed,
+      tuningStarts: tuningStarts.size,
+      validationStarts: new Set(valGames.map((g) => g.startFen)).size,
+      overlap,
+      leaked: overlap > 0
+    };
+  }
+
   return {
     dS,
     se: s.se,
     games: out,
     summary: s,
-    significant: Math.abs(dS) > 2 * (s.se || 1e-9),
-    verdict: dS > 0 ? (Math.abs(dS) > 2 * (s.se || 1e-9) ? 'accept' : 'inconclusive')
-      : (Math.abs(dS) > 2 * (s.se || 1e-9) ? 'reject' : 'inconclusive')
+    validation,
+    split,
+    colorBalance: {
+      challengerWhite: out.filter((g) => g.challengerColor === 'w').length,
+      challengerBlack: out.filter((g) => g.challengerColor === 'b').length
+    },
+    significant,
+    verdict: dS > 0 ? (significant ? 'accept' : 'inconclusive')
+      : (significant ? 'reject' : 'inconclusive')
   };
 }
 
 /**
  * Hill climbing over a small parameter subset.
  * Each step perturbs one knob, accepts only a *significant* improvement, and
- * keeps the best parameters. Deterministic given the seed.
+ * keeps the best parameters. Deterministic given the seed. When requested, a
+ * final comparison against the original parameters is reported as
+ * `validation`; it is never used to accept a step.
  */
 export function hillClimb(baseParams, opts = {}) {
   const steps = opts.steps || 6;
@@ -156,7 +254,13 @@ export function hillClimb(baseParams, opts = {}) {
       bestScore = r.dS;
     }
   }
-  return { params: best, score: bestScore, log };
+  const validation = opts.validationGames
+    ? compare(baseParams, best, {
+      games: opts.validationGames, depth, seed: (seed + HILLCLIMB_VALIDATION_SALT) >>> 0,
+      maxPlies: opts.maxPlies, startPlies: opts.startPlies
+    })
+    : null;
+  return { params: best, score: bestScore, log, validation };
 }
 
 function setKnob(params, path, delta) {

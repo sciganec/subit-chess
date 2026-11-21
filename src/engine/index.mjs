@@ -25,7 +25,7 @@ import { generatePlans, describePlans, makePlanOrderer, pareto, PLAN } from './p
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
 
-export const VERSION = '3.0.9';
+export const VERSION = '3.0.10';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)

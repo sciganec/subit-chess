@@ -27,6 +27,49 @@ Strength and measurement items for the v3 engine (measured, not cosmetic):
 
 ---
 
+## [3.0.10] — 2026-11-21
+
+Correctness increment closing the P1/P2 findings of
+`ver/subit_chess_v3.0.9/subit_chess_v3.0.9_audit.md`. No strength claim: search
+evaluation, pruning parameters, UI and legality rules are unchanged. The audit
+is static-only, so each finding was reproduced against the current sources
+before a fix was written.
+
+### Fixed
+
+- **AUD-309-02 — null move no longer advances the halfmove clock.** A search-only
+  null move at a real `halfmove = 149` used to create a synthetic `150` and a
+  terminal draw in the recursive search. `makeNullMove()` now leaves the clock
+  and repetition history untouched; `unmakeNullMove()` restores the full state
+  snapshot, including `castling`, `fullmove` and `repLimit` (AUD-07/AUD-09).
+- **AUD-309-04 — self-play observations are now independent and reported.** The
+  seed selects a legal start position instead of being discarded, every game
+  reports its seed and start FEN, colours are balanced, W/D/L are accounted for,
+  and an optional validation sample uses a disjoint seed range. Validation is
+  reported but never influences acceptance, so tuning cannot leak into it.
+- **AUD-309-01 — package and CI artifact identity.** `version`, `main`, `browser`
+  and the built HTML now agree; CI resolves the artifact name from
+  `package.json` instead of a hardcoded v3.0.8 path.
+- **AUD-309-05 — en passant origin square.** A FEN is rejected when the pawn's
+  double-push origin square is occupied, so the position has no possible
+  predecessor.
+- **AUD-309-06 — safe integer FEN counters.** Halfmove and fullmove must be
+  exact, non-negative (fullmove >= 1) safe integers; rounded oversized values
+  can no longer silently change draw detection or move numbering.
+
+### Notes
+
+- **AUD-309-03 (challenger as Black) was not reproducible.** The current
+  `compare()` already assigns challenger/White in even games and
+  challenger/Black in odd games. The audit's own patch snippets were
+  self-contradictory and marked "do not apply"; semantics were derived
+  independently and locked with a regression test instead of patching correct
+  code.
+- New suite `tests/engine.audit309.mjs` covers every finding above and is wired
+  into `npm test`.
+
+---
+
 ## [3.0.9] — 2026-11-19
 
 Correctness increment: the six P0 defects from

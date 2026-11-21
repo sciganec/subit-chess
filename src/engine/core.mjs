@@ -872,7 +872,8 @@ export class Position {
       castling: this.castling, ep: this.ep, halfmove: this.halfmove,
       fullmove: this.fullmove, hashLo: this.hashLo, hashHi: this.hashHi,
       kingW: this.kingSq[WHITE], kingB: this.kingSq[BLACK],
-      phaseMaterial: this.phaseMaterial, turn: this.turn
+      phaseMaterial: this.phaseMaterial, turn: this.turn,
+      repLimit: this.repLimit
     };
     if (this.ep >= 0) {
       const k = ZOBRIST.ep[fileOf(this.ep)];
@@ -883,15 +884,20 @@ export class Position {
     this.turn = opposite(this.turn);
     this.hashLo = (this.hashLo ^ ZOBRIST.turn.lo) >>> 0;
     this.hashHi = (this.hashHi ^ ZOBRIST.turn.hi) >>> 0;
-    this.halfmove++;
+    // A null move is not a played move. It must not advance the 75-move clock
+    // (AUD-309-02) and must not enter the repetition history (AUD-07). `ply`
+    // still advances so the search sees the extra node in its depth accounting.
     this.ply++;
     return undo;
   }
 
   unmakeNullMove(undo) {
     this.turn = undo.turn;
+    this.castling = undo.castling;
     this.ep = undo.ep;
     this.halfmove = undo.halfmove;
+    this.fullmove = undo.fullmove;
+    this.repLimit = undo.repLimit;
     this.hashLo = undo.hashLo;
     this.hashHi = undo.hashHi;
     this.kingSq[WHITE] = undo.kingW;
