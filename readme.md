@@ -6,11 +6,12 @@ UI that shows what the engine is actually thinking.
 
 Single-file HTML — no build step for the end user, no server, no CDN, no network access.
 
-**Current release: v3.0.9**
+**Current release: v3.0.10** — correctness increment. Release dossier:
+[`ver/subit_chess_v3.0.10/RELEASE.md`](ver/subit_chess_v3.0.10/RELEASE.md).
 
 ## Quick start
 
-Open `src/subit_chess_v3.0.9.html` in any modern browser (double-click works; the file is
+Open `src/subit_chess_v3.0.10.html` in any modern browser (double-click works; the file is
 fully self-contained).
 
 ```
@@ -38,16 +39,21 @@ the artifact stays a single HTML file.
 
 | Module | Responsibility |
 |---|---|
-| `core.mjs` | board representation, move generation, make/unmake, FEN, Zobrist, perft |
-| `percept.mjs` | S₀ = (I, Z, Φ) — initiative / zone / phase perception from the raw position |
+| `core.mjs` | board representation, legal move generation, make/unmake, Zobrist, perft |
+| `fen.mjs` | strict FEN parsing/serialisation, en passant and counter validation |
+| `percept.mjs` | S₀ = (I, Z, Φ) — 4×4×4 = 64-state interaction/zone/phase perception |
 | `structure.mjs` | pawn structure, piece activity, king safety, space, critical squares |
-| `context.mjs` | game-phase context, opening/middlegame/endgame classification, tempo |
+| `context.mjs` | marginal intensities for `I = QUIET/DEFENCE/ATTACK/PRESSURE`, `Z = GLOBAL/QUEENSIDE/KING/CENTER`, `Φ = OPENING/MIDDLEGAME/ENDGAME/TRANSITION` |
 | `evaluate.mjs` | fast tier (tapered material + PST, mobility, bishop pair, pawn structure, rook files, king shield) and structural tier `E(SVF)` |
-| `plans.mjs` | structural plan generation, cost/ranking, plan-aware move ordering (bounded to the structural level) |
+| `plans.mjs` | structural plan generation, feasibility/Pareto ranking, plan-aware move ordering (bounded to the structural level) |
 | `search.mjs` | iterative deepening, alpha-beta + quiescence, TT, killers/history, null move, LMR, aspiration, draw rules |
 | `meta.mjs` | search metadata: risk, stability, confidence, budget accounting |
-| `index.mjs` | `Engine` facade: `setFEN / legalMoves / analyze / budget / search / play / perft / selfPlay` |
+| `uncertainty.mjs` | eight-component `U(P)` and search decision certificate |
+| `learn.mjs` | offline self-play harness with independent observations, colour balance and validation split |
+| `topology.mjs` | bounded local transition graph and cycle detection prototype |
+| `differential.mjs` | bounded SUBIT gradient-profile prototype |
 | `verify.mjs` | invariant checks over the pipeline (`SVF-INV-*`, `SEARCH-INV-*`) |
+| `index.mjs` | `Engine` facade and in-process `Memory`: `setFEN / legalMoves / analyze / budget / search / play / perft / selfPlay` |
 
 ### Position value
 
@@ -98,15 +104,16 @@ plus per-side depth (`base@6` vs `base@4`).
 ## Repository layout
 
 ```
-src/engine/     ES-module engine core (12 modules)
+src/engine/     ES-module engine core (15 modules)
 build/          shell.html (UI) + bundle.mjs (inlines src/engine into one HTML)
-src/            subit_chess_v3.0.9.html ← shipped single-file engine (built)
+src/            subit_chess_v3.0.10.html ← shipped single-file engine (built)
                 subit_chess_v2.2.0.html ← legacy v2 engine (diffusion/ρ_s, kept for reference)
 index.html      copy of the shipped v3 file (convenience)
-tests/          core.perft, engine.smoke/plans/eval/verify/driver/learn, app.dom (jsdom UI)
-bench/          match.mjs ablation harness, fens/
-docs/           USER-MANUAL.md, ROADMAP.md, DECISIONS.md, theory/ (36 specs), spec/, papers/
-ver/            release snapshots per version
+tests/          core.perft, engine.smoke/plans/eval/verify/topology/differential/audit/
+                audit2/audit309/tactics/driver/learn/uncertainty/worker, app.dom (jsdom UI)
+bench/          match.mjs ablation harness, fens/ (T_train.epd, V_val.epd)
+docs/           USER-MANUAL.md, ROADMAP.md, DECISIONS.md, theory/ (52 specs), spec/, papers/
+ver/            release snapshots per version, including v3.0.10/
 runners/        legacy v1.9.1 Node CLI (not used by v3 — see "Honest limitations")
 ```
 
@@ -114,8 +121,8 @@ runners/        legacy v1.9.1 Node CLI (not used by v3 — see "Honest limitatio
 
 ```bash
 npm install                # only devDependency: jsdom (UI smoke test)
-npm run build              # node build/bundle.mjs → src/subit_chess_v3.0.9.html + index.html
-npm test                   # v3 suite: engine perft/smoke/plans/eval/verify/driver/learn/uncertainty/worker + UI
+npm run build              # node build/bundle.mjs → src/subit_chess_v3.0.10.html + index.html
+npm test                   # v3 suite: 16 files incl. audit309, tactics, topology, differential, worker + UI
 npm run test:engine        # engine only
 npm run test:app           # worker embedding + jsdom UI smoke test
 npm run test:worker        # the embedded worker source runs and answers
@@ -123,7 +130,7 @@ npm run test:legacy        # v2.2.0 single-file suite (128 assertions, kept for 
 ```
 
 `npm run build` is deterministic: the bundled HTML is byte-identical across runs, and
-`src/subit_chess_v3.0.9.html` and `index.html` always match.
+`src/subit_chess_v3.0.10.html` and `index.html` always match.
 
 ## Measured status (honest)
 
@@ -135,8 +142,9 @@ npm run test:legacy        # v2.2.0 single-file suite (128 assertions, kept for 
 - **Depth is not yet paying.** Depth 5 vs depth 4: 45.8% ± 22.4 over 12 games. An engine must
   gain from depth; `npm run match:depth` is the regression test for that, and it is currently
   unresolved rather than failing.
-- **No opening book, no move variety.** Self-play from the start position reaches the 300-ply
-  cap in equal positions. This blocks every larger ablation run and is the next strength item.
+- **Opening breadth is still limited.** `bench/match.mjs` reports mean/median plies, capped
+  games and termination reasons, and supports `--variety`; there is no `bench/fens/openings.epd`,
+  so the opening suite remains small and the next strength item is a curated FEN set.
 - **Sample size is the binding constraint.** 8-20 games gives a ±13-34 pp interval, which
   cannot resolve effects below ~100 Elo. Target n ≥ 100 per configuration before accepting or
   rejecting an ablation.
@@ -151,9 +159,9 @@ See [`CHANGELOG.md`](CHANGELOG.md) § Unreleased for the full list of open items
 ### For developers and researchers
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — current state, measured results, next steps.
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — architecture decision records (ADRs).
-- [`docs/theory/`](docs/theory) — the 36 specifications the implementation targets
+- [`docs/theory/`](docs/theory) — 52 specifications the implementation targets
   (`05` search architecture, `11` strategic plan generation, `25` ablations, `31`/`32`/`33`/`36`
-  computational architecture, verification, complexity, decision theory).
+  computational architecture, verification, complexity, decision theory; `48`–`64` are research drafts).
 - [`docs/spec/`](docs/spec) and [`docs/papers/`](docs/papers) — historical specs and papers
   (v1.8.x-v1.9.1 era: S₀ grammar, ρ_s policy, diffusion generator). Kept for provenance; they
   describe subsystems that v3 does not ship.
@@ -161,16 +169,21 @@ See [`CHANGELOG.md`](CHANGELOG.md) § Unreleased for the full list of open items
 
 ## Honest limitations
 
+- **v3.0.10 is a correctness release, not a strength claim.** Audit §17 is closed 9/9;
+  evaluation weights, pruning parameters, legality and UI behaviour were not changed to seek
+  strength. Full SUBIT conformance is not claimed: the canonical theory repo still documents
+  v2.2.0 as the latest chess version and marks v6.14.x as DRAFT / NOT STABLE.
 - **Game strength is not yet demonstrated.** The perspective fix is a large correctness win;
   beyond that, every measured difference is inside the confidence interval at the sample sizes
-  used so far.
-- **No opening book, no variety.** Equal middlegames shuffle to the move cap.
+  used so far. Gates 1–7, W08, an independent oracle and large A/B/C/D runs remain open.
+- **Opening suite remains narrow.** Game-length reporting and `--variety` exist; a curated
+  `openings.epd` does not.
 - **Legacy subsystems are gone, not ported.** The v2.2.0 diffusion study generator, ρ_s policy
   vector, teacher snapshots and telemetry do not exist in v3; `runners/run.js` targets v1.9.1
   and is kept only for the v2 legacy suite.
-- **Search hygiene debt:** TT entries are never aged out, `contextBonus` in `index.mjs` is
-  dead code, `unmakeNullMove` increments `stm`, `Score.diff` is never written.
-- **Spec compliance is partial:** plan feasibility/`pareto()` (doc 11), no-op `contextAdjust`
+- **Residual inert debt:** `contextBonus` in `index.mjs` is dead code and `Score.diff` is never
+  written. TT aging and null-move state restoration were fixed in v3.0.10.
+- **Spec compliance is partial:** full plan revision lifecycle (doc 11), no-op `contextAdjust`
   (doc 05), `structure` gaps, `verify` coverage and `meta` thresholds are not complete.
 
 ## License

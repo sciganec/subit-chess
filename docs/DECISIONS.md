@@ -1,13 +1,14 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v3.0.8**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.10**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
 
 Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s policy vector,
 teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
-ADR 0009+ describe v3.0.8 and are the binding decisions for the current engine.
+ADR 0009+ describe the v3 engine and are the binding decisions for the current release.
+AUD-07…AUD-09 were closed in v3.0.10 (`be27fe4`); see `ver/subit_chess_v3.0.10/RELEASE.md`.
 
 ---
 
@@ -517,10 +518,10 @@ single offline HTML file (no server, no CDN, no network).
 
 ### Decision
 
-- Source of truth: `src/engine/*.mjs` (12 modules) + `build/shell.html` (UI).
+- Source of truth: `src/engine/*.mjs` (15 modules) + `build/shell.html` (UI).
 - `build/bundle.mjs` walks the import graph from `src/engine/index.mjs`, inlines every
-  module into the shell's `<script>` block, and writes both
-  `src/subit_chess_v3.0.5.html` and `index.html`.
+  module into the shell's `<script>` block, and writes both the versioned HTML named
+  in `package.json` and `index.html`.
 - The build is deterministic: same input → byte-identical output, and the two artifacts
   always match.
 - No user-facing build step: the repository ships the built file.
@@ -714,8 +715,8 @@ The version was not the cause: v3.0.0 and v3.0.3 return identical moves and scor
 
 - Reproducible play: identical position and depth now give the identical move, which also
   makes regression tests meaningful.
-- The top level can block the main thread for up to 6 s; the Web Worker is still open
-  (audit item 8).
+- The top level can block the main thread for up to 6 s in the fallback path; the Web
+  Worker shipped in v3.0.8 (ADR 0021), so the normal browser path keeps the UI live.
 - No Elo claim: this release changes reproducibility and depth, not the evaluation.
 
 ## ADR 0018 — the leaf tier is optimized by measurement, and the remaining 2x is a representation change
@@ -964,8 +965,12 @@ something other than a searched, legal position:
   move (`tests/engine.eval.mjs` §12), so v3.0.4's reproducibility guarantee is
   preserved under the corrected quiescence.
 - AUD-07…AUD-09 (null-move/repetition contamination, dead material in the
-  horizon, null-move state equivalence) remain open P1 items.
+  horizon, null-move state equivalence) were closed in v3.0.10 (`be27fe4`):
+  null moves no longer touch the halfmove clock or repetition history, dead
+  material is terminal at interior and horizon nodes, and null-move state
+  restoration is verified by full canonical snapshots. See the v3.0.10
+  release dossier and `tests/engine.tactics.mjs`.
 
 ---
 
-*End of DECISIONS.md — v3.0.9*
+*End of DECISIONS.md — v3.0.10*

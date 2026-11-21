@@ -1,6 +1,6 @@
 # Roadmap
 
-Direction for **subit-chess** after v3.0.9.
+Direction for **subit-chess** after v3.0.10.
 
 Guiding principles (unchanged):
 - **Evidence over ambition.** Every next step has a pre-registered gate.
@@ -14,10 +14,17 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.9 (2026-11-19)
+## Current state — v3.0.10 (2026-11-21)
 
-**Status:** Engine core rewrite + correctness pass. Strength demonstrated so far is a
-single large fix (evaluation perspective); everything else is still inside the noise band.
+**Status:** correctness release. The v3.0.9 audit register §17 is closed 9/9 in
+`e98d359` + `be27fe4`; release artifacts are in `ver/subit_chess_v3.0.10/`. This is
+**not** a strength release: evaluation weights, pruning parameters, legality rules and
+UI behaviour were not changed to seek strength. Full canonical SUBIT conformance is
+not claimed — the canonical theory repo still documents v2.2.0 as the latest chess
+version, and SUBIT-∞ v6.14.x is DRAFT / NOT STABLE.
+
+Strength demonstrated so far is still a single large fix (evaluation perspective);
+everything else remains inside the noise band.
 
 **What is measurably true:**
 
@@ -40,6 +47,8 @@ single large fix (evaluation perspective); everything else is still inside the n
 | The engine searches off the main thread and reads its own Memory | ADR 0021, v3.0.8: `tests/engine.worker.mjs`, one `Engine` per worker, `prevBest`/`prevScore` seeding |
 | The shipped UI survives a custom start position | v3.0.8: PGN `SetUp`/`FEN`/result, undo to the base FEN, captures counted against it, keyboard play |
 | Horizon scores come from searched, legal positions | ADR 0022, v3.0.9: no stand-pat in check, qdepth cap resolves an evasion, stalemate at any qdepth, claimable draws searched, root honours automatic draws; 12 checks in `tests/engine.audit2.mjs` |
+| The v3.0.9 audit register is closed | v3.0.10: 9/9 §17 findings closed or verified non-reproducible; 51 checks in `tests/engine.audit309.mjs`, 34 in `tests/engine.tactics.mjs`, deterministic build |
+| Self-play observations are independent | v3.0.10: seed selects a legal start FEN, colours are balanced, W/D/L are complete, validation seeds are disjoint and reported but never used for acceptance |
 
 **What is not yet known:**
 - Does a ply of depth convert into strength? (the `--a base@5 --b base@4` regression)
@@ -48,27 +57,27 @@ single large fix (evaluation perspective); everything else is still inside the n
   `bm` — every number above is self-play.
 
 **Open hazards:**
-- **Opening breadth.** The suite is 12 fixed positions, colour-alternated; per-opening
-  variance dominates the interval and there is no knob to widen the set. Games do end on
-  fivefold repetition / the 75-move rule (`status()` is checked after every move), so the
-  300-ply cap is not what contaminates the numbers — but it is also not reported, so the
-  mean game length of a run is currently unknown.
+- **Opening breadth.** The suite is small and colour-alternated; per-opening variance
+  dominates the interval. `bench/match.mjs` now reports mean/median plies, capped games
+  and termination reasons, and supports `--variety`, but there is no
+  `bench/fens/openings.epd` (only `T_train.epd` and `V_val.epd`). A curated suite is
+  still a Gate 1 item.
 - **Sample size.** 8-20 games gives a ±13-34 pp interval. Anything below ~100 Elo is
   unmeasurable at that size.
-- **Debt:** `contextBonus` in `index.mjs` always returns 0 (dead ordering term);
-  `Score.diff` is never written. (TT aging landed in 3.0.4: entries older than one
-  generation are ignored; v3.0.9 narrows this to one search and applies the same
-  rule to move hints, `tests/engine.eval.mjs` §12.) (`unmakeNullMove` was
-  re-checked: it restores `turn` from the undo record, there is no `stm++` bug.)
-- **Audit closure (v3.0.8).** All P1 and all P2 items of the v3.0.6 audit are
-  closed, plus P3.1. The six P0 items (AUD-01…AUD-06) of the v3.0.8 second
-  audit were closed in v3.0.9; AUD-07…AUD-09 (null-move/repetition, dead
-  material in the horizon, null-move state equivalence) remain open P1.
-  The remaining P3 items (self-play loop, parameter control,
-  independent validation set, version comparison, strength measurement) are
-  served by `bench/match.mjs`, `engine.learn` and `selfplay` but have never been
-  run at the sample size Gate 1 requires; they stay on this list rather than
-  being marked done.
+- **Residual debt:** `contextBonus` in `index.mjs` always returns 0 (dead ordering term)
+  and `Score.diff` is never written. TT aging and null-move state restoration were
+  fixed in v3.0.10, so these are no longer open defects.
+- **Audit closure.** v3.0.8 closed its P0 set; v3.0.9 closed AUD-01…AUD-06; v3.0.10
+  closed the final §17 register 9/9, including AUD-07…AUD-09. AUD-309-03 was locked by
+  tests as non-reproducible rather than patched. The remaining P3 items (parameter
+  control, independent validation at scale, version comparison, strength measurement)
+  are served by `bench/match.mjs`, `engine.learn` and `selfplay` but have never been run
+  at the sample size Gate 1 requires.
+- **W08.** Browser/Worker stress testing (memory, clock, concurrency, lifecycle) has
+  regression tests but no full stress run.
+- **SUBIT conformance.** v3 implements a redesigned SUBIT-derived architecture; the
+  full canonical layers (FOUR/Belnap, ρ_s, teacher, Ω mapping, provenance/event
+  contracts) are not shipped in v3. Do not read v3.0.10 as a conformance release.
 
 ---
 
@@ -78,11 +87,11 @@ single large fix (evaluation perspective); everything else is still inside the n
 run whose mean length is unknown cannot be compared with the next one.
 
 **Actions:**
-1. `bench/match.mjs`: report mean/median plies, the number of games that hit the 300-ply cap
-   and the reason (`status()` reason vs cap) in the summary.
-2. Widen the opening set (`bench/fens/openings.epd` already parses; add 12-24 quiet
-   middlegame/opening FENs) and add `--suite`/`--variety` handling for a randomised pick so
-   two runs do not share the same opening order.
+1. Done in v3.0.8+: `bench/match.mjs` reports mean/median plies, capped games and the
+   reason (`status()` reason vs cap) in the summary.
+2. Widen the opening set. `bench/fens/openings.epd` does **not** exist; add 12-24 quiet
+   middlegame/opening FENs. `--variety` already randomises the pick so two runs do not
+   share the same opening order.
 3. Anti-repetition only if the report shows shuffling: penalise positions seen twice in the
    search (the draw rules stay authoritative).
 
@@ -218,5 +227,5 @@ act on it.
 
 - Online learning / self-improvement loops (docs 06, 14, 28) — blocked until Gates 1-3 close.
 - Multi-PV analysis UI, opening explorer, engine-vs-engine match UI.
-- Web Worker search: the UI runs the search on the main thread today; move it only after
-  strength work is stable, because it changes nothing about strength.
+- Moving search back to the main thread: Web Worker search has shipped since v3.0.8
+  (ADR 0021); W08 stress coverage is the remaining item, not the migration itself.

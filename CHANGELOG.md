@@ -81,6 +81,9 @@ before a fix was written.
   configurations, a forced capture chain at the horizon, agreement on the
   forcing move, pawn-only zugzwang guards and TT reuse. No strength claim is
   made: pruning parameters and evaluation weights are unchanged.
+- **Release artifacts.** `ver/subit_chess_v3.0.10/` and the annotated tag
+  `v3.0.10` publish this correctness increment; the dossier records artifact
+  SHA-256, audit closure and explicit SUBIT/strength status caveats.
 
 ---
 
@@ -125,7 +128,8 @@ No interface change; the shipped file is still one offline HTML.
   See ADR 0022.
 - **ADR 0022** records the search terminal-correctness decisions above.
 - **AUD-07…AUD-09** (null-move/repetition contamination, dead material in the
-  horizon, null-move state equivalence) remain open P1 items.
+  horizon, null-move state equivalence) were open P1 items at this release;
+  they were closed in 3.0.10.
 
 ### Added
 
