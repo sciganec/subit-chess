@@ -13,7 +13,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Position } from '../src/engine/core.mjs';
+import { Position, moveToUci } from '../src/engine/core.mjs';
 import { validateFEN, FEN_STATUS } from '../src/engine/fen.mjs';
 import { Evaluation, DEFAULT_PARAMS, cloneParams } from '../src/engine/evaluate.mjs';
 import { Searcher, TranspositionTable } from '../src/engine/search.mjs';
@@ -198,6 +198,131 @@ function snapshot(p) {
     validateFEN(safeHalf).ok, validateFEN(safeHalf).reason);
   check('AUD-309-06 fullmove still starts at 1',
     !validateFEN('4k3/8/8/8/8/8/8/4K3 w - - 0 0').ok);
+}
+
+/* ================================================================== *
+ * W06 — AUD-07…AUD-09 closure
+ * ================================================================== */
+{
+  const epFen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+  const p = Position.fromFEN(epFen);
+  p.pushRep();
+  const beforeNull = snapshot(p);
+  const undo = p.makeNullMove();
+
+  check('W06/AUD-07 null move does not enter repetition history',
+    p.rep.length === beforeNull.rep.length &&
+    JSON.stringify(p.rep) === JSON.stringify(beforeNull.rep) &&
+    JSON.stringify(p.repHi) === JSON.stringify(beforeNull.repHi));
+  check('W06/AUD-09 null move flips side and hash but not clocks',
+    p.turn !== beforeNull.turn && p.hashLo !== beforeNull.hashLo &&
+    p.halfmove === beforeNull.halfmove && p.fullmove === beforeNull.fullmove &&
+    p.ep === -1 && p.ply === beforeNull.ply + 1);
+
+  p.unmakeNullMove(undo);
+  check('W06/AUD-09 null move restores full canonical state',
+    JSON.stringify(snapshot(p)) === JSON.stringify(beforeNull));
+
+  // Exercise the real search path: null moves are only tried at non-PV nodes
+  // with depth >= minDepth, so depth 4 is the first iterative-deepening level
+  // that reaches the code under test from the root.
+  const searchEval = new Evaluation(DEFAULT_PARAMS, { mode: DEFAULT_PARAMS.search.evalMode });
+  const s = new Searcher(searchEval, DEFAULT_PARAMS, { tt: new TranspositionTable(16) });
+  let nullCalls = 0;
+  const originalMakeNull = p.makeNullMove;
+  p.makeNullMove = function countedNull() {
+    nullCalls++;
+    return originalMakeNull.call(this);
+  };
+  const beforeSearch = snapshot(p);
+  try {
+    s.search(p, { depth: 4 });
+  } finally {
+    p.makeNullMove = originalMakeNull;
+  }
+  check('W06/AUD-09 the search actually exercises null moves',
+    nullCalls > 0, `nullCalls=${nullCalls}`);
+  check('W06/AUD-07/AUD-09 search restores position and history',
+    JSON.stringify(snapshot(p)) === JSON.stringify(beforeSearch));
+}
+
+{
+  const deadFen = '4k3/8/8/8/8/8/8/4K3 w - - 0 1';
+  const stub = { evaluate() { return 7777; } };
+  const s = new Searcher(stub, DEFAULT_PARAMS, { tt: new TranspositionTable(4) });
+  s.useTT = false;
+  s.useNull = false;
+  s.useLMR = false;
+  s.useFutility = false;
+  const p = Position.fromFEN(deadFen);
+  p.pushRep();
+
+  check('W06/AUD-08 interior dead material is a terminal draw',
+    s.negamax(p, 2, -10000, 10000, 1) === 0);
+  check('W06/AUD-08 dead material at the horizon is a terminal draw',
+    s.quiescence(p, -10000, 10000, 1, 0) === 0);
+  check('W06/AUD-08 dead-material probes do not mutate the position',
+    p.fen() === deadFen && p.rep.length === 1);
+}
+
+{
+  // White is in check and Kxb8 is the only legal move. It removes Black's last
+  // piece, leaving K vs K: without the interior draw check the search scores a
+  // static evaluator's opinion instead of the automatic draw.
+  const captureFen = 'Kr6/8/1k6/8/8/8/8/8 w - - 0 1';
+  check('W06/AUD-08 forced-capture fixture is a legal FEN',
+    validateFEN(captureFen).ok, validateFEN(captureFen).reason);
+
+  const stub = { evaluate() { return 7777; } };
+  const makeSearcher = () => {
+    const s = new Searcher(stub, DEFAULT_PARAMS, { tt: new TranspositionTable(4) });
+    s.useTT = false;
+    s.useNull = false;
+    s.useLMR = false;
+    s.useFutility = false;
+    return s;
+  };
+
+  const horizon = Position.fromFEN(captureFen);
+  const legal = horizon.legalMoves();
+  const before = snapshot(horizon);
+  check('W06/AUD-08 the capture is the only legal reply',
+    legal.length === 1, legal.map(moveToUci).join(','));
+  const horizonResult = makeSearcher().search(horizon, { depth: 1 });
+  check('W06/AUD-08 dead material reached by capture scores 0 at the horizon',
+    horizonResult.score === 0 && horizonResult.move === legal[0],
+    `score=${horizonResult.score} move=${moveToUci(horizonResult.move)}`);
+  check('W06/AUD-08 forced-capture search restores the position',
+    JSON.stringify(snapshot(horizon)) === JSON.stringify(before));
+
+  const interiorResult = makeSearcher().search(Position.fromFEN(captureFen), { depth: 2 });
+  check('W06/AUD-08 dead material reached by capture scores 0 inside the tree',
+    interiorResult.score === 0, `score=${interiorResult.score}`);
+}
+
+{
+  const searchEval = new Evaluation(DEFAULT_PARAMS, { mode: DEFAULT_PARAMS.search.evalMode });
+  const s = new Searcher(searchEval, DEFAULT_PARAMS, { tt: new TranspositionTable(4) });
+  const minDepth = DEFAULT_PARAMS.search.nullMove.minDepth;
+  const start = Position.start();
+  const checkPos = Position.fromFEN('4k3/8/8/8/8/8/8/4R1K1 b - - 0 1');
+  const pawnOnly = Position.fromFEN('8/8/8/8/8/8/4P3/4K2k w - - 0 1');
+
+  check('W06/AUD-09 null moves are allowed only at the configured depth',
+    s.canNull(start, minDepth - 1, false, false) === false &&
+    s.canNull(start, minDepth, false, false) === true);
+  check('W06/AUD-09 no null move at a PV node or in check',
+    s.canNull(start, minDepth, false, true) === false &&
+    s.canNull(checkPos, minDepth, true, false) === false);
+  check('W06/AUD-09 no null move in a pawn-only zugzwang position',
+    s.canNull(pawnOnly, minDepth, false, false) === false);
+
+  const disabled = cloneParams(DEFAULT_PARAMS);
+  disabled.search.nullMove.enabled = false;
+  const sOff = new Searcher(new Evaluation(disabled, { mode: disabled.search.evalMode }),
+    disabled, { tt: new TranspositionTable(4) });
+  check('W06/AUD-09 disabled configuration never allows a null move',
+    sOff.canNull(Position.start(), minDepth, false, false) === false);
 }
 
 console.log(`\nAUDIT309: ${fails === 0 ? 'ALL CHECKS PASSED' : fails + ' CHECK(S) FAILED'}`);

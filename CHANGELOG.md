@@ -56,6 +56,11 @@ before a fix was written.
 - **AUD-309-06 — safe integer FEN counters.** Halfmove and fullmove must be
   exact, non-negative (fullmove >= 1) safe integers; rounded oversized values
   can no longer silently change draw detection or move numbering.
+- **AUD-08 — dead material is terminal inside the search.** `negamax()` and
+  `quiescence()` now return a draw when the rule authority reports insufficient
+  material, so a position that becomes dead after a capture is no longer scored
+  by a static evaluation. The lazy piece cache is refreshed before the derived
+  material query.
 
 ### Notes
 
@@ -67,6 +72,15 @@ before a fix was written.
   code.
 - New suite `tests/engine.audit309.mjs` covers every finding above and is wired
   into `npm test`.
+- **W06 closes AUD-07…AUD-09.** The audit suite now locks null-move
+  repetition/history isolation, full canonical state restoration after a search
+  that really uses null moves, all `canNull()` guards, and dead material at
+  interior and horizon nodes, including a forced capture into K vs K.
+- **W07 adds `tests/engine.tactics.mjs`.** An independent tactical suite checks
+  four mate positions across default, no-null, no-TT and no-pruning
+  configurations, a forced capture chain at the horizon, agreement on the
+  forcing move, pawn-only zugzwang guards and TT reuse. No strength claim is
+  made: pruning parameters and evaluation weights are unchanged.
 
 ---
 

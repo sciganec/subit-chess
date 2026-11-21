@@ -498,15 +498,22 @@ export class Searcher {
     // quiescence for the side to move (it always generates check evasions).
     if (depth <= 0 && !inCheck) return this.quiescence(pos, alpha, beta, ply, 0);
 
-    // Draw rules inside the search (AUD-04). Only the automatic draws are
-    // terminal: the 75-move rule (FIDE 9.6.2) and fivefold repetition (9.6.1).
-    // The 50-move rule (9.3) and threefold repetition (9.2) are claimable, not
-    // automatic: the position stays playable and is searched normally. ADR
-    // 0020 already made that distinction for Position.status() and the
-    // horizon; the search now agrees instead of scoring a claimable draw as a
-    // terminal 0 and hiding a still-winnable continuation.
+    // Draw rules inside the search (AUD-04, AUD-08). Only the automatic draws
+    // are terminal: the 75-move rule (FIDE 9.6.2), fivefold repetition (9.6.1)
+    // and dead material (FIDE 5.2.2). The 50-move rule (9.3) and threefold
+    // repetition (9.2) are claimable, not automatic: the position stays
+    // playable and is searched normally. ADR 0020 already made that
+    // distinction for Position.status() and the horizon; the search now
+    // agrees instead of scoring a claimable draw as a terminal 0 and hiding a
+    // still-winnable continuation. The piece cache is lazy, so refresh it
+    // before asking a derived question right after makeMove() (AUD-08).
+    pos.refreshPieces();
     if (pos.halfmove >= 150) return 0;
     if (ply > 0 && pos.repetitionCount() >= 5) return 0;
+    // `phaseMaterial <= 2` covers every position where insufficientMaterial()
+    // can be true (K vs K, K+minor vs K, K+B vs K+B on one colour complex),
+    // while keeping the full piece-list scan off normal nodes (AUD-08).
+    if (pos.phaseMaterial <= 2 && pos.insufficientMaterial()) return 0;
 
     const pvNode = beta - alpha > 1;
     const alphaOrig = alpha;
@@ -711,11 +718,15 @@ export class Searcher {
     if (this.checkStop()) return 0;
     if (ply > this.seldepth) this.seldepth = ply;
 
-    // Automatic draws are terminal whatever the depth (FIDE 9.6): the 75-move
-    // rule and fivefold repetition end the game, so the horizon must score 0
-    // instead of a static evaluation.
+    // Automatic draws are terminal whatever the depth: the 75-move rule and
+    // fivefold repetition (FIDE 9.6) end the game, and dead material (FIDE
+    // 5.2.2) ends it as well. The horizon must score 0 instead of evaluating
+    // a position that the rule authority already declares finished (AUD-08).
+    // Refresh the lazy piece cache before the derived material query.
+    pos.refreshPieces();
     if (pos.halfmove >= 150) return 0;
     if (ply > 0 && pos.repetitionCount() >= 5) return 0;
+    if (pos.phaseMaterial <= 2 && pos.insufficientMaterial()) return 0;
 
     const inCheck = pos.inCheck();
     let best;
