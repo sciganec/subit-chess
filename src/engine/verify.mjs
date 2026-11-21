@@ -38,14 +38,31 @@ export function verifyMakeUnmake(pos, { moves = null } = {}) {
   const fen0 = pos.fen();
   const key0 = pos.key;
   const perms0 = `${pos.castling}|${pos.ep}|${pos.halfmove}|${pos.fullmove}|${pos.ply}`;
+  // UCA-INV-019 says *full* canonical-state identity. Since v3.0.10 the game
+  // history is part of rule state (fivefold, ADR 0020), so the repetition stack
+  // and its irreversible-move limit belong in this check too. The search pushes
+  // before makeMove and pops after unmakeMove, so verify the pair as search uses it.
+  const rep0 = pos.rep.slice();
+  const repHi0 = pos.repHi.slice();
+  const repLimit0 = pos.repLimit;
   const list = moves || pos.legalMoves();
   for (const m of list) {
+    pos.pushRep();
     const undo = pos.makeMove(m);
     pos.unmakeMove(undo);
+    pos.popRep();
     if (pos.fen() !== fen0) { fail(failures, INVARIANT.UCA_019, `fen changed after ${moveToUci(m)}`); break; }
     if (pos.key !== key0) { fail(failures, INVARIANT.UCA_019, `hash changed after ${moveToUci(m)}`); break; }
     const perms = `${pos.castling}|${pos.ep}|${pos.halfmove}|${pos.fullmove}|${pos.ply}`;
     if (perms !== perms0) { fail(failures, INVARIANT.UCA_019, `state fields changed after ${moveToUci(m)}`); break; }
+    if (pos.repLimit !== repLimit0
+      || pos.rep.length !== rep0.length
+      || pos.repHi.length !== repHi0.length
+      || pos.rep.some((v, i) => v !== rep0[i])
+      || pos.repHi.some((v, i) => v !== repHi0[i])) {
+      fail(failures, INVARIANT.UCA_019, `repetition history changed after ${moveToUci(m)}`);
+      break;
+    }
   }
   return failures;
 }

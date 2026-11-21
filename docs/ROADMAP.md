@@ -34,8 +34,10 @@ has 24 quiet legal positions with a SHA-256 in `bench/fens/CHECKSUMS`. The dead
 with uncertainty and `plan.structuralEvalDepth` is applied; the early-exit stalemate probe,
 unified mate scale and single-owner SVF (`SVF-INV-007` executable check) are in place.
 The match harness now preserves the game repetition stack across moves, so Gate 1 passes
-its length gate (9/100 caps at depth 4). None of this is in tag `v3.0.10`; no item has
-passed a 100-game *strength* gate yet.
+its length gate (9/100 caps at depth 4). Gate 7 now has a deterministic bench harness
+(`bench/gate7.mjs`) with a uniform and a wrong-driver control; it passes on the fixed
+suite but is a verification-steering result, not a strength result. None of this is in
+tag `v3.0.10`; no item has passed a 100-game *strength* gate beyond Gate 2 and Gate 3.
 
 **What is measurably true:**
 
@@ -61,6 +63,8 @@ passed a 100-game *strength* gate yet.
 | Horizon scores come from searched, legal positions | ADR 0022, v3.0.9: no stand-pat in check, qdepth cap resolves an evasion, stalemate at any qdepth, claimable draws searched, root honours automatic draws; 12 checks in `tests/engine.audit2.mjs` |
 | The v3.0.9 audit register is closed | v3.0.10: 9/9 §17 findings closed or verified non-reproducible; 51 checks in `tests/engine.audit309.mjs`, 34 in `tests/engine.tactics.mjs`, deterministic build |
 | Self-play observations are independent | v3.0.10: seed selects a legal start FEN, colours are balanced, W/D/L are complete, validation seeds are disjoint and reported but never used for acceptance |
+| The uncertainty driver steers verification | Gate 7 harness: 9 target-only decision changes vs 0 uniform-only and 0 wrong-driver-only; 0/4 proven mates changed; bench-only, no strength claim |
+| Full state identity includes rule history | `verifyMakeUnmake()` checks the repetition stack and `repLimit` alongside FEN, hash and clocks; ADR 0020 rule history is verifier-visible |
 
 **What is not yet known:**
 - Do the structural layers (plans, context, structure) earn their cost? The A1 horizon gate
@@ -293,6 +297,37 @@ decisive (Us = 0 on a proven mate).
 **Kill criterion:** if targeted spending never changes a decision while uniform spending
 does, the driver is not informative and the profile stays descriptive — report it, do not
 act on it.
+
+### Measured result (worktree, `01a61af` + Gate 7 harness)
+
+`node bench/gate7.mjs --depth 4 --mates --out results/gate7-targeted-vs-uniform-final.json`
+over 24 fixed opening FENs plus 4 proven-mate FENs:
+
+| metric | result |
+|---|---:|
+| non-decisive positions with a unique driver | 24 (4 mate positions skipped as tied) |
+| targeted-only decision changes | **9** |
+| uniform-only decision changes | 0 |
+| wrong-driver-only changes | 0 |
+| both targeted and uniform changed | 5 |
+| neither changed | 10 |
+| wrong-driver changed at all | 1 |
+| proven-mate positions changed by either pass | **0 / 4** |
+| mean nodes base / uniform / targeted / wrong | 8,443 / 20,805 / 12,525 / 11,373 |
+
+Driver histogram: `strategic 19, tactical 3, structural 1, model 1`; four mate
+positions had no unique driver. Budget mapping: `Us/Uh → depth+1`, `Ut → qsearch
+checks 4→8`, `Ue/Ur/Up/Um/Uc → hybrid SVF with structural depth 2→3`. Uniform
+control is `depth+1`; the wrong-driver control spends the same kind of budget on
+a deterministically different component.
+
+**Verdict: PASS, with limits.** The leading component is informative in this
+suite: targeted spending changed 14 decisions, the wrong control only 1, and the
+uniform control 5; nine target-only changes were not reproduced by either
+control. No proven mate changed. This is *not* a strength result: the driver is
+computed after the base search, the extra passes are bench-only, the suite is
+small, and 19/24 positions have the same (`strategic`) driver. Nothing here is
+wired into the shipped move choice or the released HTML.
 
 ---
 

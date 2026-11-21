@@ -42,7 +42,11 @@ strength claim: every item below still needs its preregistered A/B gate.
   uncertainty instead of dividing by it (tested for monotonicity).
 - **Invariants.** Mate distance uses the engine-wide `MATE` scale; `centerControl`,
   `openFiles` and `hanging` each have one SVF owner; `verify.mjs` gains an executable
-  `SVF-INV-007` ownership check with a negative-control test.
+  `SVF-INV-007` ownership check with a negative-control test. Following the new
+  full-state-identity theory (docs 56/76/77), `verifyMakeUnmake()` now also checks the
+  repetition stack and `repLimit` after the same `pushRep`/`make`/`unmake`/`popRep`
+  cycle the search uses; a non-empty-history regression test was added. No rule or
+  search behaviour changed — this only widens what the verifier can detect.
 - **Measurement harness (Gate 2).** Fixed a depth-assignment bug: `playGame()` chose the
   per-move depth by the moving colour instead of by the config playing that colour, so in
   odd games (`A` is Black) the two pinned depths were swapped. The first `base@5` vs
@@ -50,12 +54,27 @@ strength claim: every item below still needs its preregistered A/B gate.
   config. Gate 1 and Gate 3 used equal depths and are unaffected. Corrected Gate 2
   (`base@5` vs `base@4`, 100 games, depth 5, seed 7): **68.0% ±8.1**, CI 59.9-76.1%,
   58W/20D/22L — depth pays (CI.lo > 0.5).
+- **Measurement harness (Gate 7).** New `bench/gate7.mjs` runs three clean passes per
+  position: base depth, uniform `depth+1`, and a driver-targeted pass (`Us/Uh` depth,
+  `Ut` wider qsearch, `Ue/Ur/Up/Um/Uc` hybrid/structural re-check), plus a deterministic
+  wrong-driver control. A tie is not treated as a driver, and the four proven-mate
+  fixtures are checked for decision invariance. On 24 opening FENs + 4 mate FENs at
+  depth 4: **9 targeted-only changes**, 0 uniform-only, 0 wrong-driver-only, 5 changed
+  under both, 10 under neither, 1 wrong-driver change, and **0/4 mates changed**.
+  Result: Gate 7 PASS as verification steering. It is bench-only: no shipped search
+  path, evaluation value or released HTML was changed, and it is not a strength claim.
+  `tests/gate7.mjs` covers the driver map, determinism and mate invariance.
+  Full `npm test` passes with the new file registered; a fresh temp-copy build still
+  produces the unchanged dev hash `9586ACA1...` and leaves both release HTMLs at the
+  shipped `9A08F02F...`.
 - **Verification.** Full `npm test` passes after the A1 prefilter. A fresh temp-copy
   `npm run build` bundles 11 modules into `9586ACA1E6489E084B044DD523F4CEF13CD977503227DF06545F5492139DB0E8`
   (`index.html` and `src/subit_chess_v3.0.10.html` identical there). The two release HTMLs in
   the main worktree stay at the shipped `9A08F02F8AF4499813FE3167429A7A27D0A95071BA4A1C62EB60A9BB011C6581`;
   no release file was overwritten.
-- **Still open.** Scale every A/B to n >= 100 games (8-20 games gives ±13-34 pp);
+- **Still open.** Gate 4 spec coverage, Gate 5 external validation (no `bm`/sparring
+  engine available), full structural-layer A/Bs, W08 stress run, and scaling every A/B
+  to n >= 100 games (8-20 games gives ±13-34 pp);
   `contextAdjust` no-op (doc 05), `structure` gaps, remaining `verify` coverage,
   `meta` thresholds (docs 31/32/33/36), and `Score.diff` never set.
 

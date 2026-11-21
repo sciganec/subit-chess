@@ -101,6 +101,14 @@ Configurations: `base`, `nostruct`, `noctx`, `nores`, `noplans`, `nobudget`, `pl
 `eval0`, `notaper`, `nopawns`, `norooks`, `noshield`, `nopruning`, `nonull`, `nolmr`, `noasp`,
 plus per-side depth (`base@6` vs `base@4`).
 
+`bench/gate7.mjs` is the verification-steering instrument (not a strength test). It
+compares a uniform extra ply against an equal-purpose budget aimed at the leading
+uncertainty component, with a wrong-driver control and proven-mate fixtures:
+
+```bash
+node bench/gate7.mjs --depth 4 --mates --out results/gate7-targeted-vs-uniform-final.json
+```
+
 ## Repository layout
 
 ```
@@ -110,8 +118,8 @@ src/            subit_chess_v3.0.10.html ← shipped single-file engine (built)
                 subit_chess_v2.2.0.html ← legacy v2 engine (diffusion/ρ_s, kept for reference)
 index.html      copy of the shipped v3 file (convenience)
 tests/          core.perft, engine.smoke/plans/eval/verify/topology/differential/audit/
-                audit2/audit309/tactics/driver/learn/uncertainty/worker, app.dom (jsdom UI)
-bench/          match.mjs ablation harness, fens/ (T_train.epd, V_val.epd)
+                audit2/audit309/tactics/driver/learn/uncertainty/gate7/worker, app.dom (jsdom UI)
+bench/          match.mjs ablation harness, gate7.mjs verification harness, fens/
 docs/           USER-MANUAL.md, ROADMAP.md, DECISIONS.md, theory/ (52 specs), spec/, papers/
 ver/            release snapshots per version, including v3.0.10/
 runners/        legacy v1.9.1 Node CLI (not used by v3 — see "Honest limitations")
@@ -122,7 +130,7 @@ runners/        legacy v1.9.1 Node CLI (not used by v3 — see "Honest limitatio
 ```bash
 npm install                # only devDependency: jsdom (UI smoke test)
 npm run build              # node build/bundle.mjs → src/subit_chess_v3.0.10.html + index.html
-npm test                   # v3 suite: 16 files incl. audit309, tactics, topology, differential, worker + UI
+npm test                   # v3 suite: 17 files incl. audit309, tactics, topology, differential, gate7, worker + UI
 npm run test:engine        # engine only
 npm run test:app           # worker embedding + jsdom UI smoke test
 npm run test:worker        # the embedded worker source runs and answers
@@ -147,6 +155,10 @@ npm run test:legacy        # v2.2.0 single-file suite (128 assertions, kept for 
 - **Opening suite is calibrated.** `bench/fens/openings.epd` has 24 checksummed legal FENs;
   `bench/match.mjs` reports per-opening W/D/L, length distribution, capped games, termination
   reasons and an Elo-scaled CI. Gate 1 passes with 9/100 caps at depth 4.
+- **The uncertainty driver steers verification (bench-only).** Gate 7: 9 target-only
+  decision changes vs 0 uniform-only and 0 wrong-driver-only; 0/4 proven mates changed.
+  The driver is computed after the base search and no shipped move choice was changed, so
+  this is not a strength result.
 - **Sample size is still the binding constraint for the remaining layers.** 8-20 games gives a
   ±13-34 pp interval; the three gates above now use n=100, and any further ablation should too.
 

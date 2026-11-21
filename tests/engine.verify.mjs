@@ -56,6 +56,22 @@ for (const fen of FENS) {
   void ep;
 }
 
+/* repetition history is rule state: make/unmake must restore it too (ADR 0020) */
+{
+  const pos = new Position();
+  pos.setFEN('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  const stack = [];
+  for (let i = 0; i < 4; i++) {
+    const moves = pos.legalMoves();
+    pos.pushRep();
+    stack.push(pos.makeMove(moves[(i * 3) % moves.length]));
+  }
+  check('repetition history is non-empty before verification', pos.rep.length === 4, String(pos.rep.length));
+  const f = verifyMakeUnmake(pos, { moves: pos.legalMoves() });
+  check('repetition history restored exactly', f.length === 0, report(f));
+  for (let i = stack.length - 1; i >= 0; i--) pos.unmakeMove(stack[i]);
+}
+
 /* promotion / underpromotion */
 {
   const pos = new Position();
