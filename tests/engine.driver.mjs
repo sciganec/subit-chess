@@ -5,6 +5,8 @@
 import { Position, moveToSan, moveToUci, squareName } from '../src/engine/core.mjs';
 import { Engine, Memory, main, VERSION } from '../src/engine/index.mjs';
 import { DEFAULT_PARAMS, cloneParams } from '../src/engine/evaluate.mjs';
+import { searchBudget } from '../src/engine/search.mjs';
+import { adoptGamePosition, repetitionState, runMatch } from '../bench/match.mjs';
 
 let fails = 0;
 function check(name, cond, extra = '') {
@@ -123,6 +125,30 @@ const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
   check('meta statistics recorded', e.meta.stats.decisions === 1, String(e.meta.stats.decisions));
 }
 
+/* ---------------- uncertainty increases effort, never reduces it ---------------- */
+{
+  const calmBudget = searchBudget({ complexity: 0.5, uncertainty: 0.1 });
+  const tenseBudget = searchBudget({ complexity: 0.5, uncertainty: 0.9 });
+  check('searchBudget grows with uncertainty', tenseBudget > calmBudget,
+    `${calmBudget} -> ${tenseBudget}`);
+
+  const e = new Engine();
+  e.setFEN(START);
+  const planFor = (uncertainty) => {
+    const stub = { structural() { return { uncertainty }; } };
+    return e.meta.plan({
+      pos: e.pos, percept: e.percept, structure: e.structure, ctx: e.context,
+      evaluation: stub, clockMs: 6000, baseDepth: 8, maxDepth: 24
+    });
+  };
+  const calm = planFor(0.05);
+  const tense = planFor(0.95);
+  check('meta clock grows with uncertainty', tense.timeMs > calm.timeMs,
+    `${calm.timeMs}ms -> ${tense.timeMs}ms (u=${calm.uncertainty.toFixed(2)} -> ${tense.uncertainty.toFixed(2)})`);
+  check('meta depth never shrinks with uncertainty', tense.depth >= calm.depth,
+    `${calm.depth} -> ${tense.depth}`);
+}
+
 /* ---------------- params are cloned, not aliased ---------------- */
 {
   const p1 = cloneParams(DEFAULT_PARAMS);
@@ -168,6 +194,53 @@ const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
   const r = e.search({ depth: 3 });
   check('a mate is reported as a mate', r.mate !== null && r.mate > 0, `mate in ${r.mate}`);
   check('the mating move is Ra8', r.uci === 'a1a8', `${r.uci} ${squareName(0)}`);
+}
+
+/* ---------------- match harness owns one continuous game ---------------- */
+{
+  // A bare setFEN() after every move clears the history that Engine.play()
+  // carried forward (ADR 0016). The harness must adopt the FEN *and* the stack,
+  // or neither side can see fivefold and equal positions shuffle to the cap.
+  const mover = new Engine();
+  const observer = new Engine();
+  mover.setFEN(START);
+  observer.setFEN(START);
+  const cycle = ['g1f3', 'g8f6', 'f3g1', 'f6g8'];
+  for (let n = 0; n < 4; n++) {
+    for (const uci of cycle) {
+      check(`cycle move ${uci} is legal`, !!mover.play(uci));
+      const rep = repetitionState(mover.pos);
+      adoptGamePosition(mover, mover.fen, rep);
+      adoptGamePosition(observer, mover.fen, rep);
+    }
+  }
+  check('match harness keeps the repetition count', mover.pos.repetitionCount() === 5,
+    `count=${mover.pos.repetitionCount()}`);
+  check('observer adopts the same repetition history', observer.pos.repetitionCount() === 5,
+    `count=${observer.pos.repetitionCount()}`);
+  const st = observer.pos.status();
+  check('fivefold is authoritative for both engines',
+    !!st && st.over && st.reason === 'fivefold repetition', JSON.stringify(st));
+}
+
+/* ---------------- pinned depth follows the config, not the colour ---------------- */
+{
+  // Gate 2 compares base@5 vs base@4. A is White in game 0 and Black in game 1.
+  // The old harness keyed the requested depth on the moving colour, so in the
+  // odd game A searched at 4 and B at 5 — half the sample had swapped labels.
+  const r = runMatch({
+    games: 2, depth: 5, seed: 7, maxPlies: 2, a: 'base@5', b: 'base@4',
+    suite: null, variety: false, time: 0, quiet: true
+  });
+  const seen = r.games.map((g) => g.depthSeen);
+  check('game 0: config A (White) searched at depth 5', seen[0] && seen[0].white === 5,
+    JSON.stringify(seen[0]));
+  check('game 0: config B (Black) searched at depth 4', seen[0] && seen[0].black === 4,
+    JSON.stringify(seen[0]));
+  check('game 1: config A (Black) still searched at depth 5', seen[1] && seen[1].black === 5,
+    JSON.stringify(seen[1]));
+  check('game 1: config B (White) still searched at depth 4', seen[1] && seen[1].white === 4,
+    JSON.stringify(seen[1]));
 }
 
 console.log(fails === 0 ? '\nDRIVER OK' : `\nDRIVER FAILURES: ${fails}`);

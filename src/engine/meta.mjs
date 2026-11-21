@@ -13,7 +13,7 @@
  * a single score.
  */
 
-import { searchBudget } from './search.mjs';
+import { searchBudget, MATE, MATE_THRESHOLD } from './search.mjs';
 import { clamp01 } from './context.mjs';
 
 export const RISK = { NONE: 0, LOW: 1, MODERATE: 2, HIGH: 3, CRITICAL: 4 };
@@ -82,9 +82,11 @@ export function riskOf(searchResult, depth) {
   if (!completed) return RISK.HIGH;
   // a proven mate: the score no longer depends on depth. A mate in one is
   // NONE; a mate in many is LOW because the side can still go wrong.
-  const isMate = Math.abs(score) > 90000 - 1000;
+  const isMate = Math.abs(score) >= MATE_THRESHOLD;
   if (isMate) {
-    const mateIn = Math.round((90000 - Math.abs(score)));
+    // Search scores use MATE = 100000. The old 90000 base turned every real
+    // mate (99999, 99998, …) into a negative distance and reported NONE.
+    const mateIn = Math.round(MATE - Math.abs(score));
     return mateIn <= 2 ? RISK.NONE : RISK.LOW;
   }
   // a bound, not an exact score: the aspiration window did not contain the
@@ -122,8 +124,12 @@ export class MetaController {
     const uncertainty = uncertaintyOf(ev, pos, percept, structure);
     const depth = adaptiveDepth({ complexity, uncertainty, baseDepth, maxDepth });
     const budget = searchBudget({ complexity, uncertainty, timeRemaining: 1 });
+    // Effort grows with complexity AND uncertainty (doc 05 §17). The previous
+    // `/ budget` inverted the uncertainty term: the hardest positions got the
+    // smallest clock. `budget` is kept as a reported scalar, not a divisor.
+    const effort = Math.min(0.85, 0.35 + complexity * 0.4 + uncertainty * 0.25);
     const timeMs = clockMs > 0
-      ? Math.max(50, Math.min(clockMs, Math.round(clockMs * (0.35 + complexity * 0.4) / budget)))
+      ? Math.max(50, Math.min(clockMs, Math.round(clockMs * effort)))
       : 0;
     const useSVF = uncertainty > 0.55 && depth <= 10;   // full SVF only where it pays
     return {

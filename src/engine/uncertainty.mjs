@@ -27,6 +27,7 @@
 
 import { MOVE_FLAGS, FLAG_CAPTURE, FLAG_PROMO, FLAG_EP } from './core.mjs';
 import { clamp01 } from './context.mjs';
+import { MATE_THRESHOLD } from './search.mjs';
 import { REL_KEY_FROM, REL_KEY_TO } from './structure.mjs';
 
 /** The eight canonical types (doc 37 §5, doc 45 §16, doc 46 §14.2). */
@@ -65,7 +66,8 @@ export const STATUS = {
  */
 export const MODEL_BASE = { fast: 0.30, structural: 0.22, hybrid: 0.18 };
 
-const MATE_LIMIT = 90000 - 1000;
+// One scale for the whole engine: search.mjs owns MATE / MATE_THRESHOLD.
+const MATE_LIMIT = MATE_THRESHOLD;
 
 /**
  * Depth below which a completed search is still reported as shallow (doc 37 §5.1:

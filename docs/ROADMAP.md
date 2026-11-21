@@ -26,13 +26,25 @@ version, and SUBIT-∞ v6.14.x is DRAFT / NOT STABLE.
 Strength demonstrated so far is still a single large fix (evaluation perspective);
 everything else remains inside the noise band.
 
+**Post-v3.0.10 development (unreleased worktree, no version bump or tag):** the Gate 1
+harness now prints per-opening W/D/L and an Elo-scaled CI, and `bench/fens/openings.epd`
+has 24 quiet legal positions with a SHA-256 in `bench/fens/CHECKSUMS`. The dead
+`contextBonus` is removed; bounded quiet checks are implemented behind
+`params.search.qsearch` with a `noqchecks` ablation; the uncertainty budget now grows
+with uncertainty and `plan.structuralEvalDepth` is applied; the early-exit stalemate probe,
+unified mate scale and single-owner SVF (`SVF-INV-007` executable check) are in place.
+The match harness now preserves the game repetition stack across moves, so Gate 1 passes
+its length gate (9/100 caps at depth 4). None of this is in tag `v3.0.10`; no item has
+passed a 100-game *strength* gate yet.
+
 **What is measurably true:**
 
 | Claim | Evidence |
 |---|---|
 | The perspective fix is worth a lot | 12-0 vs pre-fix modules at depth 3/4 |
 | The fast eval tier is not yet a win | 52.5% ± 13.3 over 20 games, depth 3 |
-| Depth is not yet paying | depth 5 vs 4: 45.8% ± 22.4 over 12 games |
+| Depth pays | depth 5 vs 4: 68.0% ± 8.1 over 100 games, CI 59.9-76.1% (corrected harness) |
+| A1 quiet checks at the horizon pay | base 63.0% ± 9.3 vs noqchecks over 100 games, CI 53.7-72.3%, 0/100 caps |
 | Structural layers do not yet pay | `base` vs `plain`: 56.3% ± 34.3 over 8 games |
 | The root move is a true argmax | brute-force comparison on 3 positions: 8/109/82 |
 | A forced mate is no longer hidden by futility pruning | regression in `tests/engine.eval.mjs`, v3.0.1 |
@@ -51,22 +63,22 @@ everything else remains inside the noise band.
 | Self-play observations are independent | v3.0.10: seed selects a legal start FEN, colours are balanced, W/D/L are complete, validation seeds are disjoint and reported but never used for acceptance |
 
 **What is not yet known:**
-- Does a ply of depth convert into strength? (the `--a base@5 --b base@4` regression)
-- Do the structural layers (plans, context, structure) earn their cost?
+- Do the structural layers (plans, context, structure) earn their cost? The A1 horizon gate
+  passed, but the `base` vs `plain`/`nostruct`/`noplans`/`noctx` 100-game runs have not.
 - Where is the real playing strength of v3? No external sparring partner, no EPD set with
   `bm` — every number above is self-play.
 
 **Open hazards:**
-- **Opening breadth.** The suite is small and colour-alternated; per-opening variance
-  dominates the interval. `bench/match.mjs` now reports mean/median plies, capped games
-  and termination reasons, and supports `--variety`, but there is no
-  `bench/fens/openings.epd` (only `T_train.epd` and `V_val.epd`). A curated suite is
-  still a Gate 1 item.
+- **Opening breadth.** The suite is still small and colour-alternated; per-opening variance
+  dominates the interval. `bench/match.mjs` reports mean/median plies, capped games,
+  termination reasons and a per-opening table, supports `--variety`, and now has a curated
+  24-position `bench/fens/openings.epd` (SHA-256 in `CHECKSUMS`). The 100-game Gate 1
+  calibration is done: 9/100 caps at depth 4, gate passed (see Gate 1 below).
 - **Sample size.** 8-20 games gives a ±13-34 pp interval. Anything below ~100 Elo is
   unmeasurable at that size.
-- **Residual debt:** `contextBonus` in `index.mjs` always returns 0 (dead ordering term)
-  and `Score.diff` is never written. TT aging and null-move state restoration were
-  fixed in v3.0.10, so these are no longer open defects.
+- **Residual debt:** the dead `contextBonus` has been removed; `Score.diff` is still never
+  written. TT aging stays at one search by ADR 0022, and null-move state restoration was
+  fixed in v3.0.10, so neither is an open defect.
 - **Audit closure.** v3.0.8 closed its P0 set; v3.0.9 closed AUD-01…AUD-06; v3.0.10
   closed the final §17 register 9/9, including AUD-07…AUD-09. AUD-309-03 was locked by
   tests as non-reproducible rather than patched. The remaining P3 items (parameter
@@ -89,14 +101,28 @@ run whose mean length is unknown cannot be compared with the next one.
 **Actions:**
 1. Done in v3.0.8+: `bench/match.mjs` reports mean/median plies, capped games and the
    reason (`status()` reason vs cap) in the summary.
-2. Widen the opening set. `bench/fens/openings.epd` does **not** exist; add 12-24 quiet
-   middlegame/opening FENs. `--variety` already randomises the pick so two runs do not
-   share the same opening order.
-3. Anti-repetition only if the report shows shuffling: penalise positions seen twice in the
-   search (the draw rules stay authoritative).
+2. Widen the opening set — done in the current worktree: `bench/fens/openings.epd` has
+   24 quiet, legal FENs and is checksummed. `--variety` randomises the pick so two runs do
+   not share the same opening order.
+3. Anti-repetition only if the report shows shuffling. The v3.0.10 report did (3/10 capped),
+   but the cause was in the harness: after `Engine.play()` preserved the game repetition
+   stack under ADR 0016, `bench/match.mjs` called bare `setFEN()` on both engines and wiped
+   it. The harness now adopts the FEN *and* the stack, so `status()` can end a game by
+   fivefold repetition again. On the same 10-game seed this dropped caps from 3/10 to
+   1/10 and nodes/game from 2.31M to 1.70M. No search-level repetition penalty has been
+   added; the draw rules remain authoritative. If the 100-game run still exceeds 10%
+   caps, the next step is the documented penalty for positions seen twice in the search.
 
 **Gate:** the summary reports length distribution, and no more than 10% of games reach the
 cap in a 100-game run at depth 4.
+
+**Result (post-v3.0.10, 2026-11-21) — PASS.** `node bench/match.mjs --suite
+bench/fens/openings.epd --a base --b base --games 100 --depth 4 --seed 7 --variety --quiet
+--out results/gate1-base-base-final.json`: `base` vs `base` 57.5% ± 8.9 (±63 Elo),
+49W/17D/34L, mean 128 plies, median 110.5, **9/100 games at the 300-ply cap (≤10% gate)**.
+Terminations: checkmate 83, max plies 9, fivefold repetition 4, insufficient material 4.
+All 9 caps sit in openings #2 and #18; the 57.5% is harness calibration, not a strength
+result. No search-level repetition penalty was needed.
 
 **Kill criterion:** if variety makes the engine measurably weaker (loss of ≥ 50 Elo vs
 `base` over 100 games), the book is wrong — shrink it, don't disable it.
@@ -106,6 +132,22 @@ cap in a 100-game run at depth 4.
 ## Gate 2 — does depth convert into strength?
 
 **Pre-registered metric:** score of `base@5` vs `base@4` over 100 games at depth 5.
+
+**Harness bug found before accepting the first run.** `playGame()` picked the per-move depth
+from the moving *colour* (`side === 'white' ? depthA : depthB`) instead of from the config
+playing that colour. In odd games A is Black, so A searched at 4 and B at 5 — half the
+sample had the depth labels reversed. The first 100-game run (`results/gate2-depth5-vs-4.json`,
+44.0% ±8.7, 34W/20D/46L) is therefore **void**, not a strength result. `wantDepth` is now
+keyed on `aWhite ? side === 'white' : side === 'black'`, with a two-colour regression test in
+`tests/engine.driver.mjs`. Gate 1 and Gate 3 are unaffected (both sides use the same depth).
+
+**Result (corrected, 2026-11-21) — PASS.** `results/gate2-depth5-vs-4-final.json`: `base@5`
+**68.0% ± 8.1**, CI **[59.9%, 76.1%]**, ±64 Elo, 58W/20D/22L, 0 errors. Length mean 148,
+median 112, 8/100 caps (checkmate 80, insufficient material 8, max plies 8, fivefold 4).
+CI.lo > 0.5 falls in the "depth works" row: keep pruning/LMR as is and spend effort on the
+evaluation. The prior (PASS 70%) is confirmed; the earlier 12-game 45.8% ±22.4 reading and the
+void harness run are both superseded.
+
 **Decision table:**
 
 | Result | Verdict | Action |
@@ -125,7 +167,9 @@ over-aggressive — remove it rather than tune it.
 ## Gate 3 — do the structural layers earn their cost?
 
 **Pre-registered metric:** `base` vs `plain` (no structure, no plans, no context) over
-100 games at depth 4, plus `nostruct`, `noplans`, `noctx` individually.
+100 games at depth 4, plus `nostruct`, `noplans`, `noctx` individually. The A1 horizon
+change is measured separately as `base` vs `noqchecks` over 100 games at depth 4; it is
+accepted only if the CI excludes 0.5 and Gate 6 still meets the throughput budget.
 
 **Decision table:**
 
@@ -134,6 +178,25 @@ over-aggressive — remove it rather than tune it.
 | base wins with CI.lo > 0.5 | layers pay | keep; tune weights per doc 05 |
 | CI spans 0.5 | inert | profile the cost; either raise the weights or delete the layer |
 | base loses with CI.hi < 0.5 | layers hurt | delete the layer and record an ADR |
+
+**A1 result (post-v3.0.10, 2026-11-21).** `node bench/match.mjs --suite
+bench/fens/openings.epd --a base --b noqchecks --games 100 --depth 4 --seed 7 --variety
+--quiet --out results/gate3-a1-base-vs-noqchecks-final.json`: `base` (bounded quiet checks)
+**63.0% ± 9.3**, CI **[53.7%, 72.3%]**, ±69 Elo, 61W/4D/35L, 0 errors. Length mean 99,
+median 84.5, **0/100 caps**, terminations checkmate 96 / fivefold 4. The CI excludes 0.5,
+so the strength half of the A1 acceptance rule passes.
+
+**A1 throughput half — measured and accepted.** Clean, uncontended controlled run on the
+Gate 6 position (`2kr1b1r/.../5RK1 b - - 1 16`, d7), three repetitions each, fresh engine
+per run: `noqchecks` 383,605 nodes at 157,409 / 161,314 / 169,213 nps (~2.3 s); `base`
+703,206 nodes at 146,930 / 153,673 / 155,130 nps (~4.6 s). The prefilter cut A1's per-node
+penalty from ~24% (112-115k nps before it) to **~6-7%**, and the extra wall time comes from
+the 83% larger tree — which is the intended strength mechanism, not overhead. The historical
+~190k nps baseline in Gate 6 was measured on a different tree (503,402 nodes) before the
+stalemate/eval fixes, so it is not a valid A1 control. **Verdict: A1 accepted** (CI excludes
+0.5, no material per-node regression). Gate 6's own d9-in-6s goal remains open independently
+of A1. Full structural-layer A/Bs (`base` vs `plain`/`nostruct`/`noplans`/`noctx`) have not
+been run at n=100 yet.
 
 **Prior:** the layers are hand-weighted and have never been validated end to end.
 Estimate: PASS 35%, MARGINAL 40%, FAIL 25%.
@@ -150,6 +213,7 @@ Not strength work, but the implementation should not contradict its own specific
 - `plans.mjs`: feasibility checks, `pareto()` wiring, revision handling (doc 11, `SPG-INV-*`).
 - `context.mjs`: make `contextAdjust` real instead of a no-op (doc 05 §context).
 - `verify.mjs`: extend coverage so every `SVF-INV-*` / `SEARCH-INV-*` has a test.
+  `SVF-INV-007` now has an executable single-owner check; the rest remain open.
 - `meta.mjs`: threshold calibration against measured risk (docs 29/35).
 
 **Gate:** `npm run test:engine` covers every documented invariant, and no documented
@@ -187,6 +251,13 @@ lever that does not change the evaluation, so it is worth its own gate.
 plus the profile of where the time goes. Baseline: ~190k nodes/s in Node, 2654 ms for that
 search after v3.0.5 (2860 ms in v3.0.4).
 
+The post-release A1 quiet-check extension adds bounded horizon nodes, so the nps number
+must be remeasured before accepting it; `noqchecks` is the A/B control. **Remeasured
+(2026-11-21):** `base` 703,206 nodes at ~152k nps, `noqchecks` 383,605 nodes at ~162k nps —
+a ~6-7% per-node cost after the geometric prefilter, with the extra time coming from the
+intended larger tree. The old ~190k/503,402-node baseline predates the stalemate/eval fixes
+and is not comparable. A1 is accepted; the d9-in-6s target itself is still unmet.
+
 **Plan, in the order the profile justifies:**
 
 | Step | Attacks | Expected | Gate |
@@ -204,10 +275,12 @@ selectivity (better pruning, verified by `base` vs `nopruning` over 100 games).
 
 ## Gate 7 — the uncertainty driver steers verification (doc 45 §16)
 
-**Why:** v3.0.6 computes the eight components and names a driver, but nothing consumes it.
-Doc 45 §16 says the vector decides *where* verification is spent, so the honest next step is
-to spend a fixed extra budget on the component that leads and measure whether the decision
-changes — not to add another knob to the evaluation.
+**Why:** v3.0.6 computes the eight components and names a driver. The current worktree
+spends a scalar effort budget on the uncertainty *magnitude* (and no longer inverts it),
+but the leading component still does not steer verification. Doc 45 §16 says the vector
+decides *where* verification is spent, so the honest next step is to spend a fixed extra
+budget on the component that leads and measure whether the decision changes — not to add
+another knob to the evaluation.
 
 **Pre-registered metric:** on a fixed set of positions, the share of searches whose best move
 changes when the extra budget goes to the driver's component (depth for Us, width for Ut,

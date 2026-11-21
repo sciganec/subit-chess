@@ -205,12 +205,22 @@ export class Engine {
 
     // only the meta-controller picks a tier; an explicit user choice (setEvalMode,
     // or the UI writing evaluation.opts.mode) must survive the next search
-    if (plan) this.evaluation.opts.mode = plan.evalMode;
+    if (plan) {
+      this.evaluation.opts.mode = plan.evalMode;
+      // The plan's tier depth was returned but never applied: the structural
+      // fallback kept the constructor value. Keep both fields in sync (Gate 4).
+      if (typeof plan.structuralEvalDepth === 'number') {
+        this.evaluation.opts.structuralDepth = plan.structuralEvalDepth;
+      }
+    }
 
+    // The old contextBonus closure returned 0 in both branches while calling
+    // ContextProfile.key() for every move of every node (including qsearch).
+    // It is removed rather than "implemented": context still feeds scalarize()
+    // and uncertainty, and a real ordering term must be measured first (Gate 3).
+    this.searcher.contextBonus = null;
     if (this.opts.usePlans && this.plans.length) {
-      const orderer = makePlanOrderer(this.plans, this.pos.turn);
-      this.searcher.structuralBonus = orderer;
-      this.searcher.contextBonus = (m) => (this.context.tactical > 0.5 && this.context.key().includes('ATTACK') ? 0 : 0);
+      this.searcher.structuralBonus = makePlanOrderer(this.plans, this.pos.turn);
     } else {
       this.searcher.structuralBonus = null;
     }

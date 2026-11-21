@@ -15,15 +15,49 @@ Statuses:
 
 ## [Unreleased]
 
-Strength and measurement items for the v3 engine (measured, not cosmetic):
+Unreleased worktree changes after the v3.0.10 correctness tag. No version bump, tag or
+strength claim: every item below still needs its preregistered A/B gate.
 
-- **Scale the ablation harness.** At 8-20 games the 95% CI is ±13-34 pp, which
-  cannot resolve effects below ~100 Elo. Target n >= 100 games per configuration
-  at depth 4-5 before accepting or rejecting `plain`, `eval0`, `noasp`.
-- **Spec compliance debt:** `contextAdjust` no-op (doc 05 §context), `structure`
-  gaps, `verify` coverage, `meta` thresholds (docs 31/32/33/36).
-- **Search hygiene:** dead `contextBonus` in `index.mjs` (always returns 0),
-  `Score.diff` never set.
+- **Measurement harness (Gate 1).** `bench/match.mjs` now reports per-opening W/D/L
+  and an Elo-scaled 95% CI; `bench/fens/openings.epd` adds 24 quiet legal positions
+  with a SHA-256 in `bench/fens/CHECKSUMS`. The harness no longer clears the game
+  repetition stack with bare `setFEN()` after each move: it adopts the FEN and the
+  `rep`/`repHi`/`repLimit` state on both engines, so fivefold is visible to `status()`
+  again. Same 10-game seed: caps 3/10 -> 1/10, nodes/game 2.31M -> 1.70M. Full Gate 1
+  calibration (100 games, depth 4, seed 7): 57.5% ±8.9, 9/100 caps — the ≤10% gate passes.
+- **Horizon (A1).** Quiet checks are searched at `qdepth === 0`, capped by
+  `params.search.qsearch.maxChecks`, and remain subject to legality, alpha/beta and
+  the qdepth cap. `noqchecks` restores the pre-audit captures-only horizon for A/B.
+  A geometry table filters candidate moves before make/unmake: only moves touching
+  a king ray or knight jump (by origin or destination, so discovered checks survive)
+  are probed. A regression test covers a quiet discovered check. 100-game A/B vs
+  `noqchecks` (depth 4, seed 7): 63.0% ±9.3, CI 53.7-72.3%, 61W/4D/35L, 0/100 caps.
+  Clean Gate 6 remeasurement (Gate 6 FEN, d7, 3 runs each): `base` 703,206 nodes at ~152k
+  nps vs `noqchecks` 383,605 nodes at ~162k nps — a ~6-7% per-node cost after the prefilter,
+  the rest of the extra time being the intended larger tree. **A1 accepted**: CI excludes
+  0.5 and there is no material per-node regression.
+- **Search hygiene.** The dead `contextBonus` closure is removed, the horizon
+  stalemate probe uses an early-exit `hasLegalMove()` with the same rule result,
+  `plan.structuralEvalDepth` is applied, and the uncertainty budget now grows with
+  uncertainty instead of dividing by it (tested for monotonicity).
+- **Invariants.** Mate distance uses the engine-wide `MATE` scale; `centerControl`,
+  `openFiles` and `hanging` each have one SVF owner; `verify.mjs` gains an executable
+  `SVF-INV-007` ownership check with a negative-control test.
+- **Measurement harness (Gate 2).** Fixed a depth-assignment bug: `playGame()` chose the
+  per-move depth by the moving colour instead of by the config playing that colour, so in
+  odd games (`A` is Black) the two pinned depths were swapped. The first `base@5` vs
+  `base@4` run is void; a two-colour regression test now asserts the depth follows the
+  config. Gate 1 and Gate 3 used equal depths and are unaffected. Corrected Gate 2
+  (`base@5` vs `base@4`, 100 games, depth 5, seed 7): **68.0% ±8.1**, CI 59.9-76.1%,
+  58W/20D/22L — depth pays (CI.lo > 0.5).
+- **Verification.** Full `npm test` passes after the A1 prefilter. A fresh temp-copy
+  `npm run build` bundles 11 modules into `9586ACA1E6489E084B044DD523F4CEF13CD977503227DF06545F5492139DB0E8`
+  (`index.html` and `src/subit_chess_v3.0.10.html` identical there). The two release HTMLs in
+  the main worktree stay at the shipped `9A08F02F8AF4499813FE3167429A7A27D0A95071BA4A1C62EB60A9BB011C6581`;
+  no release file was overwritten.
+- **Still open.** Scale every A/B to n >= 100 games (8-20 games gives ±13-34 pp);
+  `contextAdjust` no-op (doc 05), `structure` gaps, remaining `verify` coverage,
+  `meta` thresholds (docs 31/32/33/36), and `Score.diff` never set.
 
 ---
 

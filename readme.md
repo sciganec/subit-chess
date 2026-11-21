@@ -139,15 +139,16 @@ npm run test:legacy        # v2.2.0 single-file suite (128 assertions, kept for 
   3/4. That is the largest single strength change in v3.
 - **The fast evaluation tier is not yet a measured win.** Against the previous eval
   (material + PST + hard switch): 52.5% ± 13.3 over 20 games at depth 3 — inside the noise.
-- **Depth is not yet paying.** Depth 5 vs depth 4: 45.8% ± 22.4 over 12 games. An engine must
-  gain from depth; `npm run match:depth` is the regression test for that, and it is currently
-  unresolved rather than failing.
-- **Opening breadth is still limited.** `bench/match.mjs` reports mean/median plies, capped
-  games and termination reasons, and supports `--variety`; there is no `bench/fens/openings.epd`,
-  so the opening suite remains small and the next strength item is a curated FEN set.
-- **Sample size is the binding constraint.** 8-20 games gives a ±13-34 pp interval, which
-  cannot resolve effects below ~100 Elo. Target n ≥ 100 per configuration before accepting or
-  rejecting an ablation.
+- **Depth pays (worktree).** With the corrected harness, depth 5 vs depth 4 scores
+  **68.0% ± 8.1** over 100 games (CI 59.9-76.1%). The old 12-game 45.8% ±22.4 reading was
+  superseded; a harness bug that swapped the pinned depths in odd games was found and fixed.
+- **A1 quiet checks pay (worktree).** 63.0% ± 9.3 vs `noqchecks` over 100 games, 0/100 capped
+  games; the geometric prefilter keeps the per-node throughput cost to ~6-7%.
+- **Opening suite is calibrated.** `bench/fens/openings.epd` has 24 checksummed legal FENs;
+  `bench/match.mjs` reports per-opening W/D/L, length distribution, capped games, termination
+  reasons and an Elo-scaled CI. Gate 1 passes with 9/100 caps at depth 4.
+- **Sample size is still the binding constraint for the remaining layers.** 8-20 games gives a
+  ±13-34 pp interval; the three gates above now use n=100, and any further ablation should too.
 
 See [`CHANGELOG.md`](CHANGELOG.md) § Unreleased for the full list of open items.
 
@@ -173,18 +174,29 @@ See [`CHANGELOG.md`](CHANGELOG.md) § Unreleased for the full list of open items
   evaluation weights, pruning parameters, legality and UI behaviour were not changed to seek
   strength. Full SUBIT conformance is not claimed: the canonical theory repo still documents
   v2.2.0 as the latest chess version and marks v6.14.x as DRAFT / NOT STABLE.
-- **Game strength is not yet demonstrated.** The perspective fix is a large correctness win;
-  beyond that, every measured difference is inside the confidence interval at the sample sizes
-  used so far. Gates 1–7, W08, an independent oracle and large A/B/C/D runs remain open.
-- **Opening suite remains narrow.** Game-length reporting and `--variety` exist; a curated
-  `openings.epd` does not.
+- **Game strength is not yet demonstrated for v3.0.10.** The perspective fix is a large
+  correctness win; beyond that, every measured difference at the sample sizes used so far is
+  inside the confidence interval. Gates 1–3 (length, depth, A1) are closed in the worktree;
+  Gates 4–7, W08, an independent oracle and the remaining structural-layer A/Bs stay open. The post-v3.0.10 worktree is uncommitted: it adds audited
+  horizon/budget/SVF fixes and has two measured 100-game wins — A1 quiet checks
+  (`base` 63.0% ±9.3 vs `noqchecks`, CI 53.7–72.3%) and depth
+  (`base@5` 68.0% ±8.1 vs `base@4`, CI 59.9–76.1%). Those results apply to the worktree
+  only, not to the released v3.0.10 artifact.
+- **Opening suite is curated and Gate 1-calibrated.** Game-length reporting, `--variety` and a
+  24-position `bench/fens/openings.epd` with a SHA-256 in `bench/fens/CHECKSUMS` now exist;
+  `bench/match.mjs` prints per-opening W/D/L and an Elo-scaled CI. The harness also keeps
+  the repetition stack across moves, so capped games fell from 3/10 to 1/10 on the same
+  calibration seed. The 100-game Gate 1 calibration is complete: 57.5% ±8.9 for `base` vs
+  `base` at depth 4, 49W/17D/34L, 9/100 games at the 300-ply cap (Gate ≤10%), mean 128 plies.
 - **Legacy subsystems are gone, not ported.** The v2.2.0 diffusion study generator, ρ_s policy
   vector, teacher snapshots and telemetry do not exist in v3; `runners/run.js` targets v1.9.1
   and is kept only for the v2 legacy suite.
-- **Residual inert debt:** `contextBonus` in `index.mjs` is dead code and `Score.diff` is never
-  written. TT aging and null-move state restoration were fixed in v3.0.10.
+- **Residual debt:** the dead `contextBonus` has been removed; `Score.diff` is still never
+  written. TT aging stays at one search by ADR 0022, and null-move state restoration remains
+  fixed in v3.0.10.
 - **Spec compliance is partial:** full plan revision lifecycle (doc 11), no-op `contextAdjust`
-  (doc 05), `structure` gaps, `verify` coverage and `meta` thresholds are not complete.
+  (doc 05), `structure` gaps and `meta` thresholds remain open; `verify.mjs` now has an
+  executable SVF-INV-007 ownership check, but invariant coverage is not yet complete.
 
 ## License
 

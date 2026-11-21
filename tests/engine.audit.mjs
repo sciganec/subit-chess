@@ -375,11 +375,11 @@ check('TT stores 53-bit keys exactly', (() => {
  * ================================================================== */
 
 check('riskOf reports NONE for a proven mate in one',
-  riskOf({ score: 89998, completed: true, nodes: 100, seldepth: 2, pv: [1], flag: 0, scoreSpread: 89998 }, 5) === 0,
+  riskOf({ score: 99998, completed: true, nodes: 100, seldepth: 2, pv: [1], flag: 0, scoreSpread: 99998 }, 5) === 0,
   'mate in 1 -> NONE');
 
 check('riskOf reports LOW for a mate in many (not NONE)',
-  riskOf({ score: 89980, completed: true, nodes: 100, seldepth: 2, pv: [1,2,3,4,5,6,7,8,9,10], flag: 0, scoreSpread: 89980 }, 5) !== 0,
+  riskOf({ score: 99980, completed: true, nodes: 100, seldepth: 2, pv: [1,2,3,4,5,6,7,8,9,10], flag: 0, scoreSpread: 99980 }, 5) !== 0,
   'mate in many -> LOW, not NONE');
 
 check('riskOf reports MODERATE for a bound score (flag != 0)',

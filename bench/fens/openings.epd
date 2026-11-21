@@ -1,0 +1,29 @@
+# Gate 1 opening suite — 24 quiet, legal positions for bench/match.mjs.
+# Provenance: the 12 positions in bench/match.mjs OPENINGS, extended by two
+# deterministic quiet plies each (prefer pawn/development, never check).
+# Generated with the v3.0.10 core; validated by Position.setFEN on read.
+# The loader strips the `id` tag and uses only the FEN.
+rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1 id "gate1-01";
+rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1 id "gate1-02";
+rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2 id "gate1-03";
+rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2 id "gate1-04";
+r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 3 id "gate1-05";
+r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3 id "gate1-06";
+rnbqkb1r/pp1ppppp/5n2/2p5/2P5/5N2/PP1PPPPP/RNBQKB1R w KQkq - 2 3 id "gate1-07";
+rnbqkbnr/pp1ppppp/8/2p5/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2 id "gate1-08";
+rnbqkbnr/ppp1pppp/8/3p4/3P4/8/PPP1PPPP/RNBQKBNR w KQkq - 0 2 id "gate1-09";
+rnbqkb1r/ppp1pppp/5n2/3p4/3P4/2N5/PPP1PPPP/R1BQKBNR w KQkq - 2 3 id "gate1-10";
+r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4 id "gate1-11";
+rnbqkb1r/pp2pppp/5n2/2pp4/3P4/2N5/PPP1PPPP/R1BQKBNR w KQkq - 0 4 id "gate1-12";
+rnbqkbnr/pppp1ppp/8/4p3/3P4/8/PPP1PPPP/RNBQKBNR w KQkq e6 0 2 id "gate1-13";
+rnbqkbnr/pppp1ppp/8/4p3/4P3/3P4/PPP2PPP/RNBQKBNR b KQkq - 0 2 id "gate1-14";
+rnbqkbnr/ppp2ppp/8/3pp3/4P3/3P4/PPP2PPP/RNBQKBNR w KQkq d6 0 3 id "gate1-15";
+rnbqkbnr/ppp2ppp/8/3pp3/2P1P3/5N2/PP1P1PPP/RNBQKB1R b KQkq c3 0 3 id "gate1-16";
+r1bqkbnr/pppp2pp/2n5/1B2pp2/2P1P3/5N2/PP1P1PPP/RNBQK2R w KQkq f6 0 4 id "gate1-17";
+r1bqkbnr/pppp2pp/2n5/4pp2/2BPP3/5N2/PPP2PPP/RNBQK2R b KQkq d3 0 4 id "gate1-18";
+rnbqkb1r/pp1p1ppp/5n2/2p1p3/2PP4/5N2/PP2PPPP/RNBQKB1R w KQkq e6 0 4 id "gate1-19";
+rnbqkbnr/pp1p1ppp/8/2p1p3/4P3/3P1N2/PPP2PPP/RNBQKB1R b KQkq - 0 3 id "gate1-20";
+rnbqkbnr/ppp2ppp/8/3pp3/3P4/4P3/PPP2PPP/RNBQKBNR w KQkq e6 0 3 id "gate1-21";
+rnbqkb1r/pp2pppp/5n2/2pp4/3PP3/2N5/PPP2PPP/R1BQKBNR w KQkq c6 0 4 id "gate1-22";
+r1bqkbnr/pppp2pp/2n5/4pp2/2B1P3/3P1N2/PPP2PPP/RNBQK2R w KQkq f6 0 5 id "gate1-23";
+rnbqkb1r/pp3ppp/5n2/2ppp3/3P1P2/2N5/PPP1P1PP/R1BQKBNR w KQkq e6 0 5 id "gate1-24";

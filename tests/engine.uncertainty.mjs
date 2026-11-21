@@ -94,7 +94,7 @@ function profileOf(fen, opts = {}) {
 /* ---------------- 5. a proven mate closes the search question ---------------- */
 {
   const { p, r } = profileOf(MATE1, { depth: 4 });
-  check('the mate is found', Math.abs(r.score) > 90000 - 1000, `${r.san} ${r.score}`);
+  check('the mate is found', Math.abs(r.score) > 100000 - 1000, `${r.san} ${r.score}`);
   check('search uncertainty is zero once the mate is proven', p.vector[0] === 0,
     p.why.search);
   check('the certificate is FORCED_WITHIN_SCOPE', r.certificate.validation_status === STATUS.FORCED_WITHIN_SCOPE);
@@ -118,7 +118,7 @@ function profileOf(fen, opts = {}) {
     `${r1.score} vs ${r2.score}, ${r1.nodes} vs ${r2.nodes}`);
   check('the profile is reported next to the score, not inside it',
     r1.score === r2.score && profile.vector.length === 8);
-  check('the score is not a probability', typeof r1.score === 'number' && Math.abs(r1.score) < 90000,
+  check('the score is not a probability', typeof r1.score === 'number' && Math.abs(r1.score) < 100000,
     `${r1.score}`);
 }
 

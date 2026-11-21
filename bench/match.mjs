@@ -97,6 +97,13 @@ export const CONFIGS = {
     opts: {}
   },
 
+  // horizon breadth: the audit A1 ablation (quiet checks in qsearch)
+  noqchecks: {
+    label: 'no quiet checks in qsearch (pre-audit horizon)',
+    params: { search: { qsearch: { checks: false } } },
+    opts: {}
+  },
+
   // pruning ablations: how much of the nominal depth is real?
   nopruning: {
     label: 'no null-move / LMR / futility',
@@ -190,11 +197,36 @@ function loadSuite(path) {
   return out.length ? out : OPENINGS.slice();
 }
 
-function newEngine(cfg, depth) {
+function newEngine(cfg) {
   const params = cloneParams(DEFAULT_PARAMS);
   mergeInto(params, cfg.params);
   const engine = new Engine(params, Object.assign({ ttBits: 18 }, cfg.opts));
   return engine;
+}
+
+/**
+ * Load a game position without losing its repetition history.
+ *
+ * `Engine.setFEN()` is right for opening a new position: it clears `rep`,
+ * `repHi` and `repLimit`. A match, however, is one continuous game. Calling
+ * bare `setFEN()` after every move (as the harness did) throws away the stack
+ * that `Engine.play()` just carried forward under ADR 0016, so neither engine
+ * can see threefold/fivefold and equal positions shuffle to the ply cap. This
+ * helper is the harness-side fix: the FEN updates derived state, the copied
+ * stack restores the game identity. The rule authority stays `status()`.
+ */
+export function adoptGamePosition(engine, fen, rep) {
+  engine.setFEN(fen);
+  if (rep) {
+    engine.pos.rep = rep.rep.slice();
+    engine.pos.repHi = rep.repHi.slice();
+    engine.pos.repLimit = rep.repLimit;
+  }
+  return engine;
+}
+
+export function repetitionState(pos) {
+  return { rep: pos.rep.slice(), repHi: pos.repHi.slice(), repLimit: pos.repLimit };
 }
 
 /** Deep merge of plain JSON config fragments into a params clone. */
@@ -212,11 +244,11 @@ function mergeInto(target, patch) {
 /** Play one game; `aWhite` decides which config has the white pieces. */
 function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite, timeMs = 0 }) {
   const engines = {
-    white: newEngine(aWhite ? cfgA : cfgB, aWhite ? depthA : depthB),
-    black: newEngine(aWhite ? cfgB : cfgA, aWhite ? depthB : depthA)
+    white: newEngine(aWhite ? cfgA : cfgB),
+    black: newEngine(aWhite ? cfgB : cfgA)
   };
-  engines.white.setFEN(fen);
-  engines.black.setFEN(fen);
+  adoptGamePosition(engines.white, fen, null);
+  adoptGamePosition(engines.black, fen, null);
 
   let nodes = 0;
   let maxDepth = 0;
@@ -227,7 +259,11 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite, timeMs = 
     const side = engines.white.pos.turn === WHITE ? 'white' : 'black';
     const engine = engines[side];
     const before = engine.fen;
-    const wantDepth = side === "white" ? depthA : depthB;
+    // The depth belongs to the CONFIG, not to the colour. In odd games A plays
+    // Black, so keying this on `side` swapped the two depths and made a depth
+    // A/B measure half its games with the labels reversed.
+    const sideIsA = aWhite ? side === 'white' : side === 'black';
+    const wantDepth = sideIsA ? depthA : depthB;
     // time-limited play: the engine gets a clock instead of a depth, which is how
     // the UI plays and the only fair way to compare two pruning settings
     const want = timeMs ? { timeMs } : { depth: wantDepth };
@@ -248,10 +284,13 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite, timeMs = 
     }
     plies.push(played.san || res.uci);
 
-    // both instances must see the same position after every move
+    // Both instances must see the same position *and the same game history*
+    // after every move. `play()` preserves the stack on the mover; carry it to
+    // the observer too instead of calling bare setFEN() and losing it.
     const now = engine.fen;
-    engines.white.setFEN(now);
-    engines.black.setFEN(now);
+    const rep = repetitionState(engine.pos);
+    adoptGamePosition(engines.white, now, rep);
+    adoptGamePosition(engines.black, now, rep);
 
     const st = engines.white.pos.status();
     if (st && st.over) return { over: st, plies, nodes, maxDepth, depthSeen };
@@ -280,17 +319,24 @@ function stdev(xs) {
 }
 
 
-export function summarize(games, side) {
+/** Statistics shared by the aggregate summary and the per-opening breakdown. */
+function statsOf(games) {
   const scores = games.map((g) => g.score);
   const m = mean(scores);
   const se = scores.length > 1 ? stdev(scores) / Math.sqrt(scores.length) : 0;
+  const ci95 = 1.96 * se;
+  // A score interval is not an Elo interval: at p=0.5 a ±0.1 band is already
+  // ±70 Elo. Publishing both stops a ±10 pp result being read as a strength win.
+  const p = Math.min(0.99, Math.max(0.01, m));
+  const eloCi95 = 400 / Math.LN10 * ci95 / (p * (1 - p));
   const wins = games.filter((g) => g.score === 1).length;
   const draws = games.filter((g) => g.score === 0.5).length;
   const losses = games.filter((g) => g.score === 0).length;
   return {
     n: games.length,
     score: m,
-    ci95: 1.96 * se,
+    ci95,
+    eloCi95,
     wins, draws, losses,
     errors: games.filter((g) => g.error).length,
     avgNodes: mean(games.map((g) => g.nodes || 0)),
@@ -304,9 +350,24 @@ export function summarize(games, side) {
       const r = (g.over && g.over.reason) || (g.error ? "error" : "unknown");
       acc[r] = (acc[r] || 0) + 1;
       return acc;
-    }, {}),
-    side
+    }, {})
   };
+}
+
+export function summarize(games, side) {
+  // The harness header promises a per-opening breakdown. With 12 fixed starts
+  // and n=20 one opening can decide the score; without this table that risk is
+  // invisible in the report (Gate 1).
+  const groups = new Map();
+  for (const g of games) {
+    const key = g.opener == null ? 0 : g.opener;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(g);
+  }
+  const byOpening = [...groups.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([opener, gs]) => Object.assign({ opener, fen: gs[0].fen }, statsOf(gs)));
+  return Object.assign(statsOf(games), { byOpening, side });
 }
 
 /* ------------------------------------------------------------------ *
@@ -391,10 +452,16 @@ function main() {
 
   console.log(`\n${label}`);
   console.log(`  games   ${s.n}  (${opts.time ? `${opts.time}ms/move` : `depth ${opts.depth}`}, seed ${opts.seed}, max ${opts.maxPlies} plies)`);
-  console.log(`  score   ${(s.score * 100).toFixed(1)}%  ±${(s.ci95 * 100).toFixed(1)}  (${s.wins}W ${s.draws}D ${s.losses}L)`);
+  console.log(`  score   ${(s.score * 100).toFixed(1)}%  ±${(s.ci95 * 100).toFixed(1)}  (±${Math.round(s.eloCi95)} Elo)  (${s.wins}W ${s.draws}D ${s.losses}L)`);
   console.log(`  errors  ${s.errors}`);
   console.log(`  nodes   ${Math.round(s.avgNodes)} per game`);
   console.log(`  length  mean ${s.avgPlies.toFixed(0)}  median ${s.medianPlies}  max ${s.maxPlies}  capped ${s.capped}/${s.n}  (${Object.entries(s.reasons).map(([k, v]) => `${k}: ${v}`).join(", ")})`);
+  if (s.byOpening.length > 1) {
+    console.log('  by opening:');
+    for (const b of s.byOpening) {
+      console.log(`    #${String(b.opener).padStart(2)}  ${(b.score * 100).toFixed(0)}% ±${(b.ci95 * 100).toFixed(0)}  ${b.wins}W ${b.draws}D ${b.losses}L  ${b.avgPlies.toFixed(0)}p  cap ${b.capped}/${b.n}  ${b.fen.split(' ').slice(0, 2).join(' ')}`);
+    }
+  }
 
   if (opts.out) {
     mkdirSync(opts.out.includes('/') ? opts.out.slice(0, opts.out.lastIndexOf('/')) : '.', { recursive: true });

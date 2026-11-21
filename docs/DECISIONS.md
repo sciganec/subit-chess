@@ -676,6 +676,11 @@ re-reads its limits from its own options.
 
 - Real games now end correctly by fivefold repetition and the engine can steer towards or
   away from a repetition.
+- *(post-v3.0.10 note)* Any observer instance in a match must adopt the same history: copying
+  the FEN alone is a new position, not the same game. Gate 1 found `bench/match.mjs` calling
+  bare `setFEN()` after each move, which wiped the stack `play()` had preserved; it now
+  copies `rep`/`repHi`/`repLimit` too. No rule or search semantics changed — `status()`
+  remains the rule authority.
 - The stack grows with the game length; it is capped only by the 75-move/fivefold rules,
   which is bounded in practice.
 - No measured strength claim: repetition awareness removes shuffling, it does not add tactics.
@@ -803,8 +808,11 @@ tactically lost, and one scalar cannot say which.
 - Determinism is testable. The same position and budget produce the same profile, the same
   decision and the same evidence strings, so a regression in the profile fails a test
   instead of becoming a judgement call.
-- The next consumer is the verification budget (doc 45 §16): the driver should decide where
-  a deeper or wider search is spent. That is not wired yet and this ADR does not claim it.
+- The magnitude of U(P) now feeds a scalar search-effort budget and increases, never
+  inverts, the clock and depth (doc 05 §17). This is the v3.0.10-post-release worktree,
+  not the release tag. It still does **not** implement doc 45 §16: the leading component
+  (`driver`) does not decide where a deeper or wider search is spent, and Gate 7 remains
+  open. No ADR claims that the vector steers verification yet.
 
 ---
 
@@ -970,7 +978,13 @@ something other than a searched, legal position:
   material is terminal at interior and horizon nodes, and null-move state
   restoration is verified by full canonical snapshots. See the v3.0.10
   release dossier and `tests/engine.tactics.mjs`.
+- The post-release worktree adds quiet checking moves only at `qdepth === 0`,
+  at most `maxChecks` of them (default 4), never while already in check. This is a
+  controlled extension under doc 05 §quiescence, not a change to this ADR: no
+  stand-pat in check, the qdepth cap, stalemate detection and automatic draws at
+  the root are unchanged. `noqchecks` restores the old horizon for A/B; strength
+  is not claimed until Gate 3 and Gate 6 close.
 
 ---
 
-*End of DECISIONS.md — v3.0.10*
+*End of DECISIONS.md — v3.0.10 (plus unreleased worktree notes)*

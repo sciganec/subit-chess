@@ -4,6 +4,7 @@
  * Spec basis:
  *   docs/theory/31_UNIFIED_COMPUTATIONAL_ARCH §11 (invariant register)
  *   docs/theory/05_SUBIT_SEARCH_ARCHITECTURE §24 (search invariants)
+ *   docs/theory/04_SUBIT_STRUCTURAL_VALUE_FUNCTION §12 (SVF-INV-*)
  *   docs/theory/11_PLAN_GENERATION SPG-INV-001 .. SPG-INV-006
  *
  * Every check here is *executable*: it returns a list of failures, never a
@@ -12,15 +13,17 @@
  */
 
 import {
-  Position, moveToUci, pieceType, pieceColor, opposite, PAWN, KING,
+  Position, moveToUci, pieceType, pieceColor, opposite, WHITE, BLACK, PAWN, KING,
   FLAG_CAPTURE, FLAG_EP, MOVE_FLAGS
 } from './core.mjs';
+import { structuralVector, SVF_COMPONENTS } from './evaluate.mjs';
 
 export const INVARIANT = {
   UCA_003: 'UCA-INV-003  the legal move set at a full node is never reduced',
   UCA_005: 'UCA-INV-005  search owns the decision; heuristics only order',
   UCA_013: 'UCA-INV-013  reproducible decisions in deterministic mode',
   UCA_019: 'UCA-INV-019  full canonical-state identity after make/unmake',
+  SVF_007: 'SVF-INV-007  a structural feature is owned by one SVF component',
   SM_003: 'SM-INV-003  relations stay typed',
   SPG_005: 'SPG-INV-005  a plan never contains an illegal move'
 };
@@ -154,6 +157,67 @@ export function verifyCaptures(pos) {
     }
   }
   return failures;
+}
+
+/**
+ * SVF-INV-007 — No Double Counting.
+ *
+ * Perturb one perceptual feature at a time and compare the nine raw SVF axes.
+ * A feature that changes two axes is being paid for twice. The audit found
+ * exactly that for `centerControl` (A+Q), `openFiles` (A+X) and `hanging`
+ * (T+D); each is now owned by one axis. The optional `vectorOf` argument lets
+ * the suite inject a deliberately broken vector to prove the check can fail.
+ */
+export function verifySVFOwnership(pos, percept, structure, ctx, params, vectorOf = structuralVector) {
+  const failures = [];
+  const base = vectorOf(pos, percept, structure, ctx, params);
+
+  const probes = [];
+  for (const color of [WHITE, BLACK]) {
+    probes.push([
+      'centerControl', color, 'Q',
+      (p) => {
+        const c = p.centerControl.slice();
+        c[color]++;
+        p.centerControl = c;
+      }
+    ], [
+      'openFiles', color, 'A',
+      (p) => {
+        const f = p.openFiles.map((files) => files.slice());
+        f[color] = f[color].concat(999);
+        p.openFiles = f;
+      }
+    ], [
+      'hanging', color, 'T',
+      (p) => {
+        const h = p.hanging.map((pieces) => pieces.slice());
+        h[color] = h[color].concat({ sq: 0, piece: 0, attackers: 1, defenders: 0 });
+        p.hanging = h;
+      }
+    ]);
+  }
+
+  for (const [name, color, owner, mutate] of probes) {
+    const p = clonePercept(percept);
+    mutate(p);
+    const after = vectorOf(pos, p, structure, ctx, params);
+    const changed = [];
+    for (let i = 0; i < SVF_COMPONENTS.length; i++) {
+      if (after[i] !== base[i]) changed.push(SVF_COMPONENTS[i]);
+    }
+    if (changed.length !== 1 || changed[0] !== owner) {
+      fail(failures, INVARIANT.SVF_007,
+        `${name}[${color}] changed ${changed.join(',') || 'nothing'}, expected only ${owner}`);
+    }
+  }
+  return failures;
+}
+
+function clonePercept(percept) {
+  const copy = Object.create(Object.getPrototypeOf(percept));
+  for (const key of Object.keys(percept)) copy[key] = percept[key];
+  return copy;
 }
 
 /** Search invariants: the returned move is legal, the PV replays from the root. */

@@ -7,11 +7,13 @@
  *   docs/theory/05_SUBIT_SEARCH_ARCHITECTURE §12, §futility, §quiescence
  *
  * One check per P0 defect fixed in v3.0.9. The P1 items of the same audit
- * (AUD-07…AUD-09) are deliberately out of scope here.
+ * (AUD-07…AUD-09) are deliberately out of scope here. The final blocks cover
+ * the unreleased v3.0.10 audit follow-ups A1 (quiet checks), A7 (early-exit
+ * stalemate probe) and A12 (the same probe's rule equivalence).
  */
 
-import { Position, WHITE, BLACK } from '../src/engine/core.mjs';
-import { Evaluation, DEFAULT_PARAMS } from '../src/engine/evaluate.mjs';
+import { Position, WHITE, BLACK, ROOK, pieceType, pieceColor } from '../src/engine/core.mjs';
+import { Evaluation, DEFAULT_PARAMS, cloneParams } from '../src/engine/evaluate.mjs';
 import { Searcher, TranspositionTable, MATE } from '../src/engine/search.mjs';
 
 let fails = 0;
@@ -24,6 +26,9 @@ function check(name, cond, extra = '') {
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 const CHECK_FEN = '4k3/8/8/8/8/8/4R3/4K3 b - - 0 1';   // black in check from Re2
 const STALE_FEN = 'k7/2K5/1Q6/8/8/8/8/8 b - - 0 1';    // black stalemated
+const QCHECK_FEN = '4k3/8/8/8/8/8/8/R1K5 w - - 0 1';   // Ra8+ is a quiet check
+const DISCOVERY_FEN = '4k3/8/8/8/8/4N3/4R3/K7 w - - 0 1'; // Nd5+ opens the e-file
+const MATE_FEN = '7k/6Q1/6K1/8/8/8/8/8 b - - 0 1';     // black is checkmated
 
 function realSearcher() {
   return new Searcher(
@@ -139,6 +144,87 @@ function realSearcher() {
   s.pvLength.fill(0);
   s.negamax(p, 1, 1000, 1001, 1);
   check('AUD-06 futility keeps good quiet moves', s.nodes === 20, `nodes=${s.nodes}`);
+}
+
+/* ================================================================== *
+ * A1 — bounded quiet checks extend the horizon (A/B against noqchecks)
+ * ================================================================== */
+
+{
+  // The stub pays 900 only once Ra1 has reached a8. A captures-only qsearch
+  // cannot see that quiet check; the bounded extension must.
+  const stub = {
+    evaluate(pos) {
+      const rook = pos.board[0]; // a8 in the 0x88 board
+      return pos.turn === WHITE && rook && pieceType(rook) === ROOK && pieceColor(rook) === WHITE
+        ? 900 : 0;
+    }
+  };
+  const run = (checks, maxChecks) => {
+    const params = cloneParams(DEFAULT_PARAMS);
+    params.search.qsearch.checks = checks;
+    params.search.qsearch.maxChecks = maxChecks;
+    const p = new Position().setFEN(QCHECK_FEN);
+    const s = new Searcher(stub, params, { tt: new TranspositionTable(4) });
+    const score = s.quiescence(p, -1e9, 1e9, 0, 0);
+    return { score, nodes: s.nodes, fen: p.fen() };
+  };
+  const off = run(false, 4);
+  const on = run(true, 4);
+  const capped = run(true, 0);
+  check('A1 captures-only qsearch misses the quiet check', off.score === 0, `score=${off.score}`);
+  check('A1 bounded quiet checks see the check', on.score === 900, `score=${on.score}`);
+  check('A1 quiet checks leave the board intact', on.fen === QCHECK_FEN, on.fen);
+  check('A1 maxChecks caps the extra horizon', capped.score === 0 && capped.nodes === 0,
+    `score=${capped.score} nodes=${capped.nodes}`);
+}
+
+{
+  // The O(1) geometric prefilter may not miss a discovered check: the knight
+  // leaves the e-file (destination d5 is off the king's rays) and uncovers Re1.
+  const stub = {
+    evaluate(pos) {
+      // Any knight move vacates e3 and uncovers Re1; reward the resulting
+      // white-to-move position after Black's forced evasion.
+      const e3 = 5 * 16 + 4;
+      const knightStillBlocks = pos.board[e3] && pieceType(pos.board[e3]) === 2 &&
+        pieceColor(pos.board[e3]) === WHITE;
+      return pos.turn === WHITE && !knightStillBlocks ? 900 : 0;
+    }
+  };
+  const run = (checks) => {
+    const params = cloneParams(DEFAULT_PARAMS);
+    params.search.qsearch.checks = checks;
+    params.search.qsearch.maxChecks = 4;
+    const p = new Position().setFEN(DISCOVERY_FEN);
+    const s = new Searcher(stub, params, { tt: new TranspositionTable(4) });
+    const score = s.quiescence(p, -1e9, 1e9, 0, 0);
+    return { score, fen: p.fen() };
+  };
+  const off = run(false);
+  const on = run(true);
+  check('A1 prefilter finds the quiet discovered check', on.score === 900,
+    `off=${off.score} on=${on.score}`);
+  check('A1 discovered check leaves the board intact', on.fen === DISCOVERY_FEN, on.fen);
+}
+
+/* ================================================================== *
+ * A7/A12 — early-exit stalemate probe keeps the rule and the board
+ * ================================================================== */
+
+{
+  const s = realSearcher();
+  for (const [name, fen] of [
+    ['starting position', START],
+    ['stalemate', STALE_FEN],
+    ['checkmate', MATE_FEN]
+  ]) {
+    const p = new Position().setFEN(fen);
+    const expected = p.legalMoves().length > 0;
+    check(`A12 hasLegalMove agrees with legalMoves (${name})`, s.hasLegalMove(p) === expected,
+      `probe=${s.hasLegalMove(p)} expected=${expected}`);
+    check(`A12 hasLegalMove restores the board (${name})`, p.fen() === fen, p.fen());
+  }
 }
 
 console.log(`\nAUDIT2: ${fails === 0 ? 'ALL CHECKS PASSED' : fails + ' CHECK(S) FAILED'}`);

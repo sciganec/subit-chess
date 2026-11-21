@@ -19,7 +19,8 @@
 import {
   WHITE, BLACK, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
   MATERIAL, pieceType, opposite, moveToUci, MOVE_FROM, MOVE_TO, MOVE_FLAGS,
-  MOVE_PROMO, FLAG_CAPTURE, FLAG_PROMO, FLAG_EP, FLAG_CASTLE
+  MOVE_PROMO, FLAG_CAPTURE, FLAG_PROMO, FLAG_EP, FLAG_CASTLE,
+  KNIGHT_DELTAS, BISHOP_DIRS, ROOK_DIRS
 } from './core.mjs';
 
 export const MATE = 100000;
@@ -34,6 +35,38 @@ const EMPTY_KILLER = [0, 0];
 
 /** History counters saturate at this value (see MoveOrder.addHistory). */
 const HISTORY_MAX = 1 << 20;
+
+/**
+ * For each king square, the squares from which a piece could check it.
+ *
+ * A direct check lands on one of these squares (a knight jump or a ray from
+ * the king; pawns and sliders are on rays). A *discovered* check instead has
+ * its vacated origin on one of them. Testing `origin || destination` before
+ * making the move avoids a make/unmake for every quiet move at the horizon
+ * while keeping every legal checking move. The table is geometry only — no
+ * evaluation, no legality claim; `isAttacked()` after makeMove still decides.
+ */
+function buildCheckTargets() {
+  const table = new Array(128);
+  for (let king = 0; king < 128; king++) {
+    if (king & 0x88) { table[king] = null; continue; }
+    const hit = new Uint8Array(128);
+    for (const d of KNIGHT_DELTAS) {
+      const to = king + d;
+      if ((to & 0x88) === 0) hit[to] = 1;
+    }
+    for (const d of [...BISHOP_DIRS, ...ROOK_DIRS]) {
+      let to = king + d;
+      while ((to & 0x88) === 0) {
+        hit[to] = 1;
+        to += d;
+      }
+    }
+    table[king] = hit;
+  }
+  return table;
+}
+const CHECK_TARGETS = buildCheckTargets();
 
 /**
  * How many search generations a TT entry stays usable.
@@ -296,6 +329,27 @@ export class Searcher {
     if (this.stop) return true;
     if (this.nodeLimit && this.nodes >= this.nodeLimit) { this.stop = true; return true; }
     if (this.deadline && Date.now() >= this.deadline) { this.stop = true; return true; }
+    return false;
+  }
+
+  /**
+   * Horizon stalemate probe with early exit. `legalMoves()` builds the full
+   * legal array (and scans make/unmake for every pseudo-move) just to answer
+   * "is there at least one?". The AUD-03 rule is unchanged; only the work is
+   * reduced on quiet leaves, where the answer is almost always yes.
+   */
+  hasLegalMove(pos) {
+    pos.refreshPieces();
+    const us = pos.turn;
+    const them = opposite(us);
+    for (const m of pos.generateMoves(false)) {
+      const victim = pos.board[MOVE_TO(m)];
+      if (victim && pieceType(victim) === KING) continue;
+      const undo = pos.makeMove(m);
+      const legal = !pos.isAttacked(pos.kingSq[us], them);
+      pos.unmakeMove(undo);
+      if (legal) return true;
+    }
     return false;
   }
 
@@ -750,7 +804,7 @@ export class Searcher {
       // would report a won game as drawn (or the reverse). The probe runs only
       // when no capture was generated, so the common tactical path pays nothing.
       if (moves.length === 0 && this.qStalemate &&
-          pos.legalMoves().length === 0) return 0;
+          !this.hasLegalMove(pos)) return 0;
     }
 
     // The cap. Not in check, `best` already carries the stand-pat value. In
@@ -797,6 +851,59 @@ export class Searcher {
         if (alpha >= beta) break;
       }
     }
+
+    // Quiet checks at the first horizon level (audit A1). A captures-only
+    // qsearch cannot see a sacrifice whose first move is a silent check, i.e.
+    // the classic attacking horizon blind spot. Bounded on purpose: one qply,
+    // at most maxChecks moves, never while already in check, and still subject
+    // to legality, alpha/beta and the qdepth cap. `noqchecks` restores the old
+    // behaviour so the change can be A/B'd instead of believed.
+    const qc = this.params.search.qsearch;
+    if (qc && qc.checks && !inCheck && qdepth === 0 && alpha < beta) {
+      const checks = [];
+      // Cheap geometric prefilter: only moves touching a ray or a knight jump
+      // from the enemy king can be a direct check, and only moves that vacate
+      // one of those squares can be a discovered check. Everything else is
+      // skipped before make/unmake. The full legality test remains below.
+      const targets = CHECK_TARGETS[pos.kingSq[them]];
+      for (const m of pos.generateMoves(false)) {
+        const flags = MOVE_FLAGS(m);
+        if (flags & (FLAG_CAPTURE | FLAG_EP | FLAG_PROMO)) continue;
+        const from = MOVE_FROM(m), to = MOVE_TO(m);
+        if (!targets[from] && !targets[to]) continue;
+        const undo = pos.makeMove(m);
+        const givesCheck = pos.isAttacked(pos.kingSq[them], us);
+        pos.unmakeMove(undo);
+        if (givesCheck) checks.push(m);
+      }
+      const checkCount = Math.min(qc.maxChecks,
+        checks.length ? this.order.scoreMoves(pos, checks, ply, 0, 0, {
+          structural: this.structuralBonus,
+          contextBonus: this.contextBonus
+        }) : 0);
+      const checkBuf = this.order.buffers[ply];
+      for (let i = 0; i < checkCount; i++) {
+        const m = checkBuf[i];
+        pos.pushRep();
+        const undo = pos.makeMove(m);
+        if (pos.isAttacked(pos.kingSq[us], them)) {
+          pos.unmakeMove(undo);
+          pos.popRep();
+          continue;
+        }
+        legal++;
+        this.nodes++;
+        const score = -this.quiescence(pos, -beta, -alpha, ply + 1, qdepth + 1);
+        pos.unmakeMove(undo);
+        pos.popRep();
+        if (this.stop) return best;
+        if (score > best) {
+          best = score;
+          if (score > alpha) alpha = score;
+          if (alpha >= beta) break;
+        }
+      }
+    }
     if (legal === 0 && inCheck) return -MATE + ply;
     return best;
   }
@@ -804,5 +911,9 @@ export class Searcher {
 
 /** Search budget from complexity and uncertainty (doc 05 §17.1). */
 export function searchBudget({ complexity = 0.5, uncertainty = 0.3, timeRemaining = 1 }) {
-  return Math.max(1, Math.round(1 + complexity * 2 + uncertainty * 3)) * Math.max(1, timeRemaining);
+  // Both inputs must *increase* effort. The old formula put uncertainty in a
+  // divisor (`clock / budget`), so an uncertain position received less time.
+  const c = Math.min(1, Math.max(0, complexity));
+  const u = Math.min(1, Math.max(0, uncertainty));
+  return Math.max(1, Math.round(1 + c * 2 + u * 3)) * Math.max(1, timeRemaining);
 }
