@@ -1,6 +1,6 @@
 # Roadmap
 
-Direction for **subit-chess** after v3.0.10.
+Direction for **subit-chess** after v3.0.11.
 
 Guiding principles (unchanged):
 - **Evidence over ambition.** Every next step has a pre-registered gate.
@@ -14,34 +14,27 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.10 (2026-11-21)
+## Current state — v3.0.11 (2026-11-21)
 
-**Status:** correctness release. The v3.0.9 audit register §17 is closed 9/9 in
-`e98d359` + `be27fe4`; release artifacts are in `ver/subit_chess_v3.0.10/`. This is
-**not** a strength release: evaluation weights, pruning parameters, legality rules and
-UI behaviour were not changed to seek strength. Full canonical SUBIT conformance is
-not claimed — the canonical theory repo still documents v2.2.0 as the latest chess
-version, and SUBIT-∞ v6.14.x is DRAFT / NOT STABLE.
+**Status:** measured engineering increment with a research-only theory addendum. It ships the
+post-v3.0.10 work: Gate 1 reporting and repetition fixes, bounded quiet checks at the
+horizon (A1), search hygiene/verification fixes, Gate 7 bench-only steering, and ADR 0023's
+deletion of structural/context move ordering after the Gate 3 kill. Release artifacts are in
+`ver/subit_chess_v3.0.11/`. This is **not** an external strength release: all wins are
+self-play on the same curated suite. Full canonical SUBIT conformance is not claimed — the
+canonical theory repo still documents v2.2.0 as the latest chess version, and SUBIT-∞
+v6.14.x is DRAFT / NOT STABLE.
 
-For the released v3.0.10 artifact, the demonstrated strength change is still the single
-large evaluation-perspective fix. The unreleased worktree additionally has two 100-game
-wins on its own code (A1 and depth), neither of which is a claim about the release.
+The new theory files in `docs/theory/81-99/`, `article_04.md` and `article_05.md` are
+included as **research-only, non-binding** material. They are roadmap inputs, not ADRs,
+not conformance targets, and not a reason to change rules or search semantics in v3.0.11.
 
-**Post-v3.0.10 development (unreleased worktree, no version bump or tag):** the Gate 1
-harness now prints per-opening W/D/L and an Elo-scaled CI, and `bench/fens/openings.epd`
-has 24 quiet legal positions with a SHA-256 in `bench/fens/CHECKSUMS`. The dead
-`contextBonus` is removed; bounded quiet checks are implemented behind
-`params.search.qsearch` with a `noqchecks` ablation; the uncertainty budget now grows
-with uncertainty and `plan.structuralEvalDepth` is applied; the early-exit stalemate probe,
-unified mate scale and single-owner SVF (`SVF-INV-007` executable check) are in place.
-The match harness now preserves the game repetition stack across moves, so Gate 1 passes
-its length gate (9/100 caps pre-kill, 5/100 post-kill at depth 4). ADR 0023 deleted structural
-move ordering after the 200-game Gate 3 kill; all four structural ablations are now no-op
-controls. A1 and depth were re-measured on that code and both pass their 100-game gates:
-**60.0% ± 9.4** and **79.0% ± 7.5**. Gate 7 now has a deterministic bench harness
-(`bench/gate7.mjs`) with a uniform and a wrong-driver control; it passes on the fixed
-suite but is a verification-steering result, not a strength result. None of this is in
-tag `v3.0.10`; the strength numbers belong to the worktree only.
+For the shipped v3.0.11 artifact, the measured self-play results are A1
+(`base` 60.0% ± 9.4 vs `noqchecks`, CI 50.6–69.4%, 0/100 caps) and depth (`base@5`
+79.0% ± 7.5 vs `base@4`, CI 71.5–86.5%). Structural ordering lost its 200-game gate
+(47.5% ± 6.2, CI 41.3–53.7%) and was deleted under ADR 0023; all four structural ablations
+are now no-op controls. Gate 7 passes as verification steering only. None of these numbers
+is an external Elo estimate.
 
 **What is measurably true:**
 
@@ -49,8 +42,8 @@ tag `v3.0.10`; the strength numbers belong to the worktree only.
 |---|---|
 | The perspective fix is worth a lot | 12-0 vs pre-fix modules at depth 3/4 |
 | The fast eval tier is not yet a win | 52.5% ± 13.3 over 20 games, depth 3 |
-| Depth pays (worktree) | post-kill base@5 vs base@4: 79.0% ± 7.5 over 100 games, CI 71.5-86.5% |
-| A1 quiet checks at the horizon pay (worktree) | post-kill base 60.0% ± 9.4 vs noqchecks over 100 games, CI 50.6-69.4%, 0/100 caps |
+| Depth pays (v3.0.11 self-play) | post-kill base@5 vs base@4: 79.0% ± 7.5 over 100 games, CI 71.5-86.5% |
+| A1 quiet checks at the horizon pay (v3.0.11 self-play) | post-kill base 60.0% ± 9.4 vs noqchecks over 100 games, CI 50.6-69.4%, 0/100 caps |
 | Structural ordering does not pay | base vs nostruct 47.5% ± 6.2 over 200 games, CI 41.3-53.7%; deleted under ADR 0023 |
 | The root move is a true argmax | brute-force comparison on 3 positions: 8/109/82 |
 | A forced mate is no longer hidden by futility pruning | regression in `tests/engine.eval.mjs`, v3.0.1 |
@@ -74,7 +67,7 @@ tag `v3.0.10`; the strength numbers belong to the worktree only.
 - Where is the real playing strength of v3? No external sparring partner, no EPD set with
   `bm` — every number above is self-play. Gate 4 literal invariant coverage is also
   explicitly unmet (194 binding IDs, only 30 referenced in code/tests).
-- Whether the post-kill A1/depth worktree wins survive an independent suite and an external
+- Whether the v3.0.11 A1/depth self-play wins survive an independent suite and an external
   opponent; the current numbers are calibrated on the same 24-position self-play corpus.
 
 **Open hazards:**
@@ -99,7 +92,8 @@ tag `v3.0.10`; the strength numbers belong to the worktree only.
   regression tests but no full stress run.
 - **SUBIT conformance.** v3 implements a redesigned SUBIT-derived architecture; the
   full canonical layers (FOUR/Belnap, ρ_s, teacher, Ω mapping, provenance/event
-  contracts) are not shipped in v3. Do not read v3.0.10 as a conformance release.
+  contracts) are not shipped in v3. Do not read v3.0.11 as a conformance release.
+  The new `81-99/` and `article_04.md`/`article_05.md` drafts are research-only.
 
 ---
 
@@ -111,7 +105,7 @@ run whose mean length is unknown cannot be compared with the next one.
 **Actions:**
 1. Done in v3.0.8+: `bench/match.mjs` reports mean/median plies, capped games and the
    reason (`status()` reason vs cap) in the summary.
-2. Widen the opening set — done in the current worktree: `bench/fens/openings.epd` has
+2. Widen the opening set — done in v3.0.11: `bench/fens/openings.epd` has
    24 quiet, legal FENs and is checksummed. `--variety` randomises the pick so two runs do
    not share the same opening order.
 3. Anti-repetition only if the report shows shuffling. The v3.0.10 report did (3/10 capped),
@@ -159,10 +153,10 @@ evaluation. The prior (PASS 70%) is confirmed; the earlier 12-game 45.8% ±22.4 
 void harness run are both superseded.
 
 **Post-kill re-baseline (2026-11-21) — PASS, supersedes 68.0%.** After ADR 0023 changed
-the worktree's move choices, the same command with output
+the v3.0.11 move choices, the same command with output
 `results/gate2-depth-postkill-final.json` gave `base@5` **79.0% ± 7.5**,
 CI **[71.5%, 86.5%]**, 75W/8D/17L, 8/100 caps. Depth still pays decisively on the code
-that is actually in the worktree; the 68.0% figure is retained only as the pre-kill
+that ships in v3.0.11; the 68.0% figure is retained only as the pre-kill
 measurement.
 
 **Decision table:**
@@ -205,7 +199,7 @@ for provenance.
 bench/fens/openings.epd --a base --b noqchecks --games 100 --depth 4 --seed 7 --variety
 --quiet --out results/gate3-a1-postkill-final.json`: `base` **60.0% ± 9.4**,
 CI **[50.6%, 69.4%]**, 58W/4D/38L, 0 errors, 0/100 caps, mean 116 plies. CI.lo > 0.5
-still passes the strength half on the current worktree code.
+still passes the strength half on the v3.0.11 code.
 
 **A1 throughput — post-kill, measured and accepted.** Clean, uncontended d7 run on the
 Gate 6 position (`2kr1b1r/.../5RK1 b - - 1 16`), three repetitions each, fresh engine per
@@ -340,8 +334,8 @@ selectivity (better pruning, verified by `base` vs `nopruning` over 100 games).
 
 ## Gate 7 — the uncertainty driver steers verification (doc 45 §16)
 
-**Why:** v3.0.6 computes the eight components and names a driver. The current worktree
-spends a scalar effort budget on the uncertainty *magnitude* (and no longer inverts it),
+**Why:** v3.0.6 computes the eight components and names a driver. v3.0.11 spends a
+scalar effort budget on the uncertainty *magnitude* (and no longer inverts it),
 but the leading component still does not steer verification. Doc 45 §16 says the vector
 decides *where* verification is spent, so the honest next step is to spend a fixed extra
 budget on the component that leads and measure whether the decision changes — not to add
@@ -359,7 +353,7 @@ decisive (Us = 0 on a proven mate).
 does, the driver is not informative and the profile stays descriptive — report it, do not
 act on it.
 
-### Measured result (worktree, `01a61af` + Gate 7 harness)
+### Measured result (v3.0.11 code, `01a61af` + Gate 7 harness)
 
 `node bench/gate7.mjs --depth 4 --mates --out results/gate7-targeted-vs-uniform-final.json`
 over 24 fixed opening FENs plus 4 proven-mate FENs:

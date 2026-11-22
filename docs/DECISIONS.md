@@ -1,6 +1,6 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v3.0.10**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.11**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
@@ -9,6 +9,9 @@ Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s poli
 teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
 ADR 0009+ describe the v3 engine and are the binding decisions for the current release.
 AUD-07…AUD-09 were closed in v3.0.10 (`be27fe4`); see `ver/subit_chess_v3.0.10/RELEASE.md`.
+The new theory documents in `docs/theory/81-99/`, `article_04.md` and `article_05.md` are
+**research-only and non-binding** in v3.0.11. They do not create ADR obligations, conformance
+claims or search/rule changes.
 
 ---
 
@@ -809,8 +812,8 @@ tactically lost, and one scalar cannot say which.
   decision and the same evidence strings, so a regression in the profile fails a test
   instead of becoming a judgement call.
 - The magnitude of U(P) now feeds a scalar search-effort budget and increases, never
-  inverts, the clock and depth (doc 05 §17). This is the v3.0.10-post-release worktree,
-  not the release tag. It still does **not** implement doc 45 §16: the leading component
+  inverts, the clock and depth (doc 05 §17). This shipped in v3.0.11. It still does **not**
+  implement doc 45 §16: the leading component
   (`driver`) does not decide where a deeper or wider search is spent, and Gate 7 remains
   open. No ADR claims that the vector steers verification yet.
 
@@ -978,18 +981,18 @@ something other than a searched, legal position:
   material is terminal at interior and horizon nodes, and null-move state
   restoration is verified by full canonical snapshots. See the v3.0.10
   release dossier and `tests/engine.tactics.mjs`.
-- The post-release worktree adds quiet checking moves only at `qdepth === 0`,
-  at most `maxChecks` of them (default 4), never while already in check. This is a
-  controlled extension under doc 05 §quiescence, not a change to this ADR: no
-  stand-pat in check, the qdepth cap, stalemate detection and automatic draws at
-  the root are unchanged. `noqchecks` restores the old horizon for A/B; strength
-  is not claimed until Gate 3 and Gate 6 close.
+- v3.0.11 adds quiet checking moves only at `qdepth === 0`, at most `maxChecks`
+  of them (default 4), never while already in check. This is a controlled extension
+  under doc 05 §quiescence, not a change to this ADR: no stand-pat in check, the
+  qdepth cap, stalemate detection and automatic draws at the root are unchanged.
+  `noqchecks` restores the old horizon for A/B. Gate 3 accepted A1 after the kill;
+  Gate 6's d9-in-6s target remains open.
 
 ---
 
 ## ADR 0023 — delete structural move ordering (Gate 3 kill)
 
-**Status:** Accepted (unreleased worktree, 2026-11-21)
+**Status:** Accepted (v3.0.11, 2026-11-21)
 
 ### Context
 Gate 3 pre-registered that any structural layer unable to show a positive CI over
@@ -1012,14 +1015,14 @@ bonus was the only structural ordering term.
   Plans remain a descriptive and uncertainty layer, not a search layer.
 
 ### Consequences
-- Search ordering is now `pv > tt > tactic > history`. No strength claim is made
-  for the released v3.0.10 HTML artifact.
-- Full `npm test` passes. A temp-copy build was remeasured at
-  `7D9FF08A811C67748C6A5667F8C3489D584620B529AC62A4DE69307A627E1E06`; the two
-  release HTMLs in the worktree remain at `9A08F02F...` and were not overwritten.
+- Search ordering is now `pv > tt > tactic > history`. No external strength claim is made
+  for the v3.0.11 release artifact; the post-kill 60.0% / 79.0% results are self-play only.
+- Full `npm test` passes. The v3.0.11 temp-copy build hash is
+  `8267AEFA3BFFA9E52843F1D77411963E47A30D5D5753DF92EDBE1E427ED82BE5`; the two
+  v3.0.10 release HTMLs remain at `9A08F02F...` and were not overwritten.
 - Reintroducing any structural/context ordering needs a new ADR and a fresh
   pre-registered A/B; it is not a tuning follow-up to this kill.
 
 ---
 
-*End of DECISIONS.md — v3.0.10 (plus unreleased worktree notes)*
+*End of DECISIONS.md — v3.0.11*

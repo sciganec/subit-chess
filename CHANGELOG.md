@@ -13,11 +13,12 @@ Statuses:
 
 ---
 
-## [Unreleased]
+## [3.0.11] — 2026-11-21
 
-Unreleased worktree changes after the v3.0.10 correctness tag. No version bump, tag or
-snapshot: the measured results below apply to the worktree only, not to the released
-v3.0.10 HTML artifact.
+Measured engineering increment after the v3.0.10 correctness tag. It ships the changes
+below plus a research-only theory addendum. Every strength number here is self-play on the
+v3.0.11 code; none is an external Elo result, a canonical SUBIT-∞ conformance claim, or a
+claim about the older v3.0.10 HTML.
 
 - **Measurement harness (Gate 1).** `bench/match.mjs` now reports per-opening W/D/L
   and an Elo-scaled 95% CI; `bench/fens/openings.epd` adds 24 quiet legal positions
@@ -40,7 +41,7 @@ v3.0.10 HTML artifact.
   CI **50.6-69.4%**, 58W/4D/38L, 0/100 caps, mean 116 plies. Clean post-kill throughput
   check (Gate 6 FEN, d7, 3 runs each): `noqchecks` 314,959 nodes at ~173.0k nps vs `base`
   567,647 nodes at ~174.6k nps — no per-node penalty after the ordering deletion; the
-  extra wall time comes only from the larger tree. **A1 accepted on current code.**
+  extra wall time comes only from the larger tree. **A1 accepted in v3.0.11.**
 - **Search hygiene.** The dead `contextBonus` closure is removed, the horizon
   stalemate probe uses an early-exit `hasLegalMove()` with the same rule result,
   `plan.structuralEvalDepth` is applied, and the uncertainty budget now grows with
@@ -99,23 +100,37 @@ v3.0.10 HTML artifact.
   ablations are now empty controls. Gate 1's cap gate still passes at 5/100.
 - **Post-kill re-baseline complete.** A1 (**60.0% ±9.4**) and depth (**79.0% ±7.5**)
   were re-measured on the code after ADR 0023 and both have CI.lo > 0.5. The pre-kill
-  63.0% / 68.0% are retained only as historical measurements. These are worktree results,
-  not strength claims for the released v3.0.10 artifact.
+  63.0% / 68.0% are retained only as historical measurements. These are v3.0.11 self-play
+  results, not external strength claims.
 - **Gate 4 scope audit.** 667 distinct `*-INV-*` IDs exist across the theory corpus; the
   12 binding docs define 194, with only 30 referenced in `src/engine/` or `tests/`.
   Literal "every documented invariant has a test" coverage is not claimed; the gap is
   explicit so it cannot be mistaken for a PASS.
-- **Verification.** Full `npm test` passes after the Gate 3 deletion. A fresh temp-copy
-  `npm run build` bundles 11 modules into `7D9FF08A811C67748C6A5667F8C3489D584620B529AC62A4DE69307A627E1E06`
-  (`index.html` and `src/subit_chess_v3.0.10.html` identical there). The hash changed from
-  `9586ACA1...` because structural/context ordering code was removed from the source;
-  the two release HTMLs in the main worktree stay at the shipped
-  `9A08F02F8AF4499813FE3167429A7A27D0A95071BA4A1C62EB60A9BB011C6581`. No release file
-  was overwritten and no version/tag was bumped.
+- **Research-only theory addendum.** Added five drafts: `docs/theory/81-99/81_...md`
+  (self-reflective intelligence protocol v0.1), `docs/theory/81-99/82_...md`
+  (cross-disciplinary intelligence specification v0.1),
+  `docs/theory/81-99/83_...md` (autonomous experimentation framework v0.1, DRAFT),
+  `docs/theory/article_04.md` and `docs/theory/article_05.md` (conceptual studies). All five
+  are research/architecture drafts; their hypotheses and proposed stages are non-normative.
+  They do not add ADRs, engine behaviour, tests, strength claims or canonical conformance.
+  Most proposed mechanisms (reflective memory, counterfactual audit, autonomous evolution,
+  `V_SUBIT`, higher tiers/phases, homology/causal modules) remain absent or analysis-only.
+- **Verification.** Full `npm test` passes after the version bump and final artifact copy
+  (17 test scripts). A clean temp-copy `npm run build` bundled 11 modules into
+  `src/subit_chess_v3.0.11.html` and `index.html` with SHA-256
+  `8267AEFA3BFFA9E52843F1D77411963E47A30D5D5753DF92EDBE1E427ED82BE5` (463 277 B). The
+  pre-version source hash was `7D9FF08A811C67748C6A5667F8C3489D584620B529AC62A4DE69307A627E1E06`;
+  the final hash changed because version constants were bumped to 3.0.11. The v3.0.10
+  snapshot and its two HTML files remain at
+  `9A08F02F8AF4499813FE3167429A7A27D0A95071BA4A1C62EB60A9BB011C6581`; no v3.0.10 file was
+  overwritten. The tag is not created in this preparation step.
 - **Still open.** Gate 4 literal invariant coverage, Gate 5 external validation (no
   `bm`/sparring engine available), Gate 6's d9-in-6s target, and the W08 stress run;
   `contextAdjust` no-op (doc 05), `structure` gaps, remaining `verify` coverage,
   `meta` thresholds (docs 31/32/33/36), and `Score.diff` never set.
+- **Release artifacts.** `ver/subit_chess_v3.0.11/` holds the release snapshot and dossier.
+  The annotated `v3.0.11` tag and push require separate explicit approval; they are not part
+  of this preparation step.
 
 ---
 
