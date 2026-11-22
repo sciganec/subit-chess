@@ -138,6 +138,10 @@ export const CONFIGS = {
   },
   rfp: { label: 'reverse futility (depth<=3, 120cp/ply)', params: { search: { rfp: { enabled: true } } }, opts: {} },
   qsee: { label: 'SEE-lite capture pruning in quiescence', params: { search: { qSee: { enabled: true } } }, opts: {} },
+  lmrlog: { label: 'log-table late move reductions', params: { search: { lmrLog: { enabled: true } } }, opts: {} },
+  lmp: { label: 'late move pruning (depth<=3, 3+d^2)', params: { search: { lmp: { enabled: true } } }, opts: {} },
+  iir: { label: 'internal iterative reduction (no TT move, depth>=4)', params: { search: { iir: { enabled: true } } }, opts: {} },
+  malus: { label: 'history malus for quiet moves tried before a quiet cutoff', params: { search: { historyMalus: { enabled: true } } }, opts: {} },
   v311: {
     label: 'v3.0.11 search: no adaptive budget, no reverse futility (everything else equal)',
     params: { search: { rfp: { enabled: false } } },

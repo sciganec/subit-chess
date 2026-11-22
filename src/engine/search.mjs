@@ -280,7 +280,8 @@ export class MoveOrder {
   addHistory(pos, m, depth) {
     const us = pos.turn;
     const idx = (us * 128 + MOVE_FROM(m)) * 128 + MOVE_TO(m);
-    this.history[idx] = Math.min(1 << 20, this.history[idx] + depth * depth);
+    const d2 = depth >= 0 ? depth * depth : -(depth * depth);
+    this.history[idx] = Math.max(-(1 << 20), Math.min(1 << 20, this.history[idx] + d2));
   }
 
   ageHistory() {
@@ -310,6 +311,13 @@ export class Searcher {
     this.useTT = true;
     this.useNull = true;
     this.useLMR = true;
+    {
+      const l = this.params.search.lmrLog || { base: 0.75, div: 2.25 };
+      this.lmrTable = new Uint8Array(64 * 256);
+      for (let d = 1; d < 64; d++) for (let n = 1; n < 256; n++) {
+        this.lmrTable[d * 256 + n] = Math.min(8, Math.floor(l.base + Math.log(d) * Math.log(n) / l.div));
+      }
+    }
     this.useFutility = true;
     this.qSee = (params.search.qSee && params.search.qSee.enabled) ? params.search.qSee : null;
     this.trace = null;
@@ -612,7 +620,10 @@ export class Searcher {
     const us = pos.turn;
     const them = opposite(us);
     const moves = pos.generateMoves(false);
-    const orderedCount = this.order.scoreMoves(pos, moves, ply, this.ttMoveFor(pos, depth), 0, {});
+    const ttMv = this.ttMoveFor(pos, depth);
+    const iir = this.params.search.iir;
+    if (iir && iir.enabled && !ttMv && depth >= iir.minDepth && !inCheck) depth -= 1;
+    const orderedCount = this.order.scoreMoves(pos, moves, ply, ttMv, 0, {});
     const buf = this.order.buffers[ply];
 
     let bestScore = -INF;
@@ -621,6 +632,9 @@ export class Searcher {
     let pruned = 0;
     const lmr = this.params.search.lmr;
     const futility = this.params.search.futility;
+    const lmp = this.params.search.lmp;
+    const malus = this.params.search.historyMalus;
+    const tried = malus && malus.enabled ? [] : null;
 
     for (let i = 0; i < orderedCount; i++) {
       const m = buf[i];
@@ -653,6 +667,15 @@ export class Searcher {
         }
       }
 
+      // Late move pruning: at shallow depth in a non-PV node the late quiet moves are skipped (controlled approximation).
+      if (lmp && lmp.enabled && depth <= lmp.maxDepth && !pvNode && isQuiet && !inCheck && !givesCheck &&
+          bestScore > -INF && legal >= lmp.base + depth * depth) {
+        pruned++;
+        pos.unmakeMove(undo);
+        pos.popRep();
+        continue;
+      }
+
       legal++;
       this.nodes++;
 
@@ -660,7 +683,13 @@ export class Searcher {
       let reduction = 0;
       if (this.useLMR && lmr.enabled && depth >= lmr.minDepth && i >= lmr.minMoveIndex &&
           isQuiet && !inCheck && !givesCheck) {
-        reduction = 1 + (i >= 6 ? 1 : 0);
+        if (this.params.search.lmrLog && this.params.search.lmrLog.enabled) {
+          reduction = this.lmrTable[Math.min(depth, 63) * 256 + Math.min(i + 1, 255)];
+          if (pvNode) reduction -= 1;
+          if (reduction < 1) reduction = 1;
+        } else {
+          reduction = 1 + (i >= 6 ? 1 : 0);
+        }
         if (depth - reduction < 1) reduction = depth - 1;
       }
 
@@ -689,6 +718,7 @@ export class Searcher {
       pos.popRep();
 
       if (this.stop) return 0;
+      if (tried && isQuiet && score < beta) tried.push(m);
 
       if (score > bestScore) {
         bestScore = score;
@@ -704,6 +734,7 @@ export class Searcher {
         if (isQuiet) {
           this.order.addKiller(ply, m);
           this.order.addHistory(pos, m, depth);
+          if (tried) for (const q of tried) this.order.addHistory(pos, q, -depth);
         }
         if (this.useTT) this.tt.store(pos.ttKey, depth, bestScore, TT_LOWER, m, ply);
         return bestScore;

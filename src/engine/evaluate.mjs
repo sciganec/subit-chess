@@ -81,7 +81,11 @@ export const DEFAULT_PARAMS = {
     futility: { enabled: true, margin: 120, maxDepth: 1 },
     checkExtension: 1,
     rfp: { enabled: true, margin: 120, maxDepth: 3 },      // reverse futility (v3.0.9: +64 Elo [+8,+125], 120 games)
-    qSee: { enabled: false, slack: 50 },                   // SEE-lite capture pruning in quiescence
+    qSee: { enabled: false, slack: 50 },
+    lmrLog: { enabled: false, base: 0.75, div: 2.25 },     // log(depth)*log(move index) reduction table (v3.0.12 experiment)
+    lmp: { enabled: false, maxDepth: 3, base: 3 },         // late move pruning of quiet moves (v3.0.12 experiment)
+    iir: { enabled: false, minDepth: 4 },                  // internal iterative reduction when there is no TT move
+    historyMalus: { enabled: false },                      // penalise quiet moves tried before a quiet cutoff move                   // SEE-lite capture pruning in quiescence
     structExtension: { enabled: false, maxPly: 8 },   // SEARCH-14: pawn to 7th extends one ply
     extensionBudget: 6,
     aspiration: { window: 25, widen: 40, maxWiden: 8 },
