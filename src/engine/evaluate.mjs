@@ -81,6 +81,7 @@ export const DEFAULT_PARAMS = {
     futility: { enabled: true, margin: 120, maxDepth: 1 },
     checkExtension: 1,
     rfp: { enabled: true, margin: 120, maxDepth: 3 },      // reverse futility (v3.0.9: +64 Elo [+8,+125], 120 games)
+    qCheckNoStandPat: false,                               // doc 12 §10.5: no stand-pat in check inside quiescence (v3.0.9 experiment)
     qSee: { enabled: false, slack: 50 },                   // SEE-lite capture pruning in quiescence
     structExtension: { enabled: false, maxPly: 8 },   // SEARCH-14: pawn to 7th extends one ply
     extensionBudget: 6,

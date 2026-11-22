@@ -278,6 +278,7 @@ export class Searcher {
     this.useNull = true;
     this.useLMR = true;
     this.useFutility = true;
+    this.qCheckNoStandPat = !!params.search.qCheckNoStandPat;
     this.qSee = (params.search.qSee && params.search.qSee.enabled) ? params.search.qSee : null;
     this.trace = null;
     this.lastIteration = null;
@@ -707,9 +708,15 @@ export class Searcher {
       // when the quiescence cap is reached while in check, fall back to the
       // static evaluation — returning -INF reported a false loss from the
       // side that is merely unable to resolve the check within the cap
-      best = this.ev.evaluate(pos, 0);
-      if (best >= beta) return best;
-      if (best > alpha) alpha = best;
+      if (this.qCheckNoStandPat && qdepth <= 8) {
+        // doc 12 §10.5, doc 16 §14.5 (FV-020), doc 27 §24: no stand-pat in check, every evasion is searched.
+        // A node without a legal evasion keeps the mate score; the static value is not a lower bound here.
+        best = -MATE + ply;
+      } else {
+        best = this.ev.evaluate(pos, 0);
+        if (best >= beta) return best;
+        if (best > alpha) alpha = best;
+      }
     } else {
       const stand = this.ev.evaluate(pos, 0);
       if (stand >= beta) return stand;

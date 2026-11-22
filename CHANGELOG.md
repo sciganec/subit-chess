@@ -22,6 +22,7 @@ Statuses:
   acceptance, with bounded per-step and cumulative drift, a reproducible journal with provenance, a final audit against the
   baseline and automatic rollback. `hillClimb` accepted a change on the very comparison that selected it (winner's curse) and is
   marked as such. `tests/engine.evolve.mjs` (14 checks, match function injected).
+- **`search.qCheckNoStandPat` (off).** Quiescence without stand-pat in check, as documents 12, 16, 27, 31, 38 require. 60 games at 100 ms with paired openings: 53.3% ± 12.7 for the base, no distinguishable difference; left off. Bench config `qcheck`.
 - **Belnap four-valued evidence and Ω trace classifier (`src/engine/belnap.mjs`; SUBIT-∞ §1.4/§7, SPEC §7–8).** Restores two constructs that vanished with the v3.0.0 rewrite. `explain()` now reports, for the chosen move against the best alternative, the Belnap value of four independent sources (material, static evaluation, depth-2 search, reply search) combined with ⊕ — a conflict is `B` and is listed under `unresolved`, not resolved by force — and the Ω class of the score trace over depths 1..d. Read-only: the move is unchanged. `tests/engine.belnap.mjs`.
 - **Decision structure and counterfactual explanation (`src/engine/explain.mjs`, `Engine.explain()`; SCMF §10, §12-§14).**
   D(P) = (a*, V, C, Evidence, Alternatives, Confidence): each alternative is searched, with its best reply, CF(a*,b), ΔΩ and a

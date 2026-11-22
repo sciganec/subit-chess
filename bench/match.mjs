@@ -131,6 +131,7 @@ export const CONFIGS = {
   },
   rfp: { label: 'reverse futility (depth<=3, 120cp/ply)', params: { search: { rfp: { enabled: true } } }, opts: {} },
   qsee: { label: 'SEE-lite capture pruning in quiescence', params: { search: { qSee: { enabled: true } } }, opts: {} },
+  qcheck: { label: 'no stand-pat in check inside quiescence (doc 12 §10.5)', params: { search: { qCheckNoStandPat: true } }, opts: {} },
   adaptive: {
     label: 'adaptive time budget (SEARCH-15): stable decisions stop early and bank time',
     params: {},

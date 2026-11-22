@@ -1,4 +1,4 @@
-# Theory reading notes (2026-11-19)
+# Theory reading notes (2026-11-19, updated 2026-11-21)
 
 What was read, what it says that matters for the engine, and what is still open. Written to be checked, so
 coverage is stated exactly.
@@ -31,7 +31,7 @@ folder is called `33-64` but ends at 47.
    and the document says not to reduce it to one number yet. §34: it may drive move ordering, but "temporal
    priority" is explicitly not "search value". Nothing of this is in the engine. A plan-based ordering was tried
    (`planord`): fewer nodes, no strength gain.
-3. **Quiescence (doc 26 §37, doc 47 §5.5).** The documents forbid stand-pat in check and require all legal
+3. **Quiescence (doc 26 §37, doc 47 §5.5).** (Measured on 2026-11-21, see the update below.) The documents forbid stand-pat in check and require all legal
    replies. The engine searches all evasions in check (`generateMoves(false)`), but `quiescence()` still takes the
    static evaluation as a lower bound at a node in check (`search.mjs`, the `inCheck` branch), which is a deviation
    from the text. The main search never enters quiescence while in check (it extends instead), so the case arises
@@ -45,6 +45,36 @@ folder is called `33-64` but ends at 47.
 6. **The theory documents sampled are frameworks, not formulas.** The ones read specify objects, statuses,
    invariants and test names; they give no numeric evaluation weights that could be imported. This is what the
    sampled documents show; the 40-odd unread bodies might contain exceptions.
+
+## Update 2026-11-21: all 55 documents of `docs` read
+
+All files under `docs/theory` (01–47), `docs/papers`, `docs/spec`, `DECISIONS.md` and `USER-MANUAL.md` were read in full by
+sub-agents (each file in chunks, no grep-only passes); the per-document digests, with section references, are in
+`docs/spec/digests/`. subit-subit (37 MB) was not read beyond the parts listed above.
+
+Result across the documents:
+- **No numeric constants for evaluation, ordering, pruning, extensions or time.** The documents specify objects, statuses,
+  invariants, tests and constraints. Where a formula appears (`Priority`, `Budget`, `VoC`, `RP`) its function is left
+  undefined and marked for calibration. Every number in `budget.mjs` is the engine's own choice.
+- **Constraints repeated in many documents:** heuristics may reorder moves or extend effort but must not remove legal moves
+  (doc 12 §10.7, 16 §14.6, 18, 22, 31, 36 §4.1, 46); uncertainty never lowers the score, it triggers more search
+  (17, 37 §21, 39 §11); an incomplete iteration never replaces the last completed one (45 §15.2, 43 §16.2); TT keys must
+  carry castling, en passant and history (12, 33, 43, 44, 45); no stand-pat in check inside quiescence (12 §10.5,
+  16 §14.5 FV-020, 27 §24, 31, 38 §15).
+- **Tension with the engine:** futility, reverse futility, null move and LMR remove moves from the search. Documents 12, 38
+  and 46 allow this only as a switchable, ablated and reported approximation (SELECTIVELY_SEARCHED); the engine has the
+  switches and the measurements, but not the per-result reporting.
+- **Gaps in `budget.mjs` against doc 40:** no protected tactical reserve (§9.1), no coverage of critical replies in the stop
+  rule (§11), no check that `T_move ≤ T_remaining − T_reserve` (§19).
+- **Document 14 on `evolve.mjs`:** four disjoint position sets (train, development, final validation, regression) are
+  required (§10.2); `evolve.mjs` uses screening, regression and confirmation on disjoint seeds, but that mapping to four
+  sets has not been checked. Doc 14 gives no acceptance statistic, so z ≥ 1.64 is the engine's own choice.
+
+Measured: no stand-pat in check inside quiescence (option `qCheckNoStandPat`, config `qcheck`). The code previously used the
+static value as a lower bound there; the documents forbid it. Match against the base, 100 ms per move, 60 games with
+paired openings (V_val.epd): base scores 53.3% ± 12.7 (32–0–28), time per move equal (A/B 0.999), no distinguishable
+difference. The option stays off by default; the deviation is recorded here and is correct per the documents but not
+measurably useful at this sample size.
 
 ## Documents that no longer match the code
 
