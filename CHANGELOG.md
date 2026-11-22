@@ -18,6 +18,7 @@ Statuses:
 Development candidate in progress. No Elo gain has been established; do not claim release strength.
 
 - **Version bump.** Prepared `v3.0.14` development candidate after pushing `v3.0.13` candidate commits.
+- **Quiet-threat extension candidate (parked, default off).** Added `search.quietThreatExtension` (`enabled:false`, `maxPly:2`, `minVictim:900`) as a tactical search extension for quiet moves attacking queen/major. g9: catches `...b4c5` at d5 (vs d6 baseline) but still misses at d4; node cost +61% at d6 on that case. A/B self-play 64g d4 seed24: `dS 0.000 SE 0.077`, 12W/40D/12L, inconclusive. Default remains off; no Elo claim.
 
 ## [3.0.13 candidate] — 2026-11-22
 

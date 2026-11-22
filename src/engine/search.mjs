@@ -794,7 +794,14 @@ export class Searcher {
         if (depth - reduction < 1) reduction = depth - 1;
       }
 
-      const ext = (givesCheck && this.params.search.checkExtension > 0 && ply < 8) ? 1 : 0;
+      let ext = (givesCheck && this.params.search.checkExtension > 0 && ply < 8) ? 1 : 0;
+      if (!ext && isQuiet && !inCheck) {
+        const qte = this.params.search.quietThreatExtension;
+        if (qte?.enabled && ply <= (qte.maxPly ?? 2)) {
+          const threat = maxAttackedVictim(pos, MOVE_TO(m), pos.board[MOVE_TO(m)] & 7, us);
+          if (threat >= (qte.minVictim ?? 900)) ext = 1;
+        }
+      }
       const nextDepth = Math.max(0, depth - 1 - reduction + ext);
 
       if (legal === 1) {

@@ -84,6 +84,7 @@ export const DEFAULT_PARAMS = {
     futility: { enabled: true, margin: 120, maxDepth: 1 },
     checkExtension: 1,
     extensionBudget: 6,
+    quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },
     aspiration: { window: 25, widen: 40, maxWiden: 8 },
     maxDepth: 64,
     nodeLimit: 0,          // 0 = unlimited
