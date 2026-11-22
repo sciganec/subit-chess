@@ -70,7 +70,10 @@ for (const fen of FENS.slice(0, 4)) {
 {
   let bad = '';
   for (const fen of FENS) {
-    const mk = (f) => { const e = new Engine(undefined, { ttBits: 16, adaptiveTime: false }); e.setFEN(f); return e.search({ depth: 4 }); };
+    // LMR reduces the moves that happen to come late in the ordering; equal-priority moves are generated in a
+    // board-dependent order, so a mirrored position may reduce different ties. Symmetry is an invariant of the
+    // exact search, so reductions are switched off here (v3.0.12 threat-ordering bonus made this visible).
+    const mk = (f) => { const pp = cloneParams(DEFAULT_PARAMS); pp.search.lmr.enabled = false; const e = new Engine(pp, { ttBits: 16, adaptiveTime: false }); e.setFEN(f); return e.search({ depth: 4 }); };
     const a = mk(fen), b = mk(mirrorFEN(fen));
     if (Math.round(a.score) !== Math.round(b.score)) bad += ` ${Math.round(a.score)}/${Math.round(b.score)}`;
   }

@@ -119,11 +119,22 @@ export function validateFEN(fen) {
   }
   const board = new Array(64).fill(null);
   let whiteKing = -1, blackKing = -1;
+  let whiteCount = 0, blackCount = 0;
   for (let r = 0; r < 8; r++) {
     const rankName = 8 - r;
     let f = 0;
+    let prevDigit = false;
     for (const ch of rows[r]) {
-      if (ch >= '1' && ch <= '8') { f += Number(ch); continue; }
+      if (ch >= '1' && ch <= '8') {
+        // AUD-311-02: reject non-canonical adjacent digit spans (e.g. "44").
+        if (prevDigit) {
+          return fail(FEN_STATUS.INVALID_BOARD, `non-canonical empty span on rank ${rankName}`);
+        }
+        f += Number(ch);
+        prevDigit = true;
+        continue;
+      }
+      prevDigit = false;
       const lower = ch.toLowerCase();
       if (PIECE_CHARS.indexOf(lower) === -1) {
         return fail(FEN_STATUS.INVALID_BOARD, `unknown piece '${ch}' on rank ${rankName}`);
@@ -135,6 +146,10 @@ export function validateFEN(fen) {
       const sq = r * 8 + f;
       if (lower === 'p' && (r === 0 || r === 7)) {
         return fail(FEN_STATUS.INVALID_BOARD, `pawn on rank ${rankName}`);
+      }
+      if (color === 'w') whiteCount++; else blackCount++;
+      if (whiteCount > 16 || blackCount > 16) {
+        return fail(FEN_STATUS.INVALID_BOARD, `too many ${color === 'w' ? 'white' : 'black'} pieces`);
       }
       if (lower === 'k') {
         if (color === 'w') {

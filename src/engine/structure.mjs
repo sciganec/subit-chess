@@ -190,9 +190,8 @@ export class Structure {
           if (occ !== EMPTY && pieceColor(occ) === enemy && pieceType(occ) !== PAWN) attacked.push(to);
         }
         if (attacked.length >= 2) {
-          for (const target of attacked) {
-            this.addHyper(HYPER.FORK, [from, target, attacked.find((x) => x !== target)]);
-          }
+          // AUD-311-14: record one canonical fork hyperrelation per attacker.
+          this.addHyper(HYPER.FORK, [from, ...attacked]);
         }
         // discovered attack potential: an own piece standing on a ray from a slider
         if (t === BISHOP || t === ROOK || t === QUEEN) {
@@ -203,13 +202,14 @@ export class Structure {
             while (to < 128 && (to & 0x88) === 0 && b[to] === EMPTY) to += d;
             if (to >= 128 || (to & 0x88)) continue;
             if (pieceColor(b[to]) !== color) continue;
-            const beyond = to + d;
-            if (beyond < 128 && !(beyond & 0x88)) {
-              const q = b[beyond];
-              if (q !== EMPTY && pieceColor(q) === enemy) {
-                this.add(REL.DISCOVER, from, to);
-                this.addHyper(HYPER.DISCOVER, [from, to, beyond]);
-              }
+            // AUD-311-13: continue ray past blocker to find discovered target.
+            let beyond = to + d;
+            while (beyond < 128 && (beyond & 0x88) === 0 && b[beyond] === EMPTY) beyond += d;
+            if (beyond >= 128 || (beyond & 0x88)) continue;
+            const q = b[beyond];
+            if (q !== EMPTY && pieceColor(q) === enemy) {
+              this.add(REL.DISCOVER, from, to);
+              this.addHyper(HYPER.DISCOVER, [from, to, beyond]);
             }
           }
         }
@@ -291,16 +291,19 @@ export function jaccardDistance(A, B) {
  * Deliberately a vector — no hidden weighting (doc 03 §15.1).
  */
 export function structuralDistance(s1, s2, ctx1, ctx2) {
-  // vertex distance: pieces compared as (type,color,square) triples
+  // vertex distance: pieces compared as (type,color,square) triples.
+  // AUD-311-12: encode color in a disjoint bitfield; old `+64` for black
+  // collided with white pieces 4 files away on the same 0x88 rank stride.
+  const vKey = (color, sq, type) => (color << 11) | (sq << 4) | type;
   const set1 = new Set(), set2 = new Set();
   for (const sq of s1.pos.listSq[WHITE].subarray(0, s1.pos.listCnt[WHITE]))
-    set1.add(sq * 16 + pieceType(s1.pos.board[sq]));
+    set1.add(vKey(WHITE, sq, pieceType(s1.pos.board[sq])));
   for (const sq of s1.pos.listSq[BLACK].subarray(0, s1.pos.listCnt[BLACK]))
-    set1.add(sq * 16 + pieceType(s1.pos.board[sq]) + 64);
+    set1.add(vKey(BLACK, sq, pieceType(s1.pos.board[sq])));
   for (const sq of s2.pos.listSq[WHITE].subarray(0, s2.pos.listCnt[WHITE]))
-    set2.add(sq * 16 + pieceType(s2.pos.board[sq]));
+    set2.add(vKey(WHITE, sq, pieceType(s2.pos.board[sq])));
   for (const sq of s2.pos.listSq[BLACK].subarray(0, s2.pos.listCnt[BLACK]))
-    set2.add(sq * 16 + pieceType(s2.pos.board[sq]) + 64);
+    set2.add(vKey(BLACK, sq, pieceType(s2.pos.board[sq])));
 
   const Dv = jaccardDistance(set1, set2);
   const Dr = jaccardDistance(s1.keySet, s2.keySet);
@@ -340,7 +343,10 @@ function hyperSet(s) {
   const out = new Set();
   for (const h of s.hyper) {
     const pieces = h.pieces.slice().sort((a, b) => a - b);
-    out.add(h.type * 4194304 + pieces[0] * 16384 + pieces[1] * 128 + pieces[2]);
+    // AUD-311-14: fold all pieces so variable-size hyperrelations remain canonical.
+    let key = h.type * 131072;
+    for (let i = 0; i < pieces.length; i++) key = key * 131 + pieces[i];
+    out.add(key);
   }
   return out;
 }

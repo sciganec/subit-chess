@@ -212,8 +212,8 @@ export function computeProfile(input = {}) {
   /* ---- U𝚌 contextual: does the calibrated context apply here ---- */
   {
     const key = ctx ? ctx.key() : '';
-    let u = 0.10;                     // documented debt: contextAdjust is a no-op
-    const parts = ['contextAdjust is a no-op'];
+    let u = 0.08;                     // AUD-311-16: minimal contextAdjust heuristic, not full doc-05 model
+    const parts = ['contextAdjust minimal heuristic'];
     if (key.includes('TRANSITION')) { u += 0.30; parts.push('transition cell'); }
     if (ctx && (ctx.tactical < 0.05 || ctx.tactical > 0.95)) { u += 0.15; parts.push('extreme tactical index'); }
     values[7] = clamp01(u);
@@ -247,7 +247,7 @@ export function buildCertificate(input = {}) {
   const {
     fen = '', version = 0, move = null, san = null, legal = true, legalCount = 0,
     depth = 0, completed = false, nodes = 0, pv = [], score = 0,
-    profile = null, paramVersion = '3.0.11', algorithmVersion = '3.0.11'
+    profile = null, paramVersion = '3.0.12', algorithmVersion = '3.0.12'
   } = input;
 
   let status;

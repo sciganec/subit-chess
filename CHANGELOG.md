@@ -13,6 +13,18 @@ Statuses:
 
 ---
 
+## [3.0.12] — 2026-11-22
+
+Measured post-v3.0.11 search-safety/plumbing increment. No external Elo-gain claim.
+
+- **LMR conservative default.** `search.lmr.extraReduction 1 -> 0`, `search.lmr.maxReduction 1` (keeps `minDepth 3`, `minMoveIndex 3`, `reduction 1`). Self-play evidence: depth 4, 32g, seed13 `+0.156 SE0.090` (7W/23D/2L); depth 5, 24g, seed17 `+0.250 SE0.121` accept (8W/14D/2L). SF2200@200ms 10g smoke noisy (`0.60 SE0.138`). Node cost at startpos depth 6 increased (~14562 -> 19605, ~+35%), expected for less reduction.
+- **Quiet-move ordering threat bonus.** Direct attacks by a moved quiet piece on enemy rook/queen/minor get a bounded ordering bonus (tactical signal only; not Gate 3 structural/context ordering). A queen-threat LMR exemption was tested and **parked/not enabled by default** (no confirmed gain in small A/B).
+- **UCI/engine plumbing.** `Engine.reset()` for clean `ucinewgame`; UCI adapter/time management improvements; `bestmove 0000` fix; SEE/qsearch pruning knobs exposed with SEE enabled by default.
+- **Eval hooks.** `kingOpenFile` penalty hook (default 12, inconclusive small A/B) and `kingAttack` hook (default 0, candidate 8 inconclusive smoke) added as measured parameters, not proven strength gains.
+- **Correctness/tests.** Audit311 fixes and `tests/engine.audit311.mjs` (20 checks) added to `npm test`. FEN validation hardened (adjacent digit spans, per-side piece count). `contextAdjust` moved from no-op to minimal bounded deterministic scaling (AUD-311-16). Gauntlet/smoke/tactics regressions green.
+- **External anchor.** SF19 N=20 @200ms (new default): 2000 `8W/4D/8L mean 0.50 SE0.10`; 2200 `5W/6D/9L mean 0.40 SE0.091`; 2400 `3W/9D/8L mean 0.375 SE0.078`. Mixed/noisy, within noise of prior N=10 baseline; not an Elo-gain/regression claim. `UCI_Elo` is Stockfish limited-strength mode, not human Elo.
+- **Notes.** No scalar blend `U(P)` (ADR 0019). No structural/context move ordering (ADR 0023 / Gate 3 kill). `TT_MAX_AGE = 0` preserved (ADR 0022). Theory docs 81-99+ remain research-only/non-binding.
+
 ## [Unreleased] — merged onto 3.0.11 (measured at 100-300 ms/move; 60 games each, harness noise ~ ±6.5 pp)
 
 - Experiments (all off by default, 96 games each at 100 ms, paired openings, A=base): eval0 (no fast-tier terms) base 63.5% (+97 Elo for the terms); connected pawns + rook on 7th: base 62.0% (new terms ≈ −85 Elo); rook on 7th alone: base 45.3% (new ≈ +33 Elo, z=1.0, not significant). Options `eval.connected`, `eval.rook7`.

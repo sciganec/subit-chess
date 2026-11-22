@@ -111,7 +111,7 @@ export function moveToSan(pos, m) {
   } else if (type === PAWN) {
     if (isCapture) san += 'abcdefgh'[fileOf(from)] + 'x';
     san += squareName(to);
-    if (flags & FLAG_PROMO) san += '=' + ' pnbrq'[MOVE_PROMO(m)];
+    if (flags & FLAG_PROMO) san += '=' + ' PNBRQ'[MOVE_PROMO(m)];
   } else {
     san += ' PNBRQK'[type];
     // disambiguation against other identical pieces reaching the same square
@@ -246,7 +246,9 @@ export class Position {
     this.kingSq = new Int16Array(2);
     this.kingSq[WHITE] = 116; // e1
     this.kingSq[BLACK] = 4;   // e8
-    this.listSq = [new Int16Array(40), new Int16Array(40)];
+    // 16 pieces per side is the chess maximum; 64 keeps a defensive margin
+    // against malformed FEN/input without risking typed-array overflow (AUD-311-01).
+    this.listSq = [new Int16Array(64), new Int16Array(64)];
     this.listCnt = new Int16Array(2);
     this.listIdx = new Int8Array(128).fill(-1);
     this.hashLo = 0;
@@ -389,9 +391,14 @@ export class Position {
       const p = this.board[sq];
       if (p === EMPTY || (sq & 0x88)) continue;
       const c = p >> 3;
-      const i = cnt0[c]++;
-      if (c === 0) l0[i] = sq; else l1[i] = sq;
-      idx[sq] = i;
+      const i = cnt0[c];
+      if (i < l0.length) {
+        cnt0[c] = i + 1;
+        if (c === 0) l0[i] = sq; else l1[i] = sq;
+        idx[sq] = i;
+      }
+      // AUD-311-01: ignore extra pieces beyond fixed capacity; FEN validation
+      // should reject such positions before they reach the engine.
     }
     let pm = 0;
     for (let c = 0; c < 2; c++) {
@@ -452,10 +459,10 @@ export class Position {
     // buckets: 0-79, 80-99, 100-149, 150+ (75-move automatic draw)
     const h = this.halfmove;
     const bucket = h < 80 ? 0 : h < 100 ? 1 : h < 150 ? 2 : 3;
-    // mix the bucket into the low bits: the Zobrist key already occupies the
-    // full 53-bit range, so a small additive perturbation is enough to separate
-    // buckets without colliding with the geometry
-    return this.key + bucket * 1048576;
+    // AUD-311-05: mix bucket into the 21-bit high part via XOR, not additive
+    // low-bit perturbation, to avoid halfmove-bucket collisions in 53-bit key space.
+    const hi = (this.hashHi ^ ((bucket * 0x1f123bb) & 0x1fffff)) >>> 0;
+    return this.hashLo * 2097152 + (hi & 0x1fffff);
   }
 
   recomputePhaseMaterial() {
