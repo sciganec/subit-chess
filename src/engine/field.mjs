@@ -28,7 +28,7 @@
  */
 
 import {
-  WHITE, BLACK, EMPTY, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
+  Position, moveToUci, WHITE, BLACK, EMPTY, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
   pieceType, pieceColor, opposite, squareName,
   KNIGHT_DELTAS, BISHOP_DIRS, ROOK_DIRS, QUEEN_DIRS, KING_DELTAS
 } from './core.mjs';
@@ -567,6 +567,28 @@ export const FD_INVARIANTS = Object.freeze({
  */
 export function verifyFieldInvariants(pos, fd = null) {
   const failures = [];
+  const stateBefore = {
+    fen: pos.fen(),
+    board: Array.from(pos.board),
+    key: pos.key,
+    hashLo: pos.hashLo,
+    hashHi: pos.hashHi,
+    turn: pos.turn,
+    castling: pos.castling,
+    ep: pos.ep,
+    halfmove: pos.halfmove,
+    fullmove: pos.fullmove,
+    kingSq: Array.from(pos.kingSq),
+    listSq: Array.from(pos.listSq, (list) => Array.from(list)),
+    listCnt: Array.from(pos.listCnt),
+    listIdx: Array.from(pos.listIdx),
+    phaseMaterial: pos.phaseMaterial,
+    ply: pos.ply,
+    dirty: pos.dirty,
+    rep: pos.rep.slice(),
+    repHi: pos.repHi.slice(),
+    repLimit: pos.repLimit
+  };
   const model = fd || buildFieldDynamics(pos);
 
   // FD-INV-001: Coordinate mapping bijection
@@ -577,7 +599,8 @@ export function verifyFieldInvariants(pos, fd = null) {
     const idx = sqToIdx(sq);
     const roundIdx = coordsToIdx(x, y);
     const backSq = idxToSq(idx);
-    if (roundSq !== sq || roundIdx !== idx || backSq !== sq) {
+    const backCoords = idxToCoords(idx);
+    if (roundSq !== sq || roundIdx !== idx || backSq !== sq || backCoords.x !== x || backCoords.y !== y) {
       failures.push({
         id: FD_INVARIANTS.FD_INV_001,
         detail: `coordinate mismatch at sq=${sq}: x=${x}, y=${y}, idx=${idx}`
@@ -588,7 +611,9 @@ export function verifyFieldInvariants(pos, fd = null) {
 
   // FD-INV-002: Euler characteristic and cycle rank
   const { eulerCharacteristic, cycleRank } = model.topology;
-  if (eulerCharacteristic !== 2) {
+  if (model.topology.vertices !== BOARD_SQUARES || model.topology.edges !== ORTHOGONAL_EDGES ||
+      model.topology.faces !== INTERNAL_FACES || TOPOLOGY.edges.length !== ORTHOGONAL_EDGES ||
+      TOPOLOGY.faces.length !== INTERNAL_FACES || eulerCharacteristic !== 2) {
     failures.push({
       id: FD_INVARIANTS.FD_INV_002,
       detail: `Euler characteristic is ${eulerCharacteristic}, expected 2`
@@ -603,16 +628,33 @@ export function verifyFieldInvariants(pos, fd = null) {
 
   // FD-INV-003: Channel independence (buffers are distinct instances)
   const { white, black, net } = model.channels;
-  if (white.attack === black.attack || white.flux === black.flux || net.control === white.attack) {
+  const fieldBuffers = [
+    white.attack, black.attack, white.defense, black.defense, white.weight, black.weight,
+    white.flux, black.flux, white.divergence, black.divergence, white.curl, black.curl,
+    net.control, net.flux, net.divergence, net.curl, net.gradient, net.gradientCurl
+  ];
+  if (new Set(fieldBuffers).size !== fieldBuffers.length) {
     failures.push({
       id: FD_INVARIANTS.FD_INV_003,
-      detail: 'shared buffer between white and black channels'
+      detail: 'field channels share a mutable buffer'
     });
   }
 
   // FD-INV-004: Gradient anti-symmetry and exact zero curl
   const grad = model.channels.net.gradient;
   const gradCurl = model.channels.net.gradientCurl;
+  const potential = model.channels.net.control;
+  for (const edge of TOPOLOGY.edges) {
+    const forward = potential[edge.v] - potential[edge.u];
+    const reverse = potential[edge.u] - potential[edge.v];
+    if (Math.abs(grad[edge.id] - forward) > 1e-12 || Math.abs(forward + reverse) > 1e-12) {
+      failures.push({
+        id: FD_INVARIANTS.FD_INV_004,
+        detail: `gradient is not antisymmetric on edge ${edge.id}`
+      });
+      break;
+    }
+  }
   for (let f = 0; f < INTERNAL_FACES; f++) {
     if (Math.abs(gradCurl[f]) > 1e-9) {
       failures.push({
@@ -679,6 +721,94 @@ export function verifyFieldInvariants(pos, fd = null) {
     failures.push({
       id: FD_INVARIANTS.FD_INV_006,
       detail: `Gauss theorem discrepancy: sumDiv=${sumRegionDiv.toFixed(5)}, boundaryFlux=${boundaryFlux.toFixed(5)}`
+    });
+  }
+
+  // FD-INV-007: every oriented face boundary is a closed vertex chain.
+  for (const face of TOPOLOGY.faces) {
+    const boundaryOfBoundary = new Int8Array(BOARD_SQUARES);
+    for (const edge of face.boundary) {
+      boundaryOfBoundary[edge.u]--;
+      boundaryOfBoundary[edge.v]++;
+    }
+    if (face.boundary.length !== 4 || boundaryOfBoundary.some((coefficient) => coefficient !== 0)) {
+      failures.push({
+        id: FD_INVARIANTS.FD_INV_007,
+        detail: `face ${face.id} has a non-closed boundary`
+      });
+      break;
+    }
+  }
+
+  // FD-INV-008: a pinned rook keeps geometric influence off the pin line.
+  // Use a fixed legal position so the check is meaningful on every input position.
+  const pinPosition = Position.fromFEN('4q2k/8/8/8/4R3/8/8/4K3 w - - 0 1');
+  const pinModel = buildFieldDynamics(pinPosition);
+  const pinnedRookTarget = sqToIdx(coordsToSq(3, 3)); // d4, attacked by the pinned rook on e4
+  const pinnedRookMoves = pinPosition.legalMoves().map((move) => moveToUci(move));
+  if (pinModel.channels.white.attack[pinnedRookTarget] <= 0 || pinnedRookMoves.includes('e4d4')) {
+    failures.push({
+      id: FD_INVARIANTS.FD_INV_008,
+      detail: 'pinned rook must influence d4 geometrically while e4d4 remains illegal'
+    });
+  }
+
+  // FD-INV-009: independent builds must reproduce all field channels exactly.
+  const repeated = buildFieldDynamics(pos);
+  const pairs = [
+    [model.channels.white.attack, repeated.channels.white.attack],
+    [model.channels.white.defense, repeated.channels.white.defense],
+    [model.channels.white.weight, repeated.channels.white.weight],
+    [model.channels.black.attack, repeated.channels.black.attack],
+    [model.channels.black.defense, repeated.channels.black.defense],
+    [model.channels.black.weight, repeated.channels.black.weight],
+    [model.channels.white.flux, repeated.channels.white.flux],
+    [model.channels.black.flux, repeated.channels.black.flux],
+    [model.channels.net.control, repeated.channels.net.control],
+    [model.channels.net.flux, repeated.channels.net.flux],
+    [model.channels.net.divergence, repeated.channels.net.divergence],
+    [model.channels.net.curl, repeated.channels.net.curl],
+    [model.channels.net.gradient, repeated.channels.net.gradient],
+    [model.channels.net.gradientCurl, repeated.channels.net.gradientCurl],
+    [model.channels.white.divergence, repeated.channels.white.divergence],
+    [model.channels.white.curl, repeated.channels.white.curl],
+    [model.channels.black.divergence, repeated.channels.black.divergence],
+    [model.channels.black.curl, repeated.channels.black.curl]
+  ];
+  if (pairs.some(([left, right]) => left.length !== right.length || left.some((value, i) => value !== right[i]))) {
+    failures.push({
+      id: FD_INVARIANTS.FD_INV_009,
+      detail: 'repeated field builds differ'
+    });
+  }
+
+  // FD-INV-010: the build and verification pipeline must preserve position state.
+  const stateAfter = {
+    fen: pos.fen(),
+    board: Array.from(pos.board),
+    key: pos.key,
+    hashLo: pos.hashLo,
+    hashHi: pos.hashHi,
+    turn: pos.turn,
+    castling: pos.castling,
+    ep: pos.ep,
+    halfmove: pos.halfmove,
+    fullmove: pos.fullmove,
+    kingSq: Array.from(pos.kingSq),
+    listSq: Array.from(pos.listSq, (list) => Array.from(list)),
+    listCnt: Array.from(pos.listCnt),
+    listIdx: Array.from(pos.listIdx),
+    phaseMaterial: pos.phaseMaterial,
+    ply: pos.ply,
+    dirty: pos.dirty,
+    rep: pos.rep.slice(),
+    repHi: pos.repHi.slice(),
+    repLimit: pos.repLimit
+  };
+  if (JSON.stringify(stateBefore) !== JSON.stringify(stateAfter)) {
+    failures.push({
+      id: FD_INVARIANTS.FD_INV_010,
+      detail: 'field build changed one or more position state fields'
     });
   }
 

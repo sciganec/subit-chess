@@ -64,6 +64,7 @@
     "search:engine": "node src/engine/index.mjs search",
     "selfplay:engine": "node src/engine/index.mjs selfplay",
     "match:engine": "node bench/match.mjs --a base --b plain --games 20 --depth 5 --seed 7",
+    "match:versions": "node bench/version_match.mjs",
     "match:ablate": "node bench/match.mjs --a base --b nostruct --games 40 --depth 5 --seed 7",
     "match:depth": "node bench/match.mjs --a base@5 --b base@4 --games 40 --depth 5 --seed 7",
     "clean": "node -e \"require('fs').rmSync('results',{recursive:true,force:true});require('fs').mkdirSync('results',{recursive:true});require('fs').writeFileSync('results/.gitkeep','')\"",

@@ -13,9 +13,9 @@ Statuses:
 
 ---
 
-## [3.0.13] — 2026-11-22
+## [3.0.13 candidate] — 2026-11-22
 
-Operationalization of Field Dynamics (`FD-01` through `FD-14`) and mathematical invariants.
+Development candidate: operationalizes Field Dynamics (`FD-01` through `FD-14`) and mathematical invariants. This is not a release; no Elo gain has been established.
 
 - **Field Dynamics Module (`src/engine/field.mjs`).**
   - **Canonical Board Coordinates (`SC-CORE-COORD-001` & `FD-01/02`).** Strict isomorphism between 0x88 square index, canonical coords $(x, y) \in [0, 7]^2$, and linear index $idx \in [0, 63]$ with $y = 7 - (sq \gg 4)$ mapping 0x88 mailbox row to rank coordinates.
@@ -30,8 +30,14 @@ Operationalization of Field Dynamics (`FD-01` through `FD-14`) and mathematical 
   - Analytical and observational only: does not alter legal move generation or search decisions (complying with `FD-10 §360` and `ADR 0023`).
 - **Invariant Verification & Testing.**
   - Added `FD-INV-001` through `FD-INV-010` formal invariants.
-  - Added `tests/engine.field.mjs` test suite (26 checks, 100% pass).
-  - Integrated `verifyFieldInvariants` into `verifyPositionAll()` in `src/engine/verify.mjs`. All 19 test scripts in `npm test` pass.
+  - Added `tests/engine.field.mjs` test suite; all 26 checks passed in the full suite run on 2026-11-22.
+  - Integrated `verifyFieldInvariants` into `verifyPositionAll()` in `src/engine/verify.mjs`. All 19 `npm test` scripts passed after the verifier follow-up on 2026-11-22.
+- **Verifier completion.** `verifyFieldInvariants()` now executes all ten declared checks, including boundary-of-boundary closure, pinned-piece geometric influence, repeat-build determinism, and complete position-state preservation. The roadmap now states the remaining corpus-wide invariant coverage gap accurately.
+- **External anchor report.** `docs/EXTERNAL_ANCHOR_SF19_2026-11-22.md` records candidate status and explicitly marks the v3.0.11/v3.0.12 Stockfish tables as historical, not v3.0.13 results. No new match was run because this candidate does not change move selection; there is no new Elo result and it is not released.
+- **User documentation.** The console API manual now documents `engine.fieldDynamics()` and the `analyze().fields` summary, including that the output does not affect search or move choice.
+- **TT age diagnostic param (ADR 0022).** Added `search.ttMaxAge` (default `0`) and UCI option `TT.MaxAge`; default behavior unchanged. A/B self-play 64g d4 seed23: `ttMaxAge=1` vs `0` gave `dS -0.203 SE 0.067`, verdict **reject** — confirms ADR 0022.
+- **Gauntlet guard.** Added g9 horizon refutation case (`b4c5` after `d5c6`, depth 6, `score<50`) and `scoreBelow/scoreAbove` support in `bench/gauntlet_strength.mjs`. Gauntlet 10/10 pass.
+- **Eval hook A/B (no default change).** Self-play 64g d4: `kingOpenFile 12 vs 0` `dS +0.063 SE 0.079` inconclusive; `kingAttack 8 vs 0` `dS +0.109 SE 0.083` inconclusive. Defaults unchanged.
 
 ## [3.0.12] — 2026-11-22
 

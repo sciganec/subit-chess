@@ -219,16 +219,17 @@ const CHECK_TARGETS = buildCheckTargets();
  * deepening is unaffected (one generation per root search); Memory still
  * carries the move and score across moves of a game.
  */
-const TT_MAX_AGE = 0;
+const TT_MAX_AGE_DEFAULT = 0; // ADR 0022
 
 /* ------------------------------------------------------------------ *
  * Transposition table
  * ------------------------------------------------------------------ */
 
 export class TranspositionTable {
-  constructor(bits = 18) {
+  constructor(bits = 18, maxAge = TT_MAX_AGE_DEFAULT) {
     this.size = 1 << bits;
     this.mask = this.size - 1;
+    this.maxAge = maxAge;
     this.keys = new Float64Array(this.size);
     this.scores = new Int32Array(this.size);
     this.depths = new Int8Array(this.size);
@@ -271,7 +272,7 @@ export class TranspositionTable {
     if (this.keys[idx] !== key) return null;
     // stale entries came from a different move order: their bounds can change
     // the root choice, so age them out instead of trusting them (TT_MAX_AGE)
-    if (this.generation - this.age[idx] > TT_MAX_AGE) return null;
+    if (this.generation - this.age[idx] > this.maxAge) return null;
     if (this.depths[idx] < depth) return null;
     const score = TranspositionTable.fromTT(this.scores[idx], ply);
     const flag = this.flags[idx];
@@ -283,7 +284,7 @@ export class TranspositionTable {
 
   store(key, depth, score, flag, move, ply = 0) {
     const idx = (key % this.size) | 0;
-    const stale = this.keys[idx] === key && (this.generation - this.age[idx] > TT_MAX_AGE);
+    const stale = this.keys[idx] === key && (this.generation - this.age[idx] > this.maxAge);
     // AUD-311-06: stale same-key entries must not block replacement.
     if (this.keys[idx] !== key || this.depths[idx] <= depth || stale) {
       this.keys[idx] = key;
@@ -440,6 +441,7 @@ export class Searcher {
     this.ev = evaluator;
     this.params = params;
     this.tt = opts.tt || new TranspositionTable(18);
+    this.tt.maxAge = this.params.search?.ttMaxAge ?? 0; // ADR 0022
     this.order = opts.order || new MoveOrder(params);
     this.pos = null;
     this.nodes = 0;
@@ -854,7 +856,7 @@ export class Searcher {
     if (this.tt.keys[idx] !== pos.ttKey) return 0;
     // the same age rule as probe(): a stale hint would reorder the tree and
     // change the score even when the entry's bound is rejected (AUD-01)
-    if (this.tt.generation - this.tt.age[idx] > TT_MAX_AGE) return 0;
+    if (this.tt.generation - this.tt.age[idx] > this.tt.maxAge) return 0;
     return this.tt.depths[idx] >= depth ? this.tt.moves[idx] : 0;
   }
 

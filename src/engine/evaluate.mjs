@@ -74,6 +74,7 @@ export const DEFAULT_PARAMS = {
 
   // search policy parameters (doc 05 §15, doc 08)
   search: {
+    ttMaxAge: 0, // ADR 0022: keep 0 by default; A/B only
     nullMove: { enabled: true, minDepth: 3, reduction: 2, maxReduction: 3 },
     lmr: { enabled: true, minDepth: 3, minMoveIndex: 3, reduction: 1, extraMoveIndex: 6, extraReduction: 0, maxReduction: 1 },
     // Futility is only sound at the frontier: a pruned quiet move can be a mate

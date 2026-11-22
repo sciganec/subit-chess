@@ -1,5 +1,7 @@
 # External Anchor — Stockfish 19 (2026-11-22)
 
+**Coverage:** historical external baseline for v3.0.11 and v3.0.12; v3.0.13 candidate disposition is recorded at the end of this report. The score tables below are not v3.0.13 results.
+
 ## Scope
 - **Purpose**: first external strength signal for SUBIT-CHESS v3.0.11. Not an Elo claim.
 - **Engine A**: SUBIT-CHESS v3.0.11, `node src/engine/index.mjs uci`
@@ -57,3 +59,9 @@ Two sampled losses showed tactical horizon/quiet-refutation swings at 200ms:
 - Complete 2000@200ms 20g on new default; add to table.
 - Analyze 2200/2400 loss logs for swing patterns and confirm whether g9-like quiet refutations recur.
 - Trace `...b4c5` node: move ordering index, LMR reduction, TT cutoffs; test only confirmed, minimal guards behind measurement.
+
+## v3.0.13 candidate disposition
+- **Release gate:** release only after an Elo gain is measured under the project's accepted external comparison protocol. This candidate has no new Elo result and is not a release.
+- v3.0.13 adds Field Dynamics calculations to the analysis API and summary. The module is observational: it is not called by move generation, evaluation, move ordering, or search, and the UCI move-selection path is unchanged.
+- **No new Stockfish match was run for v3.0.13.** The tables above remain the v3.0.11/v3.0.12 anchor only; they must not be presented as a v3.0.13 strength result.
+- Since this candidate does not change playing behavior, no new external-strength claim is made. If later changes connect Field Dynamics to evaluation or search, rerun this anchor against the same Stockfish 19 settings before considering a release.

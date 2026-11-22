@@ -14,9 +14,17 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.11 (2026-11-21)
+## Current state — v3.0.13 (2026-11-22)
 
-**Status:** measured engineering increment with a research-only theory addendum. It ships the
+v3.0.13 is a development candidate, not a release: release only after an Elo gain is measured.
+It adds an analytical Field Dynamics module with separate colour channels and discrete board
+operators. It is surfaced in `Engine.analyze()` and does not alter legal moves or search
+decisions. Its ten FD invariants are checked by `verifyFieldInvariants()`; the broader theory
+corpus is still not fully covered by executable tests.
+
+The measurements and release history below describe v3.0.11 unless a section says otherwise.
+
+**v3.0.11 historical status:** measured engineering increment with a research-only theory addendum. It ships the
 post-v3.0.10 work: Gate 1 reporting and repetition fixes, bounded quiet checks at the
 horizon (A1), search hygiene/verification fixes, Gate 7 bench-only steering, and ADR 0023's
 deletion of structural/context move ordering after the Gate 3 kill. Release artifacts are in
@@ -275,8 +283,9 @@ isomorphism, G4 complex topology, discrete Stokes and Gauss divergence theorems,
 pinned-piece geometric reach, channel independence, and state non-mutation. These are tested directly
 in `tests/engine.field.mjs` and integrated into `verifyPositionAll()` in `verify.mjs`.
 
-**Gate:** `npm run test:engine` covers every documented invariant, and no documented
-invariant is violated in the invariant suite.
+**Gate:** `npm run test:engine` covers the binding invariants mapped to shipped modules.
+The suite does not cover every invariant in the theory corpus; the remaining scope gap must
+stay explicit rather than being treated as a pass.
 
 ---
 

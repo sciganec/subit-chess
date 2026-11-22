@@ -439,6 +439,7 @@ async function runUci() {
       send(`id name SUBIT-CHESS ${VERSION}`);
       send('id author SUBIT');
       send('option name Hash type spin default 64 min 1 max 1024');
+      send('option name TT.MaxAge type spin default 0 min 0 max 10');
       send('uciok');
       return;
     }
@@ -459,6 +460,7 @@ async function runUci() {
         else if (name === 'nullmove' || name === 'nullmove.enabled' || name === 'nmp') { if (on||off) engine.params.search.nullMove.enabled = on; }
         else if (name === 'see' || name === 'see.enabled') { if (on||off) engine.params.search.see.enabled = on; }
         else if (name === 'see.qsearchprune') { if (on||off) engine.params.search.see.qsearchPrune = on; }
+        else if (name === 'tt.maxage') { const n = Number(value); if (Number.isFinite(n)) { const age = Math.max(0, Math.min(10, n|0)); engine.params.search.ttMaxAge = age; engine.searcher.tt.maxAge = age; } }
         else if (name === 'hash') { const mb = Number(value); if (Number.isFinite(mb) && mb>=1) { /* ignore for now, TT fixed */ } }
       }
       return;
