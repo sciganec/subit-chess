@@ -18,7 +18,7 @@ import { structuralDelta } from './structure.mjs';
 import { Percept } from './percept.mjs';
 import { evidenceFor, classifyTrace } from './belnap.mjs';
 
-const MATE_LIMIT = 100000 - 1000;
+const EXPLAIN_MATE_LIMIT = 100000 - 1000;
 
 /** SCMF §12 evidence statuses. */
 export const EVIDENCE = {
@@ -173,14 +173,14 @@ export function explainDecision(engine, opts = {}) {
 
   const runnerUp = rows.find((r) => r.m !== chosenRow.m);
   const gap = runnerUp ? chosenRow.v - runnerUp.v : Infinity;
-  const proven = Math.abs(chosenRow.v) > MATE_LIMIT;
+  const proven = Math.abs(chosenRow.v) > EXPLAIN_MATE_LIMIT;
   const better = rows.filter((r) => r.v > chosenRow.v);   // a shallower re-search may prefer another move; reported, never acted on
 
   const alternatives = rows.filter((r) => r.m !== chosenRow.m).slice(0, nAlt).map((r) => {
     const cf = chosenRow.v - r.v;                            // CF(a,b) = V(P_a) - V(P_b)
     return {
       move: moveToUci(r.m), san: san(r.m), value: r.v,
-      counterfactual: { cf, status: Math.abs(chosenRow.v) > MATE_LIMIT || Math.abs(r.v) > MATE_LIMIT ? EVIDENCE.EXHAUSTIVELY_VERIFIED : EVIDENCE.ESTIMATED,
+      counterfactual: { cf, status: Math.abs(chosenRow.v) > EXPLAIN_MATE_LIMIT || Math.abs(r.v) > EXPLAIN_MATE_LIMIT ? EVIDENCE.EXHAUSTIVELY_VERIFIED : EVIDENCE.ESTIMATED,
         scope: `search depth ${depth - 1} after the move` },
       best_reply: replySan(r.m, r.reply),
       structural: structuralChange(engine, pos, r.m),
