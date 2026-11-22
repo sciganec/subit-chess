@@ -224,8 +224,6 @@ export class MoveOrder {
     const w = this.params.search.ordering;
     const killers = this.killers[ply] || EMPTY_KILLER;
     const history = this.history;
-    const struct = ctx && ctx.structural ? ctx.structural : null;
-    const ctxBonus = ctx && ctx.contextBonus ? ctx.contextBonus : null;
 
     for (let i = 0; i < n; i++) {
       const m = moves[i];
@@ -251,10 +249,8 @@ export class MoveOrder {
         s += (history[(us * 128 + MOVE_FROM(m)) * 128 + to] / HISTORY_MAX) * w.history * 0.6;
       }
 
-      // structural priority (doc 05 §11.4) — order only, never a legality filter.
-      // turn is passed so a root-side plan cannot boost the opponent's replies.
-      if (struct) { const b = struct(m, us); if (b) s += w.struct * b; }
-      if (ctxBonus) { const b = ctxBonus(m); if (b) s += w.context * b; }
+      // Gate 3 kill: structural/context ordering removed. Ordering is now
+      // pv > tt > tactic > history; legality is never decided here.
 
       const slot = (n - 1 - i) & 255;          // keeps the sort stable on ties
       buf[i] = m;
@@ -316,8 +312,6 @@ export class Searcher {
     this.useFutility = true;
     this.trace = null;
     this.lastIteration = null;
-    this.structuralBonus = null;   // (m) => number, provided by the plan layer
-    this.contextBonus = null;
   }
 
   setLimits({ timeMs = 0, nodes = 0, depth = 64 } = {}) {
@@ -488,10 +482,7 @@ export class Searcher {
 
     const ttEntry = this.useTT ? this.tt.probe(pos.ttKey, depth, alpha, beta, 0) : null;
     const ttMove = ttEntry ? ttEntry.move : 0;
-    const orderedCount = this.order.scoreMoves(pos, rootMoves, 0, ttMove, prevBest || 0, {
-      structural: this.structuralBonus,
-      contextBonus: this.contextBonus
-    });
+    const orderedCount = this.order.scoreMoves(pos, rootMoves, 0, ttMove, prevBest || 0, {});
 
     let alphaOrig = alpha;
     for (let i = 0; i < orderedCount; i++) {
@@ -595,10 +586,7 @@ export class Searcher {
     const us = pos.turn;
     const them = opposite(us);
     const moves = pos.generateMoves(false);
-    const orderedCount = this.order.scoreMoves(pos, moves, ply, this.ttMoveFor(pos, depth), 0, {
-      structural: this.structuralBonus,
-      contextBonus: this.contextBonus
-    });
+    const orderedCount = this.order.scoreMoves(pos, moves, ply, this.ttMoveFor(pos, depth), 0, {});
     const buf = this.order.buffers[ply];
 
     let bestScore = -INF;
@@ -815,10 +803,7 @@ export class Searcher {
 
     const us = pos.turn;
     const them = opposite(us);
-    const orderedCount = this.order.scoreMoves(pos, moves, ply, 0, 0, {
-      structural: this.structuralBonus,
-      contextBonus: this.contextBonus
-    });
+    const orderedCount = this.order.scoreMoves(pos, moves, ply, 0, 0, {});
     const buf = this.order.buffers[ply];
     let legal = 0;
 
@@ -877,10 +862,7 @@ export class Searcher {
         if (givesCheck) checks.push(m);
       }
       const checkCount = Math.min(qc.maxChecks,
-        checks.length ? this.order.scoreMoves(pos, checks, ply, 0, 0, {
-          structural: this.structuralBonus,
-          contextBonus: this.contextBonus
-        }) : 0);
+        checks.length ? this.order.scoreMoves(pos, checks, ply, 0, 0, {}) : 0);
       const checkBuf = this.order.buffers[ply];
       for (let i = 0; i < checkCount; i++) {
         const m = checkBuf[i];

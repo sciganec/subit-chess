@@ -45,7 +45,7 @@ the artifact stays a single HTML file.
 | `structure.mjs` | pawn structure, piece activity, king safety, space, critical squares |
 | `context.mjs` | marginal intensities for `I = QUIET/DEFENCE/ATTACK/PRESSURE`, `Z = GLOBAL/QUEENSIDE/KING/CENTER`, `Φ = OPENING/MIDDLEGAME/ENDGAME/TRANSITION` |
 | `evaluate.mjs` | fast tier (tapered material + PST, mobility, bishop pair, pawn structure, rook files, king shield) and structural tier `E(SVF)` |
-| `plans.mjs` | structural plan generation, feasibility/Pareto ranking, plan-aware move ordering (bounded to the structural level) |
+| `plans.mjs` | structural plan generation, feasibility/Pareto ranking (descriptive only since ADR 0023 — no search move ordering) |
 | `search.mjs` | iterative deepening, alpha-beta + quiescence, TT, killers/history, null move, LMR, aspiration, draw rules |
 | `meta.mjs` | search metadata: risk, stability, confidence, budget accounting |
 | `uncertainty.mjs` | eight-component `U(P)` and search decision certificate |
@@ -72,8 +72,9 @@ answers "what is this position worth", the search answers "what is the best line
 - Alpha-beta + quiescence, transposition table (depth-checked, ply-normalised mate scores),
   killer moves + history (normalised below tactics), null-move pruning, late-move reductions
   with re-search, aspiration windows.
-- Move ordering follows the documented level order `pv > tt > tactic > struct > context > history`;
-  the structural (plan) bonus is bounded to `[0, 1]` so it can never outrank a capture.
+- Move ordering is `pv > tt > tactic > history` in the worktree. The structural and
+  context ordering levels were deleted by the Gate 3 kill (ADR 0023); they remain only
+  as zero-valued keys so old configs still load.
 - Draw handling mirrors FIDE: 50-move and threefold are claimable inside the search (scored 0
   for both sides), 75-move and fivefold are automatic.
 - Every search result carries an **uncertainty profile** `U(P)` — eight components
@@ -147,14 +148,25 @@ npm run test:legacy        # v2.2.0 single-file suite (128 assertions, kept for 
   3/4. That is the largest single strength change in v3.
 - **The fast evaluation tier is not yet a measured win.** Against the previous eval
   (material + PST + hard switch): 52.5% ± 13.3 over 20 games at depth 3 — inside the noise.
-- **Depth pays (worktree).** With the corrected harness, depth 5 vs depth 4 scores
-  **68.0% ± 8.1** over 100 games (CI 59.9-76.1%). The old 12-game 45.8% ±22.4 reading was
-  superseded; a harness bug that swapped the pinned depths in odd games was found and fixed.
-- **A1 quiet checks pay (worktree).** 63.0% ± 9.3 vs `noqchecks` over 100 games, 0/100 capped
-  games; the geometric prefilter keeps the per-node throughput cost to ~6-7%.
+- **Depth pays (worktree).** After the ADR 0023 re-baseline, depth 5 vs depth 4 scores
+  **79.0% ± 7.5** over 100 games (CI 71.5-86.5%, 75W/8D/17L). The pre-kill 68.0% ±8.1,
+  the old 12-game 45.8% ±22.4 reading and the void harness run are historical; a depth-label
+  bug in odd games was found and fixed before any of these results was accepted.
+- **A1 quiet checks pay (worktree).** Post-kill re-baseline: **60.0% ± 9.4** vs `noqchecks`
+  over 100 games (CI 50.6-69.4%, 58W/4D/38L), 0/100 capped games. After the ordering
+  deletion there is no per-node penalty (~174.6k nps for `base` vs ~173.0k for `noqchecks`);
+  the old 63.0% and ~6-7% throughput cost are historical.
+- **Structural ordering was deleted in the worktree (Gate 3).** `base` vs `nostruct`
+  scored 46.5% ± 8.7 at n=100 and 47.5% ± 6.2 at n=200 (CI ≈ [41.3%, 53.7%]);
+  `noplans` was identical. No positive CI over 200 games triggered the pre-registered
+  kill criterion, so ADR 0023 removed the structural ordering path. Plans still feed
+  the UI and uncertainty, not move choice. `noctx` was a no-op (57.5% ±8.9, identical
+  to a pre-kill `base` vs `base` control), and after the kill `plain` is also a no-op:
+  53.5% ±8.9, identical to a post-kill `base` vs `base` control. Those percentages are
+  harness self-play baselines, not strength results.
 - **Opening suite is calibrated.** `bench/fens/openings.epd` has 24 checksummed legal FENs;
   `bench/match.mjs` reports per-opening W/D/L, length distribution, capped games, termination
-  reasons and an Elo-scaled CI. Gate 1 passes with 9/100 caps at depth 4.
+  reasons and an Elo-scaled CI. Gate 1 passes with 9/100 caps pre-kill and 5/100 post-kill.
 - **The uncertainty driver steers verification (bench-only).** Gate 7: 9 target-only
   decision changes vs 0 uniform-only and 0 wrong-driver-only; 0/4 proven mates changed.
   The driver is computed after the base search and no shipped move choice was changed, so
@@ -186,20 +198,22 @@ See [`CHANGELOG.md`](CHANGELOG.md) § Unreleased for the full list of open items
   evaluation weights, pruning parameters, legality and UI behaviour were not changed to seek
   strength. Full SUBIT conformance is not claimed: the canonical theory repo still documents
   v2.2.0 as the latest chess version and marks v6.14.x as DRAFT / NOT STABLE.
-- **Game strength is not yet demonstrated for v3.0.10.** The perspective fix is a large
-  correctness win; beyond that, every measured difference at the sample sizes used so far is
-  inside the confidence interval. Gates 1–3 (length, depth, A1) are closed in the worktree;
-  Gates 4–7, W08, an independent oracle and the remaining structural-layer A/Bs stay open. The post-v3.0.10 worktree is uncommitted: it adds audited
-  horizon/budget/SVF fixes and has two measured 100-game wins — A1 quiet checks
-  (`base` 63.0% ±9.3 vs `noqchecks`, CI 53.7–72.3%) and depth
-  (`base@5` 68.0% ±8.1 vs `base@4`, CI 59.9–76.1%). Those results apply to the worktree
-  only, not to the released v3.0.10 artifact.
+- **Game strength is not yet demonstrated for the released v3.0.10 artifact.** The perspective
+  fix is a large correctness win. The post-v3.0.10 worktree is uncommitted: it adds audited
+  horizon/budget/SVF fixes and has two measured 100-game wins on its current code — A1 quiet
+  checks (`base` 60.0% ±9.4 vs `noqchecks`, CI 50.6–69.4%) and depth
+  (`base@5` 79.0% ±7.5 vs `base@4`, CI 71.5–86.5%). Both CIs exclude 0.5, but they apply
+  only to the worktree, not to the released v3.0.10 HTML. Gate 1 length and Gate 2/3 A1
+  are closed; Gate 3 structural ordering was killed; Gate 7 is bench-only verification
+  steering. Gate 4 literal coverage, Gate 5 external validation, Gate 6's d9-in-6s target,
+  an independent oracle and the W08 stress run remain open.
 - **Opening suite is curated and Gate 1-calibrated.** Game-length reporting, `--variety` and a
   24-position `bench/fens/openings.epd` with a SHA-256 in `bench/fens/CHECKSUMS` now exist;
   `bench/match.mjs` prints per-opening W/D/L and an Elo-scaled CI. The harness also keeps
   the repetition stack across moves, so capped games fell from 3/10 to 1/10 on the same
   calibration seed. The 100-game Gate 1 calibration is complete: 57.5% ±8.9 for `base` vs
-  `base` at depth 4, 49W/17D/34L, 9/100 games at the 300-ply cap (Gate ≤10%), mean 128 plies.
+  `base` at depth 4 pre-kill (49W/17D/34L, 9/100 caps, mean 128 plies) and 53.5% ±8.9
+  post-kill (45W/17D/38L, 5/100 caps, mean 133 plies); both pass the ≤10% cap gate.
 - **Legacy subsystems are gone, not ported.** The v2.2.0 diffusion study generator, ρ_s policy
   vector, teacher snapshots and telemetry do not exist in v3; `runners/run.js` targets v1.9.1
   and is kept only for the v2 legacy suite.

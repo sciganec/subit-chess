@@ -90,7 +90,10 @@ export const DEFAULT_PARAMS = {
     // Quiet checking moves at the first qsearch level. A sacrifice that starts
     // with a silent check is invisible to a captures-only horizon (audit A1).
     qsearch: { checks: true, maxChecks: 4 },
-    ordering: { pv: 1000000, tt: 900000, tactic: 800000, struct: 200000, context: 120000, history: 100000 }
+    // Gate 3 kill: structural ordering deleted (200-game A/B had no positive CI).
+    // The keys stay at 0 so older configs remain loadable, but no bonus is
+    // ever supplied to them — search ordering is now pv > tt > tactic > history.
+    ordering: { pv: 1000000, tt: 900000, tactic: 800000, struct: 0, context: 0, history: 100000 }
   },
 
   // plans (doc 11)

@@ -987,4 +987,39 @@ something other than a searched, legal position:
 
 ---
 
+## ADR 0023 — delete structural move ordering (Gate 3 kill)
+
+**Status:** Accepted (unreleased worktree, 2026-11-21)
+
+### Context
+Gate 3 pre-registered that any structural layer unable to show a positive CI over
+200 games is deleted outright. `base` vs `nostruct`, depth 4, seed 7, 200 games:
+**47.5% ± 6.2** (74W/42D/84L, 25/200 capped games), CI ≈ [41.3%, 53.7%].
+The 100-game `noplans` run produced the identical score and per-opening table.
+A direct root check on all 24 suite FENs showed `base`, `nostruct` and `noplans`
+choose the same move on 24/24, and that `nostruct` and `noplans` are node-identical:
+they ablate one ordering mechanism, not two independent layers. The plan-derived
+bonus was the only structural ordering term.
+
+### Decision
+- Remove structural ordering from the search path: `ordering.struct` is 0,
+  `makePlanOrderer` and the `structuralBonus` plumbing are deleted, and
+  `scoreMoves` no longer reads a structural bonus.
+- Remove the already-dead context ordering path as well: `ordering.context` is
+  0 and no `contextBonus` reaches `scoreMoves`. Context still feeds `scalarize()`,
+  uncertainty and the UI; only its ordering claim is withdrawn.
+- `nostruct` / `noplans` remain as historical no-op controls with updated labels.
+  Plans remain a descriptive and uncertainty layer, not a search layer.
+
+### Consequences
+- Search ordering is now `pv > tt > tactic > history`. No strength claim is made
+  for the released v3.0.10 HTML artifact.
+- Full `npm test` passes. A temp-copy build was remeasured at
+  `7D9FF08A811C67748C6A5667F8C3489D584620B529AC62A4DE69307A627E1E06`; the two
+  release HTMLs in the worktree remain at `9A08F02F...` and were not overwritten.
+- Reintroducing any structural/context ordering needs a new ADR and a fresh
+  pre-registered A/B; it is not a tuning follow-up to this kill.
+
+---
+
 *End of DECISIONS.md — v3.0.10 (plus unreleased worktree notes)*

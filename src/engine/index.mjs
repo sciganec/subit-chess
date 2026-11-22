@@ -21,7 +21,7 @@ import { Structure, structuralDelta, criticalityVector } from './structure.mjs';
 import { computeContext } from './context.mjs';
 import { Evaluation, DEFAULT_PARAMS, cloneParams, paramsFromJSON, SVF_COMPONENTS } from './evaluate.mjs';
 import { Searcher, TranspositionTable, MoveOrder, MATE, searchBudget } from './search.mjs';
-import { generatePlans, describePlans, makePlanOrderer, pareto, PLAN } from './plans.mjs';
+import { generatePlans, describePlans, pareto, PLAN } from './plans.mjs';
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
 
@@ -214,16 +214,10 @@ export class Engine {
       }
     }
 
-    // The old contextBonus closure returned 0 in both branches while calling
-    // ContextProfile.key() for every move of every node (including qsearch).
-    // It is removed rather than "implemented": context still feeds scalarize()
-    // and uncertainty, and a real ordering term must be measured first (Gate 3).
-    this.searcher.contextBonus = null;
-    if (this.opts.usePlans && this.plans.length) {
-      this.searcher.structuralBonus = makePlanOrderer(this.plans, this.pos.turn);
-    } else {
-      this.searcher.structuralBonus = null;
-    }
+    // Gate 3 kill: structural ordering was deleted after the 200-game A/B
+    // (47.5% ±6.2, CI spans 0.5 — no positive CI). Plans remain a descriptive
+    // layer for the UI/analysis and uncertainty; they no longer touch move
+    // ordering. The old contextBonus was already a no-op and is gone too.
 
     this.searcher.setLimits({ depth, timeMs, nodes: opts.nodes || 0 });
     // Memory is not write-only: a remembered move and score for this position

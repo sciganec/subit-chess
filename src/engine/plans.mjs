@@ -539,30 +539,6 @@ export function pareto(plans) {
   return keep;
 }
 
-/**
- * Move → structural bonus, for search ordering only (doc 05 §11.4).
- * A move is never filtered here — it only changes the order of the legal set.
- */
-export function makePlanOrderer(plans, rootTurn = null) {
-  const bonus = new Map();
-  for (const p of plans) {
-    for (const m of p.moves) {
-      // bounded hint in [0,1]: a plan may only reorder, never outrank the
-      // tactical level (doc 05 §11.2, doc 11 §"tactical > strategic priority")
-      const v = p.feasible.rule
-        ? 0.6 + 0.4 * Math.max(0, Math.min(1, p.score / 100))
-        : 0.2;
-      if (v > (bonus.get(m) || 0)) bonus.set(m, v);
-    }
-  }
-  // root-side aware: the plan belongs to the side that generated it, so it must
-  // not boost the opponent's replies in the same tree
-  const orderer = (m, turn) =>
-    (rootTurn === null || turn === rootTurn) ? (bonus.get(m) || 0) : 0;
-  orderer.bonus = bonus;
-  return orderer;
-}
-
 /** Human-readable plan report. */
 export function describePlans(plans) {
   return plans.map((p) =>

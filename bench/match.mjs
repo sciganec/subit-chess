@@ -36,7 +36,7 @@ export const CONFIGS = {
 
   // doc 05 §25.2 ablations
   nostruct: {
-    label: 'A — no structural priority',
+    label: 'A — no structural priority (no-op after Gate 3 kill)',
     params: { search: { ordering: { struct: 0 } } },
     opts: {}
   },
@@ -51,7 +51,7 @@ export const CONFIGS = {
     opts: {}
   },
   noplans: {
-    label: 'D — no plans in the decision path',
+    label: 'D — no plans (no-op in search after Gate 3 kill)',
     params: {},
     opts: { usePlans: false }
   },
@@ -63,7 +63,7 @@ export const CONFIGS = {
 
   // floor: pure alpha-beta + fast eval, no SUBIT layers at all
   plain: {
-    label: 'plain — alpha-beta, no plans/meta/context',
+    label: 'plain — alpha-beta, no meta (struct/context/plan ordering already removed)',
     params: { context: { enabled: false }, search: { ordering: { struct: 0 } } },
     opts: { usePlans: false, useMeta: false }
   },

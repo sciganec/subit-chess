@@ -1,11 +1,11 @@
 /**
  * Plan-generation tests (doc 11: SPG-01 .. SPG-14, SPG-INV-001 .. SPG-INV-006).
  */
-import { Position, moveToUci, squareName, pieceType, PAWN } from '../src/engine/core.mjs';
+import { Position, squareName, pieceType, PAWN } from '../src/engine/core.mjs';
 import { Percept } from '../src/engine/percept.mjs';
 import { Structure } from '../src/engine/structure.mjs';
 import { computeContext } from '../src/engine/context.mjs';
-import { generatePlans, PLAN_GENERATORS, PLAN_NAME, PLAN, pareto, describePlans, makePlanOrderer } from '../src/engine/plans.mjs';
+import { generatePlans, PLAN_GENERATORS, PLAN_NAME, PLAN, pareto, describePlans } from '../src/engine/plans.mjs';
 import { MetaController, complexityOf, adaptiveDepth } from '../src/engine/meta.mjs';
 
 let fails = 0;
@@ -123,18 +123,6 @@ for (const [name, fen] of Object.entries(POSITIONS)) {
   const plans = generatePlans(pos, percept, structure, null, { maxPlans: 20 });
   const kept = pareto(plans);
   check('Pareto keeps at least the best plan', kept.length >= 1, `${kept.length}/${plans.length}`);
-}
-
-/* ---------------- plan ordering bonus ---------------- */
-{
-  const { pos, percept, structure } = layers(POSITIONS.attack);
-  const plans = generatePlans(pos, percept, structure, null);
-  const order = makePlanOrderer(plans);
-  const scored = pos.legalMoves().map((m) => ({ m, b: order(m) })).sort((a, b) => b.b - a.b);
-  check('ordering bonus is a non-negative number for every move',
-    pos.legalMoves().every((m) => Number.isFinite(order(m)) && order(m) >= 0));
-  check('the highest-scored move belongs to some plan',
-    plans.some((p) => p.moves.includes(scored[0].m)), moveToUci(scored[0].m));
 }
 
 /* ---------------- meta-control ---------------- */

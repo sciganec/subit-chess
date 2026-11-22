@@ -23,8 +23,9 @@ UI behaviour were not changed to seek strength. Full canonical SUBIT conformance
 not claimed — the canonical theory repo still documents v2.2.0 as the latest chess
 version, and SUBIT-∞ v6.14.x is DRAFT / NOT STABLE.
 
-Strength demonstrated so far is still a single large fix (evaluation perspective);
-everything else remains inside the noise band.
+For the released v3.0.10 artifact, the demonstrated strength change is still the single
+large evaluation-perspective fix. The unreleased worktree additionally has two 100-game
+wins on its own code (A1 and depth), neither of which is a claim about the release.
 
 **Post-v3.0.10 development (unreleased worktree, no version bump or tag):** the Gate 1
 harness now prints per-opening W/D/L and an Elo-scaled CI, and `bench/fens/openings.epd`
@@ -34,10 +35,13 @@ has 24 quiet legal positions with a SHA-256 in `bench/fens/CHECKSUMS`. The dead
 with uncertainty and `plan.structuralEvalDepth` is applied; the early-exit stalemate probe,
 unified mate scale and single-owner SVF (`SVF-INV-007` executable check) are in place.
 The match harness now preserves the game repetition stack across moves, so Gate 1 passes
-its length gate (9/100 caps at depth 4). Gate 7 now has a deterministic bench harness
+its length gate (9/100 caps pre-kill, 5/100 post-kill at depth 4). ADR 0023 deleted structural
+move ordering after the 200-game Gate 3 kill; all four structural ablations are now no-op
+controls. A1 and depth were re-measured on that code and both pass their 100-game gates:
+**60.0% ± 9.4** and **79.0% ± 7.5**. Gate 7 now has a deterministic bench harness
 (`bench/gate7.mjs`) with a uniform and a wrong-driver control; it passes on the fixed
 suite but is a verification-steering result, not a strength result. None of this is in
-tag `v3.0.10`; no item has passed a 100-game *strength* gate beyond Gate 2 and Gate 3.
+tag `v3.0.10`; the strength numbers belong to the worktree only.
 
 **What is measurably true:**
 
@@ -45,9 +49,9 @@ tag `v3.0.10`; no item has passed a 100-game *strength* gate beyond Gate 2 and G
 |---|---|
 | The perspective fix is worth a lot | 12-0 vs pre-fix modules at depth 3/4 |
 | The fast eval tier is not yet a win | 52.5% ± 13.3 over 20 games, depth 3 |
-| Depth pays | depth 5 vs 4: 68.0% ± 8.1 over 100 games, CI 59.9-76.1% (corrected harness) |
-| A1 quiet checks at the horizon pay | base 63.0% ± 9.3 vs noqchecks over 100 games, CI 53.7-72.3%, 0/100 caps |
-| Structural layers do not yet pay | `base` vs `plain`: 56.3% ± 34.3 over 8 games |
+| Depth pays (worktree) | post-kill base@5 vs base@4: 79.0% ± 7.5 over 100 games, CI 71.5-86.5% |
+| A1 quiet checks at the horizon pay (worktree) | post-kill base 60.0% ± 9.4 vs noqchecks over 100 games, CI 50.6-69.4%, 0/100 caps |
+| Structural ordering does not pay | base vs nostruct 47.5% ± 6.2 over 200 games, CI 41.3-53.7%; deleted under ADR 0023 |
 | The root move is a true argmax | brute-force comparison on 3 positions: 8/109/82 |
 | A forced mate is no longer hidden by futility pruning | regression in `tests/engine.eval.mjs`, v3.0.1 |
 | Repetition survives `Engine.play`, and both hash halves are compared | `tests/engine.eval.mjs`, ADR 0016, v3.0.3 |
@@ -67,17 +71,19 @@ tag `v3.0.10`; no item has passed a 100-game *strength* gate beyond Gate 2 and G
 | Full state identity includes rule history | `verifyMakeUnmake()` checks the repetition stack and `repLimit` alongside FEN, hash and clocks; ADR 0020 rule history is verifier-visible |
 
 **What is not yet known:**
-- Do the structural layers (plans, context, structure) earn their cost? The A1 horizon gate
-  passed, but the `base` vs `plain`/`nostruct`/`noplans`/`noctx` 100-game runs have not.
 - Where is the real playing strength of v3? No external sparring partner, no EPD set with
-  `bm` — every number above is self-play.
+  `bm` — every number above is self-play. Gate 4 literal invariant coverage is also
+  explicitly unmet (194 binding IDs, only 30 referenced in code/tests).
+- Whether the post-kill A1/depth worktree wins survive an independent suite and an external
+  opponent; the current numbers are calibrated on the same 24-position self-play corpus.
 
 **Open hazards:**
 - **Opening breadth.** The suite is still small and colour-alternated; per-opening variance
   dominates the interval. `bench/match.mjs` reports mean/median plies, capped games,
   termination reasons and a per-opening table, supports `--variety`, and now has a curated
   24-position `bench/fens/openings.epd` (SHA-256 in `CHECKSUMS`). The 100-game Gate 1
-  calibration is done: 9/100 caps at depth 4, gate passed (see Gate 1 below).
+  calibration is done: 9/100 caps pre-kill and 5/100 post-kill at depth 4, gate passed
+  (see Gate 1 below).
 - **Sample size.** 8-20 games gives a ±13-34 pp interval. Anything below ~100 Elo is
   unmeasurable at that size.
 - **Residual debt:** the dead `contextBonus` has been removed; `Score.diff` is still never
@@ -152,6 +158,13 @@ CI.lo > 0.5 falls in the "depth works" row: keep pruning/LMR as is and spend eff
 evaluation. The prior (PASS 70%) is confirmed; the earlier 12-game 45.8% ±22.4 reading and the
 void harness run are both superseded.
 
+**Post-kill re-baseline (2026-11-21) — PASS, supersedes 68.0%.** After ADR 0023 changed
+the worktree's move choices, the same command with output
+`results/gate2-depth-postkill-final.json` gave `base@5` **79.0% ± 7.5**,
+CI **[71.5%, 86.5%]**, 75W/8D/17L, 8/100 caps. Depth still pays decisively on the code
+that is actually in the worktree; the 68.0% figure is retained only as the pre-kill
+measurement.
+
 **Decision table:**
 
 | Result | Verdict | Action |
@@ -183,24 +196,64 @@ accepted only if the CI excludes 0.5 and Gate 6 still meets the throughput budge
 | CI spans 0.5 | inert | profile the cost; either raise the weights or delete the layer |
 | base loses with CI.hi < 0.5 | layers hurt | delete the layer and record an ADR |
 
-**A1 result (post-v3.0.10, 2026-11-21).** `node bench/match.mjs --suite
-bench/fens/openings.epd --a base --b noqchecks --games 100 --depth 4 --seed 7 --variety
---quiet --out results/gate3-a1-base-vs-noqchecks-final.json`: `base` (bounded quiet checks)
-**63.0% ± 9.3**, CI **[53.7%, 72.3%]**, ±69 Elo, 61W/4D/35L, 0 errors. Length mean 99,
-median 84.5, **0/100 caps**, terminations checkmate 96 / fivefold 4. The CI excludes 0.5,
-so the strength half of the A1 acceptance rule passes.
+**A1 result — pre-kill, historical (2026-11-21).** The original run
+(`results/gate3-a1-base-vs-noqchecks-final.json`) gave `base` **63.0% ± 9.3**, CI
+[53.7%, 72.3%], 61W/4D/35L, 0/100 caps. It was measured before ADR 0023 and is kept only
+for provenance.
 
-**A1 throughput half — measured and accepted.** Clean, uncontended controlled run on the
-Gate 6 position (`2kr1b1r/.../5RK1 b - - 1 16`, d7), three repetitions each, fresh engine
-per run: `noqchecks` 383,605 nodes at 157,409 / 161,314 / 169,213 nps (~2.3 s); `base`
-703,206 nodes at 146,930 / 153,673 / 155,130 nps (~4.6 s). The prefilter cut A1's per-node
-penalty from ~24% (112-115k nps before it) to **~6-7%**, and the extra wall time comes from
-the 83% larger tree — which is the intended strength mechanism, not overhead. The historical
-~190k nps baseline in Gate 6 was measured on a different tree (503,402 nodes) before the
-stalemate/eval fixes, so it is not a valid A1 control. **Verdict: A1 accepted** (CI excludes
-0.5, no material per-node regression). Gate 6's own d9-in-6s goal remains open independently
-of A1. Full structural-layer A/Bs (`base` vs `plain`/`nostruct`/`noplans`/`noctx`) have not
-been run at n=100 yet.
+**A1 post-kill re-baseline — PASS, supersedes 63.0%.** `node bench/match.mjs --suite
+bench/fens/openings.epd --a base --b noqchecks --games 100 --depth 4 --seed 7 --variety
+--quiet --out results/gate3-a1-postkill-final.json`: `base` **60.0% ± 9.4**,
+CI **[50.6%, 69.4%]**, 58W/4D/38L, 0 errors, 0/100 caps, mean 116 plies. CI.lo > 0.5
+still passes the strength half on the current worktree code.
+
+**A1 throughput — post-kill, measured and accepted.** Clean, uncontended d7 run on the
+Gate 6 position (`2kr1b1r/.../5RK1 b - - 1 16`), three repetitions each, fresh engine per
+run: `noqchecks` 314,959 nodes at 166,703 / 175,396 / 176,918 nps (mean ~173.0k); `base`
+567,647 nodes at 173,256 / 174,926 / 175,650 nps (mean ~174.6k). After the ordering
+deletion the bounded-check extension has **no per-node penalty** (base is ~0.9% faster,
+within noise); the extra wall time comes only from the 80% larger tree. The pre-kill
+numbers (383,605 / 703,206 nodes, ~6-7% penalty) are historical. **Verdict: A1 accepted
+again** on the post-kill code. Gate 6's own d9-in-6s goal remains open independently of A1.
+Structural A/Bs are complete: all four ablations are no-ops after ADR 0023.
+
+**Structural ordering — deleted (Gate 3 kill, 2026-11-21).** The pre-registered
+200-game run `node bench/match.mjs --suite bench/fens/openings.epd --a base --b
+nostruct --games 200 --depth 4 --seed 7 --variety --quiet --out
+results/gate3-nostruct-200-final.json` gave `base` **47.5% ± 6.2**,
+CI ≈ [41.3%, 53.7%], 74W/42D/84L, 25/200 capped games. The 100-game `noplans`
+run was identical in score, W/D/L, nodes and per-opening table. A direct root check
+on all 24 suite FENs showed `base`, `nostruct` and `noplans` choose the same move on
+24/24, with `nostruct` and `noplans` node-identical: they ablate one ordering
+mechanism, not two layers. No positive CI over 200 games triggers the kill
+criterion. Per ADR 0023, `makePlanOrderer`, the `structuralBonus` plumbing and the
+search's structural ordering term are removed; `ordering.struct` is 0. The
+already-dead `contextBonus` path is removed too (`ordering.context` 0). Plans
+remain descriptive for the UI and uncertainty. `nostruct` and `noplans` stay as
+historical no-op controls.
+
+**`noctx` is a no-op (Gate 3).** The n=100 run gave `base` **57.5% ± 8.9**,
+CI ≈ [48.6%, 66.4%], 49W/17D/34L, 9/100 caps (`results/gate3-noctx-final.json`).
+A `base` vs `base` control on unmodified HEAD
+(`results/gate3-base-vs-base-control-final.json`) matches every reported statistic:
+the same W/D/L, 1,520,362 nodes/game, length distribution and per-opening table.
+So `noctx` has no search effect, and 57.5% is the harness's self-play baseline —
+the same value already recorded as Gate 1 calibration — not a context win. The
+`contextBonus` path was already removed as a no-op and ADR 0023 zeroes
+`ordering.context`, so no extra deletion is needed.
+
+**`plain` is also a no-op after the kill.** On the post-kill code, `base` vs `plain`
+scored `base` **53.5% ± 8.9**, 45W/17D/38L, 1,329,957 nodes/game, 5/100 caps
+(`results/gate3-plain-final.json`). A fresh `base` vs `base` control on the same code
+(`results/gate3-base-vs-base-postkill-final.json`) reproduces every statistic exactly.
+The explicit `depth: 4` used by the harness means `useMeta` never activates, and with
+structural/context ordering gone the remaining config flags do not touch search.
+All four structural ablations (`plain`/`nostruct`/`noplans`/`noctx`) are therefore
+empty controls now. Gate 1's cap gate still passes on the new base: 5/100 (≤10%).
+
+**Re-baseline complete.** A1 and depth were re-measured on the post-kill code above:
+**60.0% ± 9.4** and **79.0% ± 7.5** respectively, both with CI.lo > 0.5. The pre-kill
+63.0% / 68.0% are retained only as historical measurements.
 
 **Prior:** the layers are hand-weighted and have never been validated end to end.
 Estimate: PASS 35%, MARGINAL 40%, FAIL 25%.
@@ -219,6 +272,14 @@ Not strength work, but the implementation should not contradict its own specific
 - `verify.mjs`: extend coverage so every `SVF-INV-*` / `SEARCH-INV-*` has a test.
   `SVF-INV-007` now has an executable single-owner check; the rest remain open.
 - `meta.mjs`: threshold calibration against measured risk (docs 29/35).
+
+**Scope audit (2026-11-21).** The theory corpus defines 667 distinct `*-INV-*` IDs;
+the 12 binding docs for this gate define 194, of which only 30 are referenced anywhere in
+`src/engine/` or `tests/` (164 unreferenced). The literal "every documented invariant has
+a test" gate is therefore not tractable against the current corpus without inventing
+coverage for speculative, unshipped layers. This is recorded as a scope gap, not a PASS:
+work should prioritize the `SVF-INV-*`, `SEARCH-INV-*`, `SPG-INV-*` and `UCT-INV-*`
+invariants that map to shipped modules.
 
 **Gate:** `npm run test:engine` covers every documented invariant, and no documented
 invariant is violated in the invariant suite.
