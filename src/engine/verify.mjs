@@ -17,6 +17,7 @@ import {
   FLAG_CAPTURE, FLAG_EP, MOVE_FLAGS
 } from './core.mjs';
 import { structuralVector, SVF_COMPONENTS } from './evaluate.mjs';
+import { verifyFieldInvariants, FD_INVARIANTS } from './field.mjs';
 
 export const INVARIANT = {
   UCA_003: 'UCA-INV-003  the legal move set at a full node is never reduced',
@@ -25,7 +26,8 @@ export const INVARIANT = {
   UCA_019: 'UCA-INV-019  full canonical-state identity after make/unmake',
   SVF_007: 'SVF-INV-007  a structural feature is owned by one SVF component',
   SM_003: 'SM-INV-003  relations stay typed',
-  SPG_005: 'SPG-INV-005  a plan never contains an illegal move'
+  SPG_005: 'SPG-INV-005  a plan never contains an illegal move',
+  ...FD_INVARIANTS
 };
 
 function fail(list, id, detail) {
@@ -305,7 +307,8 @@ export function verifyPositionAll(pos) {
     ...verifyPieceLists(pos),
     ...verifyLegalMoves(pos),
     ...verifyCaptures(pos),
-    ...verifyMakeUnmake(pos)
+    ...verifyMakeUnmake(pos),
+    ...verifyFieldInvariants(pos)
   ];
 }
 

@@ -13,6 +13,26 @@ Statuses:
 
 ---
 
+## [3.0.13] — 2026-11-22
+
+Operationalization of Field Dynamics (`FD-01` through `FD-14`) and mathematical invariants.
+
+- **Field Dynamics Module (`src/engine/field.mjs`).**
+  - **Canonical Board Coordinates (`SC-CORE-COORD-001` & `FD-01/02`).** Strict isomorphism between 0x88 square index, canonical coords $(x, y) \in [0, 7]^2$, and linear index $idx \in [0, 63]$ with $y = 7 - (sq \gg 4)$ mapping 0x88 mailbox row to rank coordinates.
+  - **G4 Orthogonal Complex Topology.** Board graph $|V|=64$ vertices, $|E|=112$ orthogonal edges, $|F_{int}|=49$ elementary square faces. Euler characteristic $\chi = V - E + F_{all} = 2$, cycle space dimension $\beta_1 = 49$.
+  - **Discrete Gradient Operator (`FD-05`).** Discrete potential gradient $\text{Grad } \phi(u \to v) = \phi(v) - \phi(u)$ on $G_4$ edges with exact anti-symmetry and zero circulation along arbitrary closed walks.
+  - **Discrete Divergence Operator (`FD-06`).** Nodal flux balance $\text{Div } J(v) = \sum_{e \in out} J(e) - \sum_{e \in in} J(e)$ satisfying the discrete Gauss divergence theorem $\sum_{v \in R} \text{Div } J(v) = \text{Flux}(\partial R)$ on arbitrary subsets of squares.
+  - **Discrete Curl and Circulation Operator (`FD-07`).** Counter-clockwise face curl on 49 elementary faces satisfying the discrete Stokes theorem $\sum_{f \in Z} \text{Curl } J(f) = \text{Circ}(J, \partial Z)$, and the potential field identity $\text{Curl}(\text{Grad } \phi) \equiv 0$ on all 49 faces.
+  - **Influence Vector Tracing & Pinned-Piece Reach (`FD-03` §171).** Geometric influence vectors separated from legal move generation: pinned pieces maintain geometric attack influence across lines while the legal move generator strictly forbids moves off the pin line.
+  - **Channel Independence ("DO NOT COLLAPSE").** White and Black attack, defense, and flux channels are strictly separated in independent buffers.
+- **Engine Integration (`FD-13`).**
+  - Added `Engine.fieldDynamics()` method and integrated `fields` summary into `Engine.analyze()`.
+  - Analytical and observational only: does not alter legal move generation or search decisions (complying with `FD-10 §360` and `ADR 0023`).
+- **Invariant Verification & Testing.**
+  - Added `FD-INV-001` through `FD-INV-010` formal invariants.
+  - Added `tests/engine.field.mjs` test suite (26 checks, 100% pass).
+  - Integrated `verifyFieldInvariants` into `verifyPositionAll()` in `src/engine/verify.mjs`. All 19 test scripts in `npm test` pass.
+
 ## [3.0.12] — 2026-11-22
 
 Measured post-v3.0.11 search-safety/plumbing increment. No external Elo-gain claim.

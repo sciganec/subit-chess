@@ -267,13 +267,13 @@ Not strength work, but the implementation should not contradict its own specific
   `SVF-INV-007` now has an executable single-owner check; the rest remain open.
 - `meta.mjs`: threshold calibration against measured risk (docs 29/35).
 
-**Scope audit (2026-11-21).** The theory corpus defines 667 distinct `*-INV-*` IDs;
-the 12 binding docs for this gate define 194, of which only 30 are referenced anywhere in
-`src/engine/` or `tests/` (164 unreferenced). The literal "every documented invariant has
-a test" gate is therefore not tractable against the current corpus without inventing
-coverage for speculative, unshipped layers. This is recorded as a scope gap, not a PASS:
-work should prioritize the `SVF-INV-*`, `SEARCH-INV-*`, `SPG-INV-*` and `UCT-INV-*`
-invariants that map to shipped modules.
+**Scope audit (2026-11-21, updated 2026-11-22).** The theory corpus defines 667 distinct `*-INV-*` IDs;
+the 12 binding docs for this gate define 194, of which 30 were referenced initially. In v3.0.13,
+Field Dynamics (`FD-01` through `FD-14`, docs 85-100) has been operationalized in `src/engine/field.mjs`,
+contributing 10 executable invariants (`FD-INV-001` .. `FD-INV-010`) covering discrete coordinate
+isomorphism, G4 complex topology, discrete Stokes and Gauss divergence theorems, potential field zero curl,
+pinned-piece geometric reach, channel independence, and state non-mutation. These are tested directly
+in `tests/engine.field.mjs` and integrated into `verifyPositionAll()` in `verify.mjs`.
 
 **Gate:** `npm run test:engine` covers every documented invariant, and no documented
 invariant is violated in the invariant suite.
