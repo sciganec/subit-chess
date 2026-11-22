@@ -788,10 +788,18 @@ export class Searcher {
       let reduction = 0;
       if (this.useLMR && lmr.enabled && depth >= lmr.minDepth && i >= lmr.minMoveIndex &&
           isQuiet && !inCheck && !givesCheck) {
-        reduction = lmr.reduction || 1;
-        if (i >= (lmr.extraMoveIndex || 6)) reduction += (lmr.extraReduction ?? 1);
-        if (reduction > (lmr.maxReduction || 3)) reduction = lmr.maxReduction || 3;
-        if (depth - reduction < 1) reduction = depth - 1;
+        let threatExempt = false;
+        const threatMin = lmr.threatExemptMinVictim || 0;
+        if (threatMin > 0) {
+          const threat = maxAttackedVictim(pos, MOVE_TO(m), pos.board[MOVE_TO(m)] & 7, us);
+          threatExempt = threat >= threatMin;
+        }
+        if (!threatExempt) {
+          reduction = lmr.reduction || 1;
+          if (i >= (lmr.extraMoveIndex || 6)) reduction += (lmr.extraReduction ?? 1);
+          if (reduction > (lmr.maxReduction || 3)) reduction = lmr.maxReduction || 3;
+          if (depth - reduction < 1) reduction = depth - 1;
+        }
       }
 
       let ext = (givesCheck && this.params.search.checkExtension > 0 && ply < 8) ? 1 : 0;
