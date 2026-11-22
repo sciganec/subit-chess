@@ -17,6 +17,10 @@ Statuses:
 
 Note: this block was developed on a branch cut from 3.0.8 and merged onto 3.0.11. Three items were fixed independently on main and the main versions are kept: the futility sign, no stand-pat in check (AUD-01), and the self-play seed/opening (AUD-309-04, `makeStartFEN`/`playSeries`). The entries below that mention them describe the branch history.
 
+Measured on the merged tree (v3.0.11 + this block), 100 ms/move, two workers x 28 games on `openings.epd` (the same 28
+openings, so not independent samples), engine `base` against `v311` (no adaptive budget, no reverse futility, everything
+else equal): 32W 10D 14L = 66.1% (about +115 Elo, rough 95% interval +55 to +170); time per move equal (A/B 1.02).
+
 ### Added
 - **Controlled autonomous evolution (`src/engine/evolve.mjs`; SCMF §15, INV-015..019).** Replaces `learn.hillClimb` for any
   change meant to be kept: hypothesis -> screening -> regression suite -> confirmation on a DISJOINT seed set (z >= 1.64) ->
