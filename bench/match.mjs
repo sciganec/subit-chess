@@ -138,6 +138,8 @@ export const CONFIGS = {
   },
   rfp: { label: 'reverse futility (depth<=3, 120cp/ply)', params: { search: { rfp: { enabled: true } } }, opts: {} },
   qsee: { label: 'SEE-lite capture pruning in quiescence', params: { search: { qSee: { enabled: true } } }, opts: {} },
+  evterms: { label: 'connected pawns + rook on 7th', params: { eval: { connected: 12, rook7: 20 } }, opts: {} },
+  rook7: { label: 'rook on 7th only (20cp)', params: { eval: { rook7: 20 } }, opts: {} },
   lmrlog: { label: 'log-table late move reductions', params: { search: { lmrLog: { enabled: true } } }, opts: {} },
   lmp: { label: 'late move pruning (depth<=3, 3+d^2)', params: { search: { lmp: { enabled: true } } }, opts: {} },
   iir: { label: 'internal iterative reduction (no TT move, depth>=4)', params: { search: { iir: { enabled: true } } }, opts: {} },

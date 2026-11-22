@@ -15,6 +15,8 @@ Statuses:
 
 ## [Unreleased] — merged onto 3.0.11 (measured at 100-300 ms/move; 60 games each, harness noise ~ ±6.5 pp)
 
+- Experiments (all off by default, 96 games each at 100 ms, paired openings, A=base): eval0 (no fast-tier terms) base 63.5% (+97 Elo for the terms); connected pawns + rook on 7th: base 62.0% (new terms ≈ −85 Elo); rook on 7th alone: base 45.3% (new ≈ +33 Elo, z=1.0, not significant). Options `eval.connected`, `eval.rook7`.
+
 Note: this block was developed on a branch cut from 3.0.8 and merged onto 3.0.11. Three items were fixed independently on main and the main versions are kept: the futility sign, no stand-pat in check (AUD-01), and the self-play seed/opening (AUD-309-04, `makeStartFEN`/`playSeries`). The entries below that mention them describe the branch history.
 
 Measured on the merged tree (v3.0.11 + this block), 100 ms/move, two workers x 28 games on `openings.epd` (the same 28

@@ -281,6 +281,8 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const cfgRookOpen = cfg.rookOpen || 0;
   const cfgRookSemiOpen = cfg.rookSemiOpen || 0;
   const cfgShield = cfg.kingShield || 0;
+  const cfgConnected = cfg.connected || 0;
+  const cfgRook7 = cfg.rook7 || 0;
   const cfgShieldEndgame = cfg.kingShieldEndgame || 0;
   const flatMid = T.flatMid;
   const flatEnd = T.flatEnd;
@@ -356,6 +358,20 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
       const left = f > 0 ? mine[f - 1] : 0;
       const right = f < 7 ? mine[f + 1] : 0;
       if (cfgIsolated && !left && !right) score -= sign * cfgIsolated * n;
+      if (cfgConnected) {
+        // phalanx (neighbour on the same rank) or chain (neighbour one rank behind)
+        let m2 = mask;
+        while (m2) {
+          const r = CTZ8[m2 & 255];
+          m2 &= m2 - 1;
+          const behind = color === WHITE ? r - 1 : r + 1;
+          const nb = left | right;
+          if ((nb & (1 << r)) || (behind >= 0 && behind <= 7 && (nb & (1 << behind)))) {
+            const rel = color === WHITE ? r : 7 - r;
+            score += sign * cfgConnected * (1 + rel) / 4;
+          }
+        }
+      }
       if (passed) {
         // a pawn is passed when no enemy pawn stands on its file or the adjacent
         // files *in front of it*. Ranks are white-relative, so white looks at
@@ -380,6 +396,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
         // semi-open = enemy pawn still on the file, open = no pawn at all
         score += sign * (theirs[f] ? cfgRookSemiOpen : cfgRookOpen);
       }
+      if (cfgRook7 && (sq >> 4) === (color === WHITE ? 1 : 6)) score += sign * cfgRook7;
     }
 
     // king shield: own pawns on the three files around the king, on the two
