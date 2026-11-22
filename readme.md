@@ -6,12 +6,12 @@ UI that shows what the engine is actually thinking.
 
 Single-file HTML — no build step for the end user, no server, no CDN, no network access.
 
-**Development candidate: v3.0.13** — adds analytical Field Dynamics; it is not a release because no Elo gain has been established.
-Candidate notes: [`CHANGELOG.md`](CHANGELOG.md) § [3.0.13 candidate].
+**Development candidate: v3.0.14** — in progress; no Elo gain claim until measured under an accepted external protocol.
+Candidate notes: [`CHANGELOG.md`](CHANGELOG.md) § [3.0.14 candidate].
 
 ## Quick start
 
-Open `src/subit_chess_v3.0.13.html` in any modern browser (double-click works; the file is
+Open `src/subit_chess_v3.0.14.html` in any modern browser (double-click works; the file is
 fully self-contained).
 
 ```
@@ -116,7 +116,7 @@ node bench/gate7.mjs --depth 4 --mates --out results/gate7-targeted-vs-uniform-f
 ```
 src/engine/     ES-module engine core (16 modules)
 build/          shell.html (UI) + bundle.mjs (inlines src/engine into one HTML)
-src/            subit_chess_v3.0.13.html ← shipped single-file engine (built)
+src/            subit_chess_v3.0.14.html  — shipped single-file engine (built)
                 subit_chess_v2.2.0.html ← legacy v2 engine (diffusion/ρ_s, kept for reference)
 index.html      copy of the shipped v3 file (convenience)
 tests/          core.perft, engine.smoke/plans/eval/verify/topology/differential/field/audit/

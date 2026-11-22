@@ -14,13 +14,11 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.13 (2026-11-22)
+## Current state - v3.0.14 (development, 2026-11-22)
 
-v3.0.13 is a development candidate, not a release: release only after an Elo gain is measured.
-It adds an analytical Field Dynamics module with separate colour channels and discrete board
-operators. It is surfaced in `Engine.analyze()` and does not alter legal moves or search
-decisions. Its ten FD invariants are checked by `verifyFieldInvariants()`; the broader theory
-corpus is still not fully covered by executable tests.
+v3.0.14 is the active development candidate. No Elo gain has been established; release only after a measured gain under an accepted external protocol.
+
+v3.0.13 candidate (pushed: `514930e`, `0cd4b60`, `191014d`) added analytical Field Dynamics (`src/engine/field.mjs`, FD-01..FD-14, FD-INV-001..010) exposed via `engine.fieldDynamics()`/`analyze().fields` without changing move generation, eval, ordering, or search. It also added `search.ttMaxAge` diagnostic (default 0, ADR 0022; ttMaxAge=1 rejected by A/B), g9 gauntlet guard, and version-match/docs updates.
 
 The measurements and release history below describe v3.0.11 unless a section says otherwise.
 

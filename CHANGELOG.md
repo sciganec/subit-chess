@@ -13,6 +13,12 @@ Statuses:
 
 ---
 
+## [3.0.14 candidate] — 2026-11-22
+
+Development candidate in progress. No Elo gain has been established; do not claim release strength.
+
+- **Version bump.** Prepared `v3.0.14` development candidate after pushing `v3.0.13` candidate commits.
+
 ## [3.0.13 candidate] — 2026-11-22
 
 Development candidate: operationalizes Field Dynamics (`FD-01` through `FD-14`) and mathematical invariants. This is not a release; no Elo gain has been established.
