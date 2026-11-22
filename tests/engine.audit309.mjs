@@ -172,7 +172,7 @@ function snapshot(p) {
     validateFEN(legalB).ok, validateFEN(legalB).reason);
 
   const blockedW = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPPPNPP/RNBQKB1R b KQkq e3 0 1';
-  const blockedB = 'rnbqkbnr/ppppnppp/8/4p3/8/8/PPPPPPPP/RNBQKBNR w KQkq e6 0 1';
+  const blockedB = '1nbqkbnr/ppppnppp/8/4p3/8/8/PPPPPPPP/RNBQKBNR w KQk e6 0 1';
   const cw = validateFEN(blockedW);
   const cb = validateFEN(blockedB);
   check('AUD-309-05 occupied origin after a white push is rejected',

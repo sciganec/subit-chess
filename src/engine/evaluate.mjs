@@ -67,13 +67,15 @@ export const DEFAULT_PARAMS = {
     rookOpen: 14,
     rookSemiOpen: 7,
     kingShield: 10,
-    kingShieldEndgame: 0.25                    // shield matters less in the endgame
+    kingShieldEndgame: 0.25,                   // shield matters less in the endgame
+    kingOpenFile: 12,                          // open/semi-open file near king; A/B smoke +0.33 SE0.15 n=24 d4 seed1
+    kingAttack: 0                              // penalty per attacker weight on king zone; A/B before enabling
   },
 
   // search policy parameters (doc 05 §15, doc 08)
   search: {
     nullMove: { enabled: true, minDepth: 3, reduction: 2, maxReduction: 3 },
-    lmr: { enabled: true, minDepth: 3, minMoveIndex: 3, reduction: 1 },
+    lmr: { enabled: true, minDepth: 3, minMoveIndex: 3, reduction: 1, extraMoveIndex: 6, extraReduction: 0, maxReduction: 1 },
     // Futility is only sound at the frontier: a pruned quiet move can be a mate
     // in one, so pruning at depth 1..3 hides forced mates (measured on the
     // SmallFish game: a mate in 2 was reported as -471 cp at depth 8 with
@@ -90,6 +92,7 @@ export const DEFAULT_PARAMS = {
     // Quiet checking moves at the first qsearch level. A sacrifice that starts
     // with a silent check is invisible to a captures-only horizon (audit A1).
     qsearch: { checks: true, maxChecks: 4 },
+    see: { enabled: true, qsearchPrune: true },
     // Gate 3 kill: structural ordering deleted (200-game A/B had no positive CI).
     // The keys stay at 0 so older configs remain loadable, but no bonus is
     // ever supplied to them — search ordering is now pv > tt > tactic > history.
@@ -240,12 +243,21 @@ function buildPieceSquareTables(params) {
 }
 
 let TABLES = null;
-let TABLES_VERSION = null;
+let TABLES_PARAMS = null;
+let TABLES_SIG = '';
+
+function tablesSig(params) {
+  const m = params && params.material ? params.material : DEFAULT_PARAMS.material;
+  return `${m.P}|${m.N}|${m.B}|${m.R}|${m.Q}`;
+}
 
 function tables(params) {
-  if (!TABLES || TABLES_VERSION !== params) {
+  const sig = tablesSig(params);
+  // AUD-311-11: invalidate on content change, not only object identity.
+  if (!TABLES || TABLES_PARAMS !== params || TABLES_SIG !== sig) {
     TABLES = buildPieceSquareTables(params);
-    TABLES_VERSION = params;
+    TABLES_PARAMS = params;
+    TABLES_SIG = sig;
   }
   return TABLES;
 }
@@ -275,6 +287,8 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const cfgRookSemiOpen = cfg.rookSemiOpen || 0;
   const cfgShield = cfg.kingShield || 0;
   const cfgShieldEndgame = cfg.kingShieldEndgame || 0;
+  const cfgKingOpenFile = cfg.kingOpenFile || 0;
+  const cfgKingAttack = cfg.kingAttack || 0;
   const flatMid = T.flatMid;
   const flatEnd = T.flatEnd;
   pos.refreshPieces();
@@ -378,19 +392,42 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
     // king shield: own pawns on the three files around the king, on the two
     // ranks in front (white looks up, black looks down the rank bit), weighted
     // down in the endgame
-    if (shieldW) {
+    if (shieldW || cfgKingOpenFile) {
       const kf = kingSq[color] & 7;
       const kr = 7 - (kingSq[color] >> 4);
       const dir = color === WHITE ? 1 : -1;
-      const weight = shieldW * (1 - (1 - cfgShieldEndgame) * phase);
+      const shieldWeight = shieldW * (1 - (1 - cfgShieldEndgame) * phase);
+      const openWeight = cfgKingOpenFile * (1 - 0.5 * phase);
       const lo = Math.min(kr + dir, kr + 2 * dir);
       const hi = Math.max(kr + dir, kr + 2 * dir);
       let missing = 0;
+      let openFiles = 0;
       for (let f = Math.max(0, kf - 1); f <= Math.min(7, kf + 1); f++) {
         const bits = (lo >= 0 && lo <= 7 ? (1 << lo) : 0) | (hi >= 0 && hi <= 7 ? (1 << hi) : 0);
-        if (!(mine[f] & bits)) missing++;
+        if (shieldW && !(mine[f] & bits)) missing++;
+        if (cfgKingOpenFile) {
+          const own = mine[f];
+          const opp = theirs[f];
+          if (!own && !opp) openFiles += 1;
+          else if (!own) openFiles += 0.5;
+        }
       }
-      if (missing) score -= sign * weight * missing;
+      if (missing) score -= sign * shieldWeight * missing;
+      if (openFiles) score -= sign * openWeight * openFiles;
+    }
+
+    if (cfgKingAttack) {
+      const ksq = kingSq[color];
+      const kr = ksq >> 4, kf = ksq & 7;
+      const enemy = color ^ 1;
+      let atk = 0;
+      for (let dr = -1; dr <= 1; dr++) for (let df = -1; df <= 1; df++) {
+        if (dr === 0 && df === 0) continue;
+        const r = kr + dr, f = kf + df;
+        if (r < 0 || r > 7 || f < 0 || f > 7) continue;
+        if (pos.isAttacked((r << 4) | f, enemy)) atk++;
+      }
+      if (atk) score -= sign * cfgKingAttack * atk * (1 - 0.4 * phase);
     }
   }
 

@@ -32,6 +32,143 @@ export const TT_LOWER = 1;
 export const TT_UPPER = 2;
 
 const EMPTY_KILLER = [0, 0];
+const SEE_VAL = [0, 100, 320, 330, 500, 900, 20000];
+
+function smallestAttacker(pos, to, side, occ) {
+  // pawns
+  const pawnFromDir = side === WHITE ? 16 : -16; // attackers are behind target from side's perspective
+  for (const df of [-1, 1]) {
+    const from = to + pawnFromDir + df;
+    if (from & 0x88) continue;
+    const p = pos.board[from];
+    if (occ[from] && p && (p >> 3) === side && (p & 7) === PAWN) return { from, piece: PAWN };
+  }
+  for (const d of KNIGHT_DELTAS) {
+    const from = to + d;
+    if (from & 0x88) continue;
+    const p = pos.board[from];
+    if (occ[from] && p && (p >> 3) === side && (p & 7) === KNIGHT) return { from, piece: KNIGHT };
+  }
+  for (const d of BISHOP_DIRS) {
+    let from = to + d;
+    while ((from & 0x88) === 0) {
+      if (occ[from]) {
+        const p = pos.board[from];
+        if (p && (p >> 3) === side) {
+          const pt = p & 7;
+          if (pt === BISHOP || pt === QUEEN) return { from, piece: pt };
+        }
+        break;
+      }
+      from += d;
+    }
+  }
+  for (const d of ROOK_DIRS) {
+    let from = to + d;
+    while ((from & 0x88) === 0) {
+      if (occ[from]) {
+        const p = pos.board[from];
+        if (p && (p >> 3) === side) {
+          const pt = p & 7;
+          if (pt === ROOK || pt === QUEEN) return { from, piece: pt };
+        }
+        break;
+      }
+      from += d;
+    }
+  }
+  for (let dr = -1; dr <= 1; dr++) for (let df = -1; df <= 1; df++) {
+    if (!dr && !df) continue;
+    const from = to + dr * 16 + df;
+    if (from & 0x88) continue;
+    const p = pos.board[from];
+    if (occ[from] && p && (p >> 3) === side && (p & 7) === KING) return { from, piece: KING };
+  }
+  return null;
+}
+
+/** Max material value of enemy piece attacked by `piece` on `to` (quiet-move threat heuristic). */
+function maxAttackedVictim(pos, to, piece, us) {
+  const board = pos.board;
+  const them = us ^ 1;
+  let best = 0;
+  if (piece === PAWN) {
+    const dir = us === WHITE ? -16 : 16;
+    for (const df of [-1, 1]) {
+      const t = to + dir + df;
+      if (t & 0x88) continue;
+      const p = board[t];
+      if (p && (p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
+    }
+    return best;
+  }
+  if (piece === KNIGHT) {
+    for (const d of KNIGHT_DELTAS) {
+      const t = to + d;
+      if (t & 0x88) continue;
+      const p = board[t];
+      if (p && (p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
+    }
+    return best;
+  }
+  if (piece === KING) {
+    for (let dr = -1; dr <= 1; dr++) for (let df = -1; df <= 1; df++) {
+      if (!dr && !df) continue;
+      const t = to + dr * 16 + df;
+      if (t & 0x88) continue;
+      const p = board[t];
+      if (p && (p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
+    }
+    return best;
+  }
+  const dirs = piece === BISHOP ? BISHOP_DIRS : piece === ROOK ? ROOK_DIRS : [...BISHOP_DIRS, ...ROOK_DIRS];
+  for (const d of dirs) {
+    let t = to + d;
+    while ((t & 0x88) === 0) {
+      const p = board[t];
+      if (p) {
+        if ((p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
+        break;
+      }
+      t += d;
+    }
+  }
+  return best;
+}
+
+export function see(pos, move) {
+  const from = MOVE_FROM(move);
+  const to = MOVE_TO(move);
+  const flags = MOVE_FLAGS(move);
+  let victimPiece = (flags & FLAG_EP) ? PAWN : (pos.board[to] ? (pos.board[to] & 7) : 0);
+  let gain0 = SEE_VAL[victimPiece];
+  if (flags & FLAG_PROMO) gain0 += SEE_VAL[MOVE_PROMO(move)] - SEE_VAL[PAWN];
+  let attacker = (flags & FLAG_PROMO) ? MOVE_PROMO(move) : (pos.board[from] & 7);
+  const gain = [gain0];
+  const occ = new Uint8Array(128);
+  for (let i = 0; i < 128; i++) occ[i] = pos.board[i] ? 1 : 0;
+  occ[from] = 0;
+  if (flags & FLAG_EP) {
+    const capSq = to + (pos.turn === WHITE ? 16 : -16);
+    occ[capSq] = 0;
+  }
+  let side = opposite(pos.turn);
+  let depth = 0;
+  let cur = attacker;
+  while (true) {
+    depth++;
+    gain[depth] = SEE_VAL[cur] - gain[depth - 1];
+    if (Math.max(-gain[depth - 1], gain[depth]) < 0) break;
+    const att = smallestAttacker(pos, to, side, occ);
+    if (!att) break;
+    occ[att.from] = 0;
+    cur = att.piece;
+    side ^= 1;
+    if (depth > 31) break;
+  }
+  while (--depth > 0) gain[depth - 1] = -Math.max(-gain[depth - 1], gain[depth]);
+  return gain[0];
+}
 
 /** History counters saturate at this value (see MoveOrder.addHistory). */
 const HISTORY_MAX = 1 << 20;
@@ -146,7 +283,9 @@ export class TranspositionTable {
 
   store(key, depth, score, flag, move, ply = 0) {
     const idx = (key % this.size) | 0;
-    if (this.keys[idx] !== key || this.depths[idx] <= depth) {
+    const stale = this.keys[idx] === key && (this.generation - this.age[idx] > TT_MAX_AGE);
+    // AUD-311-06: stale same-key entries must not block replacement.
+    if (this.keys[idx] !== key || this.depths[idx] <= depth || stale) {
       this.keys[idx] = key;
       this.scores[idx] = TranspositionTable.toTT(score, ply);
       this.depths[idx] = depth;
@@ -236,17 +375,22 @@ export class MoveOrder {
       if (flags & (FLAG_CAPTURE | FLAG_EP)) {
         const victim = (flags & FLAG_EP) ? PAWN : (board[to] & 7);
         const attacker = board[MOVE_FROM(m)] & 7;
-        s += w.tactic + MATERIAL[victim] * 10 - MATERIAL[attacker];
+        const seeOn = this.params.search.see ? this.params.search.see.enabled !== false : true;
+        const seeScore = seeOn ? see(pos, m) : 0;
+        if (seeOn && seeScore < 0) s += w.tactic * 0.2 + seeScore * 0.01; // bad capture: below quiet killers/history
+        else s += w.tactic + MATERIAL[victim] * 10 - MATERIAL[attacker];
       } else if (flags & FLAG_PROMO) {
         s += w.tactic + MATERIAL[MOVE_PROMO(m)] * 8;
-      } else if (m === killers[0]) {
-        s += w.history * 0.9;
-      } else if (m === killers[1]) {
-        s += w.history * 0.7;
       } else {
-        // history is the lowest level (doc 05 §11): normalise to [0,0.6] so a
-        // hot quiet move can never outrank a capture or a plan move
-        s += (history[(us * 128 + MOVE_FROM(m)) * 128 + to] / HISTORY_MAX) * w.history * 0.6;
+        if (m === killers[0]) s += w.history * 0.9;
+        else if (m === killers[1]) s += w.history * 0.7;
+        else s += (history[(us * 128 + MOVE_FROM(m)) * 128 + to] / HISTORY_MAX) * w.history * 0.6;
+        // Quiet threat: direct attack on enemy piece. Tactical signal (not Gate 3 structural/context).
+        // Keeps b4c5-like quiet refutations visible to shallow search/LMR.
+        const movedPiece = board[MOVE_FROM(m)] & 7;
+        const threat = maxAttackedVictim(pos, to, movedPiece, us);
+        if (threat >= 500) s += w.history * 0.8 + threat * 30;       // rook/queen
+        else if (threat >= 300) s += w.history * 0.6 + threat * 20;  // minor
       }
 
       // Gate 3 kill: structural/context ordering removed. Ordering is now
@@ -565,11 +709,14 @@ export class Searcher {
 
     if (this.useTT && ply > 0) {
       const entry = this.tt.probe(pos.ttKey, depth, alpha, beta, ply);
-      if (entry && !entry.partial) {
+      if (entry) {
         this.tt.hits++;
-        return entry.score;
+        // AUD-311-07: count only actual TT cutoffs as cutoffs; partial entries are hits/hints.
+        if (!entry.partial) {
+          this.tt.cutoffs++;
+          return entry.score;
+        }
       }
-      if (entry && entry.move) this.tt.cutoffs++;
     }
 
     // null move pruning (never a legal chess move — search-only)
@@ -639,7 +786,9 @@ export class Searcher {
       let reduction = 0;
       if (this.useLMR && lmr.enabled && depth >= lmr.minDepth && i >= lmr.minMoveIndex &&
           isQuiet && !inCheck && !givesCheck) {
-        reduction = 1 + (i >= 6 ? 1 : 0);
+        reduction = lmr.reduction || 1;
+        if (i >= (lmr.extraMoveIndex || 6)) reduction += (lmr.extraReduction ?? 1);
+        if (reduction > (lmr.maxReduction || 3)) reduction = lmr.maxReduction || 3;
         if (depth - reduction < 1) reduction = depth - 1;
       }
 
@@ -812,6 +961,10 @@ export class Searcher {
       const flags = MOVE_FLAGS(m);
       if (!inCheck) {
         if (!(flags & FLAG_CAPTURE) && !(flags & FLAG_PROMO)) continue;
+        // bad captures are skipped in qsearch; promos still searched
+        const seeCfg = this.params.search.see;
+        const seePrune = seeCfg ? seeCfg.qsearchPrune !== false : true;
+        if (seePrune && (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && see(pos, m) < 0) continue;
         // delta pruning: even winning the victim cannot lift alpha
         const victim = pos.board[MOVE_TO(m)];
         const victimValue = (flags & FLAG_EP) ? MATERIAL[PAWN] : (victim ? MATERIAL[pieceType(victim)] : 0);
@@ -855,7 +1008,9 @@ export class Searcher {
         const flags = MOVE_FLAGS(m);
         if (flags & (FLAG_CAPTURE | FLAG_EP | FLAG_PROMO)) continue;
         const from = MOVE_FROM(m), to = MOVE_TO(m);
-        if (!targets[from] && !targets[to]) continue;
+        // AUD-311-09: castling moves the rook; a discovered rook check can occur
+        // even when the king's from/to squares are not in CHECK_TARGETS.
+        if (!targets[from] && !targets[to] && !(flags & FLAG_CASTLE)) continue;
         const undo = pos.makeMove(m);
         const givesCheck = pos.isAttacked(pos.kingSq[them], us);
         pos.unmakeMove(undo);

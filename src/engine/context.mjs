@@ -37,6 +37,7 @@ export class ContextProfile {
   }
 
   /** Full 64-vector: w(c) = wI(i) * wZ(z) * wΦ(φ). */
+  // AUD-311-15: activation field, not a normalized probability distribution.
   to64() {
     const out = new Float32Array(64);
     let n = 0;
@@ -155,8 +156,11 @@ function countDeveloped(pos) {
 
 /** Tactical priority τ ordering (doc 01 §10.4): terminal > forced > material > structure > context. */
 export function contextAdjust(ctx, weights) {
-  // multiplicative modification of feature weights by context intensity
+  // AUD-311-16: minimal real context scaling; keeps weights bounded and deterministic.
   const out = new Float64Array(weights.length);
-  for (let i = 0; i < weights.length; i++) out[i] = weights[i];
+  const tactical = ctx && typeof ctx.tactical === 'number' ? Math.max(0, Math.min(1, ctx.tactical)) : 0;
+  const endgame = ctx && ctx.p ? Math.max(0, Math.min(1, ctx.p[PH_ENDGAME] || 0)) : 0;
+  const scale = 1 + tactical * 0.08 + endgame * 0.04;
+  for (let i = 0; i < weights.length; i++) out[i] = weights[i] * scale;
   return out;
 }

@@ -589,8 +589,8 @@ function makeEngineWorker() {
       '};\n';
     const url = URL.createObjectURL(new Blob([ENGINE_SRC + pump], { type: 'text/javascript' }));
     const worker = new Worker(url, { type: 'module' });
-    // the worker has its own copy of the source; the blob URL is no longer needed
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    // the worker has its own copy of the source; revoke later to avoid module-worker init races (AUD-311-19)
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
     worker.onmessage = onWorkerMessage;
     worker.onerror = (ev) => {
       console.warn('[SUBIT] worker failed, searching on the main thread', ev.message);
@@ -1108,15 +1108,24 @@ function showPromotion(cands) {
     el.className = 'promo-piece';
     el.style.backgroundImage = 'url("' + PIECE_IMG[color + ' PNBRQK'[t]] + '")';
     el.title = PIECE_NAMES[' PNBRQK'[t]];
-    el.addEventListener('click', () => {
+    // AUD-311-21: promotion choice must be keyboard-accessible.
+    el.setAttribute('role', 'button');
+    el.tabIndex = 0;
+    el.setAttribute('aria-label', 'Promote to ' + PIECE_NAMES[' PNBRQK'[t]]);
+    const choose = () => {
       modal.classList.remove('on');
       state.pendingPromo = null;
       playMove(m);
+    };
+    el.addEventListener('click', choose);
+    el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); }
     });
     box.appendChild(el);
   }
   state.pendingPromo = cands;
   modal.classList.add('on');
+  box.querySelector('.promo-piece')?.focus();
 }
 
 /* ---------------- interaction ---------------- */
@@ -1462,7 +1471,10 @@ function bindEvents() {
     el.addEventListener('click', () => closeModal(el.getAttribute('data-close')));
   });
   document.querySelectorAll('.modal-backdrop').forEach((back) => {
-    back.addEventListener('click', (e) => { if (e.target === back) back.classList.remove('on'); });
+    back.addEventListener('click', (e) => {
+      // AUD-311-20: restore focus via closeModal instead of removing class directly.
+      if (e.target === back) closeModal(back.id);
+    });
   });
 
   boardEl.addEventListener('pointerdown', onPointerDown);

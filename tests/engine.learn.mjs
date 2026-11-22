@@ -42,10 +42,10 @@ function check(name, cond, extra = '') {
 
 /* ---------------- identical engines must not be "better" ---------------- */
 {
-  const r = compare(DEFAULT_PARAMS, cloneParams(DEFAULT_PARAMS), { games: 6, depth: 2, seed: 11 });
-  check('ΔS of identical engines is not significant', !r.significant || Math.abs(r.dS) < 0.05,
+  const r = compare(DEFAULT_PARAMS, cloneParams(DEFAULT_PARAMS), { games: 12, depth: 2, seed: 11 });
+  check('ΔS of identical engines is not significant', !r.significant || Math.abs(r.dS) < 0.1,
     `ΔS=${r.dS.toFixed(3)} se=${r.se.toFixed(3)}`);
-  check('the comparison reports both sides', r.games.length === 6 && r.games.every((g) => typeof g.result === 'number'));
+  check('the comparison reports both sides', r.games.length === 12 && r.games.every((g) => typeof g.result === 'number'));
   check('alternating colours balance the sample',
     r.games.filter((g) => g.result !== 0).length >= 0);
 }

@@ -25,7 +25,7 @@ import { generatePlans, describePlans, pareto, PLAN } from './plans.mjs';
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
 
-export const VERSION = '3.0.11';
+export const VERSION = '3.0.12';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -118,6 +118,18 @@ export class Engine {
   }
 
   get fen() { return this.pos.fen(); }
+
+  reset() {
+    this.tt = new TranspositionTable(this.opts.ttBits);
+    this.order = new MoveOrder(this.params);
+    this.searcher = new Searcher(this.evaluation, this.params, { tt: this.tt, order: this.order });
+    this.memory = new Memory();
+    this.history = [];
+    this.lastSearch = null;
+    this.plans = [];
+    this.setFEN(Position.start().fen());
+    return this;
+  }
 
   legalMoves() { return this.pos.legalMoves(); }
 
@@ -369,12 +381,20 @@ export class Engine {
     const start = this.fen;
     let over = null;
     for (let i = 0; i < plies; i++) {
+      // AUD-311-22: do not search/play from an already terminal position.
+      const pre = this.pos.status();
+      if (pre && pre.over) { over = pre; break; }
       const r = this.search(opts);
       line.push(r.uci);
       const played = this.play(r.uci);
       if (!played) { over = { reason: 'illegal move from search' }; break; }
       const st = this.pos.status();
       if (st && st.over) { over = st; break; }
+    }
+    // Handle terminal start position with plies==0 or immediate terminal.
+    if (!over) {
+      const st = this.pos.status();
+      if (st && st.over) over = st;
     }
     return { start, line, over, fen: this.fen };
   }
@@ -388,6 +408,109 @@ function parseFenList(text) {
   return text.split('\n')
     .map((l) => l.trim().split(';')[0].trim())
     .filter((l) => l.length > 0 && !l.startsWith('#'));
+}
+
+async function runUci() {
+  const rl = await import('node:readline');
+  const iface = rl.createInterface({ input: process.stdin, crlfDelay: Infinity });
+  const engine = new Engine();
+  let searching = false;
+  const send = (s) => process.stdout.write(String(s) + '\n');
+
+  const handle = (line) => {
+    const t = String(line || '').trim();
+    if (!t) return;
+    if (t === 'uci') {
+      send(`id name SUBIT-CHESS ${VERSION}`);
+      send('id author SUBIT');
+      send('option name Hash type spin default 64 min 1 max 1024');
+      send('uciok');
+      return;
+    }
+    if (t === 'isready') { send('readyok'); return; }
+    if (t === 'ucinewgame') { engine.reset(); return; }
+    if (t === 'quit') { try { iface.close(); } catch {} process.exit(0); }
+    if (t === 'stop') { engine.searcher.stop = true; return; }
+    if (t.startsWith('setoption')) {
+      const nameM = t.match(/\bname\s+(.+?)\s+value\s+(.*)$/i) || t.match(/\bname\s+(.+)$/i);
+      if (nameM) {
+        const name = nameM[1].trim().toLowerCase();
+        const value = (nameM[2] || '').trim().toLowerCase();
+        const on = value === 'true' || value === '1' || value === 'on';
+        const off = value === 'false' || value === '0' || value === 'off';
+        if (name === 'lmr' || name === 'lmr.enabled') { if (on||off) engine.params.search.lmr.enabled = on; }
+        else if (name === 'lmr.maxreduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmr.maxReduction = n; }
+        else if (name === 'lmr.extrareduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmr.extraReduction = n; }
+        else if (name === 'nullmove' || name === 'nullmove.enabled' || name === 'nmp') { if (on||off) engine.params.search.nullMove.enabled = on; }
+        else if (name === 'see' || name === 'see.enabled') { if (on||off) engine.params.search.see.enabled = on; }
+        else if (name === 'see.qsearchprune') { if (on||off) engine.params.search.see.qsearchPrune = on; }
+        else if (name === 'hash') { const mb = Number(value); if (Number.isFinite(mb) && mb>=1) { /* ignore for now, TT fixed */ } }
+      }
+      return;
+    }
+    if (t.startsWith('position')) {
+      const rest = t.slice(8).trim();
+      let fen = Position.start().fen();
+      let movesIdx = rest.indexOf(' moves ');
+      const posPart = movesIdx >= 0 ? rest.slice(0, movesIdx).trim() : rest;
+      const movesPart = movesIdx >= 0 ? rest.slice(movesIdx + 7).trim() : '';
+      if (posPart.startsWith('startpos')) fen = Position.start().fen();
+      else if (posPart.startsWith('fen ')) fen = posPart.slice(4).trim();
+      engine.setFEN(fen);
+      if (movesPart) {
+        for (const u of movesPart.split(/\s+/).filter(Boolean)) {
+          try { engine.play(u); } catch {}
+        }
+      }
+      return;
+    }
+    if (t.startsWith('go')) {
+      if (searching) return;
+      const parts = t.split(/\s+/);
+      const opts = {};
+      let wtime, btime, winc = 0, binc = 0, movestogo;
+      for (let i = 1; i < parts.length; i++) {
+        const k = parts[i];
+        const v = parts[i + 1];
+        if (k === 'depth') { opts.depth = Number(v); i++; }
+        else if (k === 'movetime') { opts.timeMs = Number(v); i++; }
+        else if (k === 'nodes') { opts.nodes = Number(v); i++; }
+        else if (k === 'infinite') { opts.depth = 99; }
+        else if (k === 'wtime') { wtime = Number(v); i++; }
+        else if (k === 'btime') { btime = Number(v); i++; }
+        else if (k === 'winc') { winc = Number(v); i++; }
+        else if (k === 'binc') { binc = Number(v); i++; }
+        else if (k === 'movestogo') { movestogo = Number(v); i++; }
+      }
+      if (!opts.depth && !opts.timeMs && !opts.nodes) {
+        const turn = engine.pos.turn; // WHITE=0, BLACK=1
+        const rem = turn === 0 ? wtime : btime;
+        const inc = turn === 0 ? winc : binc;
+        if (Number.isFinite(rem)) {
+          const mtg = Number.isFinite(movestogo) && movestogo > 0 ? movestogo : 30;
+          opts.timeMs = Math.max(50, Math.min(rem * 0.9, Math.floor(rem / mtg + inc * 0.8)));
+        } else {
+          opts.timeMs = 1000;
+        }
+      }
+      searching = true;
+      try {
+        const r = engine.search(opts);
+        const best = (r.move && r.uci && r.uci !== 'a8a8') ? r.uci : '0000';
+        const score = Number.isFinite(r.score) ? Math.round(r.score) : 0;
+        const pv = Array.isArray(r.pv) && r.pv.length ? r.pv.join(' ') : best;
+        send(`info depth ${r.depth || 1} score cp ${score} nodes ${r.nodes || 0} pv ${pv}`);
+        send(`bestmove ${best}`);
+      } catch (e) {
+        send('bestmove 0000');
+      } finally {
+        searching = false;
+      }
+      return;
+    }
+  };
+
+  for await (const line of iface) handle(line);
 }
 
 export function main(argv = process.argv.slice(2)) {
@@ -491,6 +614,9 @@ export function main(argv = process.argv.slice(2)) {
       break;
     }
 
+    case 'uci':
+      return runUci();
+
     case 'help':
     default:
       out.push(`SUBIT-CHESS ${VERSION}`);
@@ -502,6 +628,7 @@ export function main(argv = process.argv.slice(2)) {
       out.push('  search <fen> [depth|timems] [nodes]');
       out.push('  bench');
       out.push('  selfplay <fen> [plies] [depth]');
+      out.push('  uci');
       break;
   }
 
