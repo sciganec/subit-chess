@@ -81,7 +81,6 @@ export const DEFAULT_PARAMS = {
     futility: { enabled: true, margin: 120, maxDepth: 1 },
     checkExtension: 1,
     rfp: { enabled: true, margin: 120, maxDepth: 3 },      // reverse futility (v3.0.9: +64 Elo [+8,+125], 120 games)
-    qCheckNoStandPat: false,                               // doc 12 §10.5: no stand-pat in check inside quiescence (v3.0.9 experiment)
     qSee: { enabled: false, slack: 50 },                   // SEE-lite capture pruning in quiescence
     structExtension: { enabled: false, maxPly: 8 },   // SEARCH-14: pawn to 7th extends one ply
     extensionBudget: 6,
@@ -91,7 +90,13 @@ export const DEFAULT_PARAMS = {
     timeLimitMs: 0,        // 0 = unlimited
     structuralEvalDepth: 2, // full SVF used at remaining depth <= this
     evalMode: 'fast',      // 'fast' | 'structural' | 'hybrid' — search hot path
-    ordering: { pv: 1000000, tt: 900000, tactic: 800000, struct: 200000, context: 120000, history: 100000 }
+    // Quiet checking moves at the first qsearch level. A sacrifice that starts
+    // with a silent check is invisible to a captures-only horizon (audit A1).
+    qsearch: { checks: true, maxChecks: 4 },
+    // Gate 3 kill: structural ordering deleted (200-game A/B had no positive CI).
+    // The keys stay at 0 so older configs remain loadable, but no bonus is
+    // ever supplied to them — search ordering is now pv > tt > tactic > history.
+    ordering: { pv: 1000000, tt: 900000, tactic: 800000, struct: 0, context: 0, history: 100000 }
   },
 
   // plans (doc 11)
@@ -471,13 +476,13 @@ export function structuralVector(pos, percept, structure, ctx, params) {
   // K — king safety (positive = own king safer than the enemy king)
   const K = kingSafety(pos, percept, us) - kingSafety(pos, percept, them);
 
-  // A — activity (mobility, rook files, outposts, bishop activity)
+  // A — activity (mobility, rook files, outposts, bishop activity).
+  // SVF-INV-007: open files are owned here; centre control belongs to Q only.
   const A =
     (percept.mobility[us] - percept.mobility[them]) * 2.0 +
     (percept.semiOpenFiles[us].length - percept.semiOpenFiles[them].length) * 6 +
     (percept.openFiles[us].length - percept.openFiles[them].length) * 4 +
-    (percept.outposts[us].length - percept.outposts[them].length) * 10 +
-    (percept.centerControl[us] - percept.centerControl[them]) * 3;
+    (percept.outposts[us].length - percept.outposts[them].length) * 10;
 
   // D — defensive organisation
   const D = defenceScore(pos, percept, us) - defenceScore(pos, percept, them);
@@ -488,7 +493,8 @@ export function structuralVector(pos, percept, structure, ctx, params) {
     : 0;
 
   // T — tactical potential (only *potential*, never the material result of a
-  //     combination already resolved by search — doc 09 §4.5)
+  //     combination already resolved by search — doc 09 §4.5).
+  // SVF-INV-007: `hanging` is owned by T; D scores defence coverage only.
   const T =
     (percept.hanging[them].length - percept.hanging[us].length) * 18 +
     (percept.pins.filter((p) => p.color === them).length -
@@ -508,11 +514,11 @@ export function structuralVector(pos, percept, structure, ctx, params) {
     (countRel(structure, 7, us) - countRel(structure, 7, them)) * 3 +
     (countRel(structure, 2, us) - countRel(structure, 2, them)) * 1.0;
 
-  // X — transformation potential
+  // X — transformation potential. Open files are an activity feature (A),
+  // not a second transformation term (SVF-INV-007).
   const X =
     (percept.passed[us].length - percept.passed[them].length) * 8 +
-    (passedAdvancePotential(percept, us) - passedAdvancePotential(percept, them)) +
-    (percept.openFiles[us].length - percept.openFiles[them].length) * 2;
+    (passedAdvancePotential(percept, us) - passedAdvancePotential(percept, them));
 
   return new Float64Array([M, K, A, D, C, T, Q, R, X]);
 }
@@ -555,12 +561,12 @@ function forkBalance(structure, us, them) {
 }
 
 function kingSafety(pos, percept, color) {
-  const k = percept.kingSq[color];
-  const enemy = opposite(color);
   const shield = pawnShield(pos, percept, color);
   const zone = percept.kingZoneAttacks[color];
   const openness = openFilesNearKing(pos, color);
-  return shield * 2.2 - zone * 12 - openness * 8 - (percept.inCheck[color] ? 25 : 0) + k * 0;
+  // `k` (the king square) is not a score term; the old `+ k * 0` was dead
+  // syntax that made the ownership audit noisier than the maths.
+  return shield * 2.2 - zone * 12 - openness * 8 - (percept.inCheck[color] ? 25 : 0);
 }
 
 function pawnShield(pos, percept, color) {
@@ -582,6 +588,8 @@ function pawnShield(pos, percept, color) {
 }
 
 function openFilesNearKing(pos, color) {
+  // King exposure, not the raw open-file count owned by A (SVF-INV-007):
+  // only the three files around this king can enter K.
   const k = color === 0 ? pos.kingSq[0] : pos.kingSq[1];
   const kf = fileOf(k);
   let open = 0;
@@ -599,6 +607,8 @@ function openFilesNearKing(pos, color) {
 }
 
 function defenceScore(pos, percept, color) {
+  // SVF-INV-007: hung pieces are scored once, in T. D measures how well the
+  // remaining pieces are defended, not the material loss from hanging them.
   let defended = 0, overprotected = 0;
   const list = pos.listSq[color];
   for (let i = 0; i < pos.listCnt[color]; i++) {
@@ -607,7 +617,7 @@ function defenceScore(pos, percept, color) {
     if (d > 0) defended++;
     if (d > 1) overprotected += d - 1;
   }
-  return defended * 3 + overprotected * 1.5 - percept.hanging[color].length * 8;
+  return defended * 3 + overprotected * 1.5;
 }
 
 function spaceControlled(pos, percept, color) {

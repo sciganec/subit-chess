@@ -16,7 +16,7 @@ import { Position, mirrorFEN, moveToUci, WHITE } from '../src/engine/core.mjs';
 import { Percept } from '../src/engine/percept.mjs';
 import { Structure } from '../src/engine/structure.mjs';
 import { Evaluation, evaluateFast, DEFAULT_PARAMS, cloneParams } from '../src/engine/evaluate.mjs';
-import { generatePlans, makePlanOrderer } from '../src/engine/plans.mjs';
+import { generatePlans } from '../src/engine/plans.mjs';
 import { Engine } from '../src/engine/index.mjs';
 import { MATE, TT_EXACT, TT_LOWER, TT_UPPER, TranspositionTable } from '../src/engine/search.mjs';
 
@@ -156,7 +156,7 @@ const LOPSIDED = [
 /* ---------------- 6. move-ordering levels are strictly separated ---------- */
 {
   const w = cloneParams(DEFAULT_PARAMS).search.ordering;
-  const order = [['pv', w.pv], ['tt', w.tt], ['tactic', w.tactic], ['struct', w.struct], ['context', w.context], ['history', w.history]];
+  const order = [['pv', w.pv], ['tt', w.tt], ['tactic', w.tactic], ['history', w.history]];
   let bad = null;
   for (let i = 1; i < order.length; i++) {
     if (!(order[i - 1][1] > order[i][1])) bad = `${order[i - 1][0]}=${order[i - 1][1]} !> ${order[i][0]}=${order[i][1]}`;
@@ -164,20 +164,7 @@ const LOPSIDED = [
   check('ordering levels are strictly decreasing', !bad, bad || '');
 }
 
-/* ---------------- 7. plan bonus stays inside the structural level --------- */
-{
-  const engine = new Engine(cloneParams(DEFAULT_PARAMS), {});
-  engine.setFEN(START);
-  const plans = engine.plans;
-  const orderer = makePlanOrderer(plans, engine.pos.turn);
-  const own = engine.pos.legalMoves().map((m) => orderer(m, engine.pos.turn));
-  const other = engine.pos.legalMoves().map((m) => orderer(m, engine.pos.turn === WHITE ? 1 : 0));
-  const maxOwn = Math.max(0, ...own);
-  check('plan bonus is bounded to [0,1]', maxOwn <= 1, `max=${maxOwn}`);
-  check('plan bonus never applies to the opponent', other.every((v) => v === 0), JSON.stringify(other.slice(0, 4)));
-}
-
-/* ---------------- 8. plan ids are reproducible --------------------------- */
+/* ---------------- 7. plan ids are reproducible --------------------------- */
 {
   const engine = new Engine(cloneParams(DEFAULT_PARAMS), {});
   engine.setFEN(START);
@@ -276,17 +263,19 @@ const LOPSIDED = [
   tt.store(key, 8, 42, TT_EXACT, mv, 0);
   check('a fresh TT entry is probed', tt.probe(key, 4, -INF, INF, 0) !== null);
   tt.newGeneration();
-  check('an entry one generation old is still probed', tt.probe(key, 4, -INF, INF, 0) !== null);
+  // v3.0.9: an entry is usable only inside the search that wrote it. A
+  // one-generation-old entry is rejected as a score *and* as a move hint,
+  // otherwise a shallower search can change the exact score of a later one.
+  check('an entry one generation old is ignored', tt.probe(key, 4, -INF, INF, 0) === null);
   tt.newGeneration();
   check('an entry two generations old is ignored', tt.probe(key, 4, -INF, INF, 0) === null);
   check('the stored move is gone with the stale entry', tt.moveFor(key) === mv,
     `moveFor=${tt.moveFor(key)}`);
 
-  // the same position must give the same root move whether or not a shallower
-  // search ran before it. Plans are disabled here: the plan layer feeds a
-  // move-ordering bonus (structuralBonus) that legitimately changes the TT
-  // fill, so the warm/cold invariant is a TT invariant, not a plan invariant
-  // (audit v3.0.6 §7.1 — OUTPOST plans now actually fire).
+  // The same position must give the same root move whether or not a shallower
+  // search ran before it. Since the Gate 3 kill, plans no longer feed a move
+  // ordering bonus at all, so this is purely a TT reproducibility invariant;
+  // usePlans:false is kept only to preserve the historical test setup.
   const FEN = 'r1bq1rk1/pppp1ppp/5n2/4P1B1/3N1P2/2P5/P3Q1PP/R3Kn1R w KQ - 1 12';
   const cold = new Engine(cloneParams(DEFAULT_PARAMS), { usePlans: false });
   cold.setFEN(FEN);

@@ -1,13 +1,17 @@
 # Architecture Decisions & Methodology
 
-Consolidated ADR log + methodology notes for **subit-chess v3.0.8**.
+Consolidated ADR log + methodology notes for **subit-chess v3.0.11**.
 
 Format: `ADR NNNN — Title`. Statuses: `Accepted` / `Superseded` / `Informational`.
 Methodology sections are non-decision references (data flow, gates, glossary).
 
 Scope note: ADR 0001-0008 describe the v1.9.x subsystem (S₀ grammar, ρ_s policy vector,
 teacher pipeline, diffusion generation). That subsystem was removed in v3 — see ADR 0013.
-ADR 0009+ describe v3.0.8 and are the binding decisions for the current engine.
+ADR 0009+ describe the v3 engine and are the binding decisions for the current release.
+AUD-07…AUD-09 were closed in v3.0.10 (`be27fe4`); see `ver/subit_chess_v3.0.10/RELEASE.md`.
+The new theory documents in `docs/theory/81-99/`, `article_04.md` and `article_05.md` are
+**research-only and non-binding** in v3.0.11. They do not create ADR obligations, conformance
+claims or search/rule changes.
 
 ---
 
@@ -517,10 +521,10 @@ single offline HTML file (no server, no CDN, no network).
 
 ### Decision
 
-- Source of truth: `src/engine/*.mjs` (12 modules) + `build/shell.html` (UI).
+- Source of truth: `src/engine/*.mjs` (15 modules) + `build/shell.html` (UI).
 - `build/bundle.mjs` walks the import graph from `src/engine/index.mjs`, inlines every
-  module into the shell's `<script>` block, and writes both
-  `src/subit_chess_v3.0.5.html` and `index.html`.
+  module into the shell's `<script>` block, and writes both the versioned HTML named
+  in `package.json` and `index.html`.
 - The build is deterministic: same input → byte-identical output, and the two artifacts
   always match.
 - No user-facing build step: the repository ships the built file.
@@ -675,6 +679,11 @@ re-reads its limits from its own options.
 
 - Real games now end correctly by fivefold repetition and the engine can steer towards or
   away from a repetition.
+- *(post-v3.0.10 note)* Any observer instance in a match must adopt the same history: copying
+  the FEN alone is a new position, not the same game. Gate 1 found `bench/match.mjs` calling
+  bare `setFEN()` after each move, which wiped the stack `play()` had preserved; it now
+  copies `rep`/`repHi`/`repLimit` too. No rule or search semantics changed — `status()`
+  remains the rule authority.
 - The stack grows with the game length; it is capped only by the 75-move/fivefold rules,
   which is bounded in practice.
 - No measured strength claim: repetition awareness removes shuffling, it does not add tactics.
@@ -714,8 +723,8 @@ The version was not the cause: v3.0.0 and v3.0.3 return identical moves and scor
 
 - Reproducible play: identical position and depth now give the identical move, which also
   makes regression tests meaningful.
-- The top level can block the main thread for up to 6 s; the Web Worker is still open
-  (audit item 8).
+- The top level can block the main thread for up to 6 s in the fallback path; the Web
+  Worker shipped in v3.0.8 (ADR 0021), so the normal browser path keeps the UI live.
 - No Elo claim: this release changes reproducibility and depth, not the evaluation.
 
 ## ADR 0018 — the leaf tier is optimized by measurement, and the remaining 2x is a representation change
@@ -802,8 +811,11 @@ tactically lost, and one scalar cannot say which.
 - Determinism is testable. The same position and budget produce the same profile, the same
   decision and the same evidence strings, so a regression in the profile fails a test
   instead of becoming a judgement call.
-- The next consumer is the verification budget (doc 45 §16): the driver should decide where
-  a deeper or wider search is spent. That is not wired yet and this ADR does not claim it.
+- The magnitude of U(P) now feeds a scalar search-effort budget and increases, never
+  inverts, the clock and depth (doc 05 §17). This shipped in v3.0.11. It still does **not**
+  implement doc 45 §16: the leading component
+  (`driver`) does not decide where a deeper or wider search is spent, and Gate 7 remains
+  open. No ADR claims that the vector steers verification yet.
 
 ---
 
@@ -905,4 +917,112 @@ its own engine:
 
 ---
 
-*End of DECISIONS.md — v3.0.8*
+## ADR 0022 — search terminal correctness (v3.0.8 audit, P0)
+
+**Status:** Accepted (v3.0.9)
+
+### Context
+
+`ver/subit_chess_v3.0.8/subit_chess_v3.0.8_audit_2.md` listed nine defects;
+six were confirmed P0. Their common theme is that a score was published from
+something other than a searched, legal position:
+
+- a **stand-pat** in check (AUD-01) — a static score is not a legal move, yet it
+  could produce a beta cutoff in the horizon;
+- the **qdepth cap while in check** (AUD-02) — the same static score of an
+  unresolved check was returned at the cap (returning `-INF` instead was the
+  v3.0.0 false-loss defect);
+- **stalemate** checked only at `qdepth === 0` (AUD-03) — a deeper quiet
+  horizon could publish a material score for a drawn position;
+- **claimable draws** scored as terminal 0 inside `negamax` (AUD-04) — this
+  contradicted ADR 0020, which had already made them normal playable positions
+  in `Position.status()` and in the horizon;
+- the **root** skipped automatic draws (AUD-05) — it could keep searching a
+  position the game authority already ends;
+- **futility pruning** compared an opponent-perspective static score with the
+  mover's alpha (AUD-06), pruning exactly the good quiet moves it should keep.
+
+### Decision
+
+- In check, `quiescence` starts from `-INF` and has **no stand-pat**; the first
+  searched evasion sets the bound. At the cap, `staticCheckEvasion()` resolves
+  one legal evasion statically (mate when none exists) instead of scoring the
+  checked position or fabricating `-INF`.
+- The horizon stalemate probe runs at **every** qdepth, still only when no
+  capture was generated, so the tactical path pays nothing.
+- `negamax` keeps only the **automatic** draws (75-move, fivefold) as terminal.
+  The 50-move and threefold claims stay playable, as ADR 0020 decided. This
+  supersedes the *search* clause of ADR 0011; its game-status clause is intact.
+- The root detects the automatic draws (75-move, fivefold, dead material)
+  before searching, with a `reason` on the result.
+- Futility negates the post-move static score before comparing it with alpha
+  (the patch carried over from the uncommitted v3.0.8 working tree).
+- **TT validity is one search.** `TT_MAX_AGE` is 0 and `ttMoveFor()` applies the
+  same age check as `probe()`. Without it, a one-generation-old move hint from
+  `ttMoveFor()` reorders the tree after the quiescence fix and the published
+  score depends on which shallower searches ran before (measured: cold `-3`,
+  warm `+25` on the ADR 0011 position). Iterative deepening is unaffected —
+  all its entries share one generation — and `Memory` still carries move and
+  score across game moves. This narrows ADR 0021's "TT survives across moves"
+  to "the table is kept, its entries are not reused across root searches".
+
+### Consequences
+
+- Scores at the horizon now describe positions that were actually reached by a
+  legal move; claimable draws are searched instead of scored as half a point.
+- Root searches of automatically drawn positions return a terminal result with
+  a reason, matching `Position.status()`.
+- Warm and cold searches of the same position again return the same score and
+  move (`tests/engine.eval.mjs` §12), so v3.0.4's reproducibility guarantee is
+  preserved under the corrected quiescence.
+- AUD-07…AUD-09 (null-move/repetition contamination, dead material in the
+  horizon, null-move state equivalence) were closed in v3.0.10 (`be27fe4`):
+  null moves no longer touch the halfmove clock or repetition history, dead
+  material is terminal at interior and horizon nodes, and null-move state
+  restoration is verified by full canonical snapshots. See the v3.0.10
+  release dossier and `tests/engine.tactics.mjs`.
+- v3.0.11 adds quiet checking moves only at `qdepth === 0`, at most `maxChecks`
+  of them (default 4), never while already in check. This is a controlled extension
+  under doc 05 §quiescence, not a change to this ADR: no stand-pat in check, the
+  qdepth cap, stalemate detection and automatic draws at the root are unchanged.
+  `noqchecks` restores the old horizon for A/B. Gate 3 accepted A1 after the kill;
+  Gate 6's d9-in-6s target remains open.
+
+---
+
+## ADR 0023 — delete structural move ordering (Gate 3 kill)
+
+**Status:** Accepted (v3.0.11, 2026-11-21)
+
+### Context
+Gate 3 pre-registered that any structural layer unable to show a positive CI over
+200 games is deleted outright. `base` vs `nostruct`, depth 4, seed 7, 200 games:
+**47.5% ± 6.2** (74W/42D/84L, 25/200 capped games), CI ≈ [41.3%, 53.7%].
+The 100-game `noplans` run produced the identical score and per-opening table.
+A direct root check on all 24 suite FENs showed `base`, `nostruct` and `noplans`
+choose the same move on 24/24, and that `nostruct` and `noplans` are node-identical:
+they ablate one ordering mechanism, not two independent layers. The plan-derived
+bonus was the only structural ordering term.
+
+### Decision
+- Remove structural ordering from the search path: `ordering.struct` is 0,
+  `makePlanOrderer` and the `structuralBonus` plumbing are deleted, and
+  `scoreMoves` no longer reads a structural bonus.
+- Remove the already-dead context ordering path as well: `ordering.context` is
+  0 and no `contextBonus` reaches `scoreMoves`. Context still feeds `scalarize()`,
+  uncertainty and the UI; only its ordering claim is withdrawn.
+- `nostruct` / `noplans` remain as historical no-op controls with updated labels.
+  Plans remain a descriptive and uncertainty layer, not a search layer.
+
+### Consequences
+- Search ordering is now `pv > tt > tactic > history`. No external strength claim is made
+  for the v3.0.11 release artifact; the post-kill 60.0% / 79.0% results are self-play only.
+- Full `npm test` passes. The v3.0.11 temp-copy build hash is
+  `8267AEFA3BFFA9E52843F1D77411963E47A30D5D5753DF92EDBE1E427ED82BE5`; the two
+  v3.0.10 release HTMLs remain at `9A08F02F...` and were not overwritten.
+- Reintroducing any structural/context ordering needs a new ADR and a fresh
+  pre-registered A/B; it is not a tuning follow-up to this kill.
+
+---
+
+*End of DECISIONS.md — v3.0.11*

@@ -21,13 +21,13 @@ import { Structure, structuralDelta, criticalityVector } from './structure.mjs';
 import { computeContext } from './context.mjs';
 import { Evaluation, DEFAULT_PARAMS, cloneParams, paramsFromJSON, SVF_COMPONENTS } from './evaluate.mjs';
 import { Searcher, TranspositionTable, MoveOrder, MATE, searchBudget } from './search.mjs';
-import { generatePlans, describePlans, makePlanOrderer, pareto, PLAN } from './plans.mjs';
+import { generatePlans, describePlans, pareto, PLAN } from './plans.mjs';
 import { allocateTime, updateBank } from './budget.mjs';
 import { explainDecision } from './explain.mjs';
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
 
-export const VERSION = '3.0.8';
+export const VERSION = '3.0.11';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -245,15 +245,17 @@ export class Engine {
 
     // only the meta-controller picks a tier; an explicit user choice (setEvalMode,
     // or the UI writing evaluation.opts.mode) must survive the next search
-    if (plan) this.evaluation.opts.mode = plan.evalMode;
-
-    // the dead contextBonus closure (always 0) is gone: a per-move call that did nothing
-    this.searcher.contextBonus = null;
-    if (this.opts.usePlans && this.opts.planOrdering && this.plans.length) {
-      this.searcher.structuralBonus = makePlanOrderer(this.plans, this.pos.turn);
-    } else {
-      this.searcher.structuralBonus = null;
+    if (plan) {
+      this.evaluation.opts.mode = plan.evalMode;
+      // The plan's tier depth was returned but never applied: the structural
+      // fallback kept the constructor value. Keep both fields in sync (Gate 4).
+      if (typeof plan.structuralEvalDepth === 'number') {
+        this.evaluation.opts.structuralDepth = plan.structuralEvalDepth;
+      }
     }
+
+    // Gate 3 kill: structural ordering was deleted after the 200-game A/B
+    // (47.5% ±6.2, CI spans 0.5, no positive CI). Plans remain descriptive.
 
     // SEARCH-15 (doc 40 §11-13): under a clock the budget is an allowance, not a
     // fixed slice. A stable, clear decision stops early and banks the time; an

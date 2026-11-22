@@ -2,12 +2,13 @@
  * Invariant verification tests — every check in verify.mjs, on the positions
  * that stress each rule.
  */
-import { Position } from '../src/engine/core.mjs';
+import { Position, WHITE } from '../src/engine/core.mjs';
 import { Engine } from '../src/engine/index.mjs';
+import { Evaluation, DEFAULT_PARAMS, structuralVector } from '../src/engine/evaluate.mjs';
 import {
-  verifyPositionAll, verifyMakeUnmake, verifyPieceLists, verifyLegalMoves,
+  INVARIANT, verifyPositionAll, verifyMakeUnmake, verifyPieceLists, verifyLegalMoves,
   verifyCaptures, verifySearch, verifyDeterminism, verifySelfPlay,
-  verifyPosition, report
+  verifyPosition, verifySVFOwnership, report
 } from '../src/engine/verify.mjs';
 
 let fails = 0;
@@ -53,6 +54,22 @@ for (const fen of FENS) {
   check('en-passant state restored exactly', f.length === 0, report(f));
   const ep = pos.legalMoves().filter((m) => (m & 2) !== 0 && ((m >> 17) & 31) & 2);
   void ep;
+}
+
+/* repetition history is rule state: make/unmake must restore it too (ADR 0020) */
+{
+  const pos = new Position();
+  pos.setFEN('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  const stack = [];
+  for (let i = 0; i < 4; i++) {
+    const moves = pos.legalMoves();
+    pos.pushRep();
+    stack.push(pos.makeMove(moves[(i * 3) % moves.length]));
+  }
+  check('repetition history is non-empty before verification', pos.rep.length === 4, String(pos.rep.length));
+  const f = verifyMakeUnmake(pos, { moves: pos.legalMoves() });
+  check('repetition history restored exactly', f.length === 0, report(f));
+  for (let i = stack.length - 1; i >= 0; i--) pos.unmakeMove(stack[i]);
 }
 
 /* promotion / underpromotion */
@@ -120,6 +137,26 @@ for (const fen of FENS) {
   pos.setFEN('4k3/8/8/8/8/8/8/4K1K1 w - - 0 1', { validate: false });
   const f = verifyPosition(pos);
   check('two kings of one colour are rejected', f.length > 0, report(f));
+}
+
+/* SVF feature ownership: no axis may pay twice for one perceptual fact. */
+{
+  const pos = new Position();
+  pos.setFEN(FENS[1]);
+  const ev = new Evaluation(DEFAULT_PARAMS, { mode: 'structural' });
+  const s = ev.structural(pos);
+  const f = verifySVFOwnership(pos, s.percept, s.structure, s.context, ev.params);
+  check('SVF-INV-007: centre/files/hanging have one owner each', f.length === 0, report(f));
+
+  // Prove the check has teeth: reintroduce the old centre-control term in A.
+  const badVector = (p, percept, st, ctx, params) => {
+    const v = structuralVector(p, percept, st, ctx, params).slice();
+    v[2] += percept.centerControl[WHITE] * 3;
+    return v;
+  };
+  const bad = verifySVFOwnership(pos, s.percept, s.structure, s.context, ev.params, badVector);
+  check('SVF-INV-007 detects a reintroduced double count',
+    bad.some((x) => x.id === INVARIANT.SVF_007), report(bad));
 }
 
 console.log(fails === 0 ? '\nVERIFY OK' : `\nVERIFY FAILURES: ${fails}`);

@@ -4,7 +4,8 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'src/subit_chess_v3.0.8.html'
+      - 'index.html'
+      - 'package.json'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -26,16 +27,22 @@ jobs:
 
       - name: Prepare site directory
         run: |
+          # The version comes from package.json - the same source bundle.mjs uses.
+          # index.html is rebuilt with it on every release, so this workflow
+          # never needs a version edit again.
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "Publishing SUBIT-CHESS v${VERSION}"
           mkdir -p _site
-          cp src/subit_chess_v3.0.8.html _site/index.html
-          cp src/subit_chess_v3.0.8.html _site/subit_chess_v3.0.8.html
-          cat > _site/README.html <<'HTML'
+          # the root entry point is always the freshly built bundle
+          cp index.html _site/index.html
+          cp index.html "_site/subit_chess_v${VERSION}.html"
+          cat > _site/README.html <<HTML
           <!DOCTYPE html>
           <html lang="uk">
           <head>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
-            <title>subit-chess v3.0.8</title>
+            <title>subit-chess v${VERSION}</title>
             <style>
               body{font-family:system-ui,sans-serif;background:#302e2b;color:#e8e6e3;
                    padding:2rem;max-width:44rem;margin:0 auto;line-height:1.55}
@@ -47,11 +54,11 @@ jobs:
             </style>
           </head>
           <body>
-            <h1>subit-chess v3.0.8</h1>
+            <h1>subit-chess v${VERSION}</h1>
             <p>Шаховий рушій у браузері: структурна функція оцінки (SVF),
                структурні плани, бюджетований альфа-бета пошук. Один HTML-файл,
                без мережі та без збірки.</p>
-            <p><a class="btn" href="./subit_chess_v3.0.8.html">Грати</a></p>
+            <p><a class="btn" href="./subit_chess_v${VERSION}.html">Грати</a></p>
             <p>Джерело та документація:
                <a href="https://github.com/sciganec/subit-chess">github.com/sciganec/subit-chess</a></p>
           </body>

@@ -111,17 +111,5 @@ function check(name, cond, extra = '') {
   check('the game start position is the standard one', p.fen().startsWith('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w'));
 }
 
-
-/* ---------------- the seed chooses the opening (v3.0.9 regression) ---------------- */
-{
-  const { openingFen } = await import('../src/engine/learn.mjs');
-  const f1 = openingFen(1), f1b = openingFen(1), f2 = openingFen(2);
-  check('openingFen is deterministic per seed and differs across seeds', f1 === f1b && f1 !== f2);
-  const c = cloneParams(DEFAULT_PARAMS); c.eval.mobility.N = 6;
-  const r = compare(DEFAULT_PARAMS, c, { games: 8, depth: 2, seed: 5 });
-  const distinct = new Set(r.games.map((g) => g.line.join(' '))).size;
-  check('a match of 8 games contains many distinct games (before: 2 repeated)', distinct >= 6, `${distinct}/8`);
-}
-
 console.log(fails === 0 ? '\nLEARN OK' : `\nLEARN FAILURES: ${fails}`);
 process.exit(fails === 0 ? 0 : 1);

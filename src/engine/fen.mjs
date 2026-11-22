@@ -42,6 +42,20 @@ const inside = (r, f) => r >= 0 && r < 8 && f >= 0 && f < 8;
 const fail = (status, reason) => ({ ok: false, status, reason });
 const ok = () => ({ ok: true, status: FEN_STATUS.VALID, reason: '' });
 
+/**
+ * FEN counters must be exact integers: a decimal string longer than
+ * Number.MAX_SAFE_INTEGER would be rounded by Number(), which can change the
+ * 75-move clock or the move number after a round trip (AUD-309-06).
+ */
+function parseCounter(raw, name, min) {
+  if (!/^\d+$/.test(raw)) return { error: fail(FEN_STATUS.INVALID_COUNTERS, `${name} '${raw}'`) };
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < min) {
+    return { error: fail(FEN_STATUS.INVALID_COUNTERS, `${name} '${raw}' is out of range`) };
+  }
+  return { value };
+}
+
 /** Is `sq` (r,f) attacked by `by` on a plain 64-entry board? */
 function attackedBy(board, r, f, by) {
   const white = by === 'w';
@@ -201,6 +215,13 @@ export function validateFEN(fen) {
     if (board[pushedR * 8 + ef] !== (turn === 'w' ? 'p' : 'P')) {
       return fail(FEN_STATUS.INVALID_EN_PASSANT, 'no enemy pawn stands beside the en passant square');
     }
+    // The pawn's origin square must be empty after the double push (AUD-309-05).
+    // The target is only recorded for the immediately preceding move, so no
+    // later piece can have occupied that square in a reachable position.
+    const originR = turn === 'w' ? 1 : 6;
+    if (board[originR * 8 + ef] !== null) {
+      return fail(FEN_STATUS.INVALID_EN_PASSANT, 'the en passant origin square is occupied');
+    }
     // The target square is recorded after every double push, whether or not a
     // capture is available (PGN standard), so a missing capturer is not an
     // error — the move generator decides whether the capture is legal.
@@ -208,14 +229,12 @@ export function validateFEN(fen) {
 
   /* ---- counters ---- */
   if (parts.length >= 5) {
-    if (!/^\d+$/.test(parts[4])) {
-      return fail(FEN_STATUS.INVALID_COUNTERS, `halfmove clock '${parts[4]}'`);
-    }
+    const c = parseCounter(parts[4], 'halfmove clock', 0);
+    if (c.error) return c.error;
   }
   if (parts.length >= 6) {
-    if (!/^\d+$/.test(parts[5]) || Number(parts[5]) < 1) {
-      return fail(FEN_STATUS.INVALID_COUNTERS, `fullmove number '${parts[5]}'`);
-    }
+    const c = parseCounter(parts[5], 'fullmove number', 1);
+    if (c.error) return c.error;
   }
 
   /* ---- the side that is not to move may not be in check ---- */

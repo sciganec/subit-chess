@@ -4,3 +4,6 @@
 
 d1f387269767355940a1a43f7edc2f6c050fa6d0bde636ad4e41e76f7eefda7f  T_train.epd
 0e0661a04ed0df3be2ed2d102bda785caf47e297262c39b4f2e58db2223917cc  V_val.epd
+
+# Gate 1 opening suite (v3.0.10 core, 24 validated legal positions).
+50c024a4eddbfbae22e06400252edfb5ac5dec3e804a0eefa864945bb8220338  openings.epd

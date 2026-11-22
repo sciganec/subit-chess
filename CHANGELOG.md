@@ -13,8 +13,9 @@ Statuses:
 
 ---
 
+## [Unreleased] — merged onto 3.0.11 (measured at 100-300 ms/move; 60 games each, harness noise ~ ±6.5 pp)
 
-## [Unreleased] — 3.0.9 (measured at 100-300 ms/move; 60 games each, harness noise ~ +-6.5 pp)
+Note: this block was developed on a branch cut from 3.0.8 and merged onto 3.0.11. Three items were fixed independently on main and the main versions are kept: the futility sign, no stand-pat in check (AUD-01), and the self-play seed/opening (AUD-309-04, `makeStartFEN`/`playSeries`). The entries below that mention them describe the branch history.
 
 ### Added
 - **Controlled autonomous evolution (`src/engine/evolve.mjs`; SCMF §15, INV-015..019).** Replaces `learn.hillClimb` for any
@@ -87,15 +88,235 @@ Statuses:
 
 ## [Unreleased]
 
-Strength and measurement items for the v3 engine (measured, not cosmetic):
+## [3.0.11] — 2026-11-21
 
-- **Scale the ablation harness.** At 8-20 games the 95% CI is ±13-34 pp, which
-  cannot resolve effects below ~100 Elo. Target n >= 100 games per configuration
-  at depth 4-5 before accepting or rejecting `plain`, `eval0`, `noasp`.
-- **Spec compliance debt:** `contextAdjust` no-op (doc 05 §context), `structure`
-  gaps, `verify` coverage, `meta` thresholds (docs 31/32/33/36).
-- **Search hygiene:** dead `contextBonus` in `index.mjs` (always returns 0),
-  `Score.diff` never set.
+Measured engineering increment after the v3.0.10 correctness tag. It ships the changes
+below plus a research-only theory addendum. Every strength number here is self-play on the
+v3.0.11 code; none is an external Elo result, a canonical SUBIT-∞ conformance claim, or a
+claim about the older v3.0.10 HTML.
+
+- **Measurement harness (Gate 1).** `bench/match.mjs` now reports per-opening W/D/L
+  and an Elo-scaled 95% CI; `bench/fens/openings.epd` adds 24 quiet legal positions
+  with a SHA-256 in `bench/fens/CHECKSUMS`. The harness no longer clears the game
+  repetition stack with bare `setFEN()` after each move: it adopts the FEN and the
+  `rep`/`repHi`/`repLimit` state on both engines, so fivefold is visible to `status()`
+  again. Same 10-game seed: caps 3/10 -> 1/10, nodes/game 2.31M -> 1.70M. Full Gate 1
+  calibration (100 games, depth 4, seed 7): 57.5% ±8.9, 9/100 caps — the ≤10% gate passes.
+  After the ADR 0023 ordering deletion the same baseline is 53.5% ±8.9 with 5/100 caps;
+  both are harness calibration, not strength results.
+- **Horizon (A1).** Quiet checks are searched at `qdepth === 0`, capped by
+  `params.search.qsearch.maxChecks`, and remain subject to legality, alpha/beta and
+  the qdepth cap. `noqchecks` restores the pre-audit captures-only horizon for A/B.
+  A geometry table filters candidate moves before make/unmake: only moves touching
+  a king ray or knight jump (by origin or destination, so discovered checks survive)
+  are probed. A regression test covers a quiet discovered check. The pre-kill 100-game A/B
+  (`results/gate3-a1-base-vs-noqchecks-final.json`) was 63.0% ±9.3, CI 53.7-72.3%,
+  61W/4D/35L, 0/100 caps; it is historical. **Post-kill re-baseline**
+  (`results/gate3-a1-postkill-final.json`, depth 4, seed 7): `base` **60.0% ±9.4**,
+  CI **50.6-69.4%**, 58W/4D/38L, 0/100 caps, mean 116 plies. Clean post-kill throughput
+  check (Gate 6 FEN, d7, 3 runs each): `noqchecks` 314,959 nodes at ~173.0k nps vs `base`
+  567,647 nodes at ~174.6k nps — no per-node penalty after the ordering deletion; the
+  extra wall time comes only from the larger tree. **A1 accepted in v3.0.11.**
+- **Search hygiene.** The dead `contextBonus` closure is removed, the horizon
+  stalemate probe uses an early-exit `hasLegalMove()` with the same rule result,
+  `plan.structuralEvalDepth` is applied, and the uncertainty budget now grows with
+  uncertainty instead of dividing by it (tested for monotonicity).
+- **Invariants.** Mate distance uses the engine-wide `MATE` scale; `centerControl`,
+  `openFiles` and `hanging` each have one SVF owner; `verify.mjs` gains an executable
+  `SVF-INV-007` ownership check with a negative-control test. Following the new
+  full-state-identity theory (docs 56/76/77), `verifyMakeUnmake()` now also checks the
+  repetition stack and `repLimit` after the same `pushRep`/`make`/`unmake`/`popRep`
+  cycle the search uses; a non-empty-history regression test was added. No rule or
+  search behaviour changed — this only widens what the verifier can detect.
+- **Measurement harness (Gate 2).** Fixed a depth-assignment bug: `playGame()` chose the
+  per-move depth by the moving colour instead of by the config playing that colour, so in
+  odd games (`A` is Black) the two pinned depths were swapped. The first `base@5` vs
+  `base@4` run is void; a two-colour regression test now asserts the depth follows the
+  config. Gate 1 and Gate 3 used equal depths and are unaffected. The corrected pre-kill
+  Gate 2 run (`results/gate2-depth5-vs-4-final.json`, 100 games, depth 5, seed 7) was
+  68.0% ±8.1, CI 59.9-76.1%, 58W/20D/22L; it is historical. **Post-kill re-baseline**
+  (`results/gate2-depth-postkill-final.json`): `base@5` **79.0% ±7.5**,
+  CI **71.5-86.5%**, 75W/8D/17L, 8/100 caps — depth still pays (CI.lo > 0.5).
+- **Measurement harness (Gate 7).** New `bench/gate7.mjs` runs three clean passes per
+  position: base depth, uniform `depth+1`, and a driver-targeted pass (`Us/Uh` depth,
+  `Ut` wider qsearch, `Ue/Ur/Up/Um/Uc` hybrid/structural re-check), plus a deterministic
+  wrong-driver control. A tie is not treated as a driver, and the four proven-mate
+  fixtures are checked for decision invariance. On 24 opening FENs + 4 mate FENs at
+  depth 4: **9 targeted-only changes**, 0 uniform-only, 0 wrong-driver-only, 5 changed
+  under both, 10 under neither, 1 wrong-driver change, and **0/4 mates changed**.
+  Result: Gate 7 PASS as verification steering. It is bench-only: no shipped search
+  path, evaluation value or released HTML was changed, and it is not a strength claim.
+  `tests/gate7.mjs` covers the driver map, determinism and mate invariance.
+  Full `npm test` passes with the new file registered; a fresh temp-copy build still
+  produces the unchanged dev hash `9586ACA1...` and leaves both release HTMLs at the
+  shipped `9A08F02F...`.
+- **Structural ordering deleted (Gate 3 kill).** The 100-game `base` vs `nostruct`
+  result was **46.5% ± 8.7** (36W/21D/43L, 13/100 caps) and `noplans` was identical.
+  The pre-registered 200-game run gave `base` **47.5% ± 6.2**, CI ≈ [41.3%, 53.7%],
+  74W/42D/84L, 25/200 caps — no positive CI, so the kill criterion applies. On all
+  24 suite FENs the three configs pick the same root move and `nostruct` ≡ `noplans`
+  node-for-node, so one ordering mechanism was ablated, not two layers. ADR 0023
+  removes `makePlanOrderer`, the `structuralBonus` plumbing and the search's
+  structural ordering term (`ordering.struct` 0); the dead context ordering path is
+  removed too. Plans remain descriptive for UI/uncertainty only. All tests pass;
+  the release HTMLs are untouched.
+- **`noctx` is a no-op (Gate 3).** 100 games, depth 4, seed 7: `base` **57.5% ± 8.9**,
+  CI ≈ [48.6%, 66.4%], 49W/17D/34L, 9/100 caps. A `base` vs `base` control on
+  unmodified HEAD reproduced every statistic exactly — W/D/L, 1,520,362 nodes/game,
+  lengths and all 24 per-opening rows. The 57.5% is the harness self-play baseline
+  already seen in Gate 1, not a context effect; `noctx` needs no deletion because
+  `contextBonus` was already removed and ADR 0023 zeroes `ordering.context`. The
+  control is saved as `results/gate3-base-vs-base-control-final.json`.
+- **`plain` is a no-op after the kill.** On the post-kill code, `base` vs `plain` scored
+  `base` **53.5% ± 8.9**, 45W/17D/38L, 1,329,957 nodes/game, 5/100 caps; a fresh
+  `base` vs `base` control on the same code reproduced every statistic exactly
+  (`results/gate3-plain-final.json`, `results/gate3-base-vs-base-postkill-final.json`).
+  The harness passes explicit `depth: 4`, so `useMeta` is inactive; all four structural
+  ablations are now empty controls. Gate 1's cap gate still passes at 5/100.
+- **Post-kill re-baseline complete.** A1 (**60.0% ±9.4**) and depth (**79.0% ±7.5**)
+  were re-measured on the code after ADR 0023 and both have CI.lo > 0.5. The pre-kill
+  63.0% / 68.0% are retained only as historical measurements. These are v3.0.11 self-play
+  results, not external strength claims.
+- **Gate 4 scope audit.** 667 distinct `*-INV-*` IDs exist across the theory corpus; the
+  12 binding docs define 194, with only 30 referenced in `src/engine/` or `tests/`.
+  Literal "every documented invariant has a test" coverage is not claimed; the gap is
+  explicit so it cannot be mistaken for a PASS.
+- **Research-only theory addendum.** Added five drafts: `docs/theory/81-99/81_...md`
+  (self-reflective intelligence protocol v0.1), `docs/theory/81-99/82_...md`
+  (cross-disciplinary intelligence specification v0.1),
+  `docs/theory/81-99/83_...md` (autonomous experimentation framework v0.1, DRAFT),
+  `docs/theory/article_04.md` and `docs/theory/article_05.md` (conceptual studies). All five
+  are research/architecture drafts; their hypotheses and proposed stages are non-normative.
+  They do not add ADRs, engine behaviour, tests, strength claims or canonical conformance.
+  Most proposed mechanisms (reflective memory, counterfactual audit, autonomous evolution,
+  `V_SUBIT`, higher tiers/phases, homology/causal modules) remain absent or analysis-only.
+- **Verification.** Full `npm test` passes after the version bump and final artifact copy
+  (17 test scripts). A clean temp-copy `npm run build` bundled 11 modules into
+  `src/subit_chess_v3.0.11.html` and `index.html` with SHA-256
+  `8267AEFA3BFFA9E52843F1D77411963E47A30D5D5753DF92EDBE1E427ED82BE5` (463 277 B). The
+  pre-version source hash was `7D9FF08A811C67748C6A5667F8C3489D584620B529AC62A4DE69307A627E1E06`;
+  the final hash changed because version constants were bumped to 3.0.11. The v3.0.10
+  snapshot and its two HTML files remain at
+  `9A08F02F8AF4499813FE3167429A7A27D0A95071BA4A1C62EB60A9BB011C6581`; no v3.0.10 file was
+  overwritten. The tag is not created in this preparation step.
+- **Still open.** Gate 4 literal invariant coverage, Gate 5 external validation (no
+  `bm`/sparring engine available), Gate 6's d9-in-6s target, and the W08 stress run;
+  `contextAdjust` no-op (doc 05), `structure` gaps, remaining `verify` coverage,
+  `meta` thresholds (docs 31/32/33/36), and `Score.diff` never set.
+- **Release artifacts.** `ver/subit_chess_v3.0.11/` holds the release snapshot and dossier.
+  The annotated `v3.0.11` tag and push require separate explicit approval; they are not part
+  of this preparation step.
+
+---
+
+## [3.0.10] — 2026-11-21
+
+Correctness increment closing the P1/P2 findings of
+`ver/subit_chess_v3.0.9/subit_chess_v3.0.9_audit.md`. No strength claim: search
+evaluation, pruning parameters, UI and legality rules are unchanged. The audit
+is static-only, so each finding was reproduced against the current sources
+before a fix was written.
+
+### Fixed
+
+- **AUD-309-02 — null move no longer advances the halfmove clock.** A search-only
+  null move at a real `halfmove = 149` used to create a synthetic `150` and a
+  terminal draw in the recursive search. `makeNullMove()` now leaves the clock
+  and repetition history untouched; `unmakeNullMove()` restores the full state
+  snapshot, including `castling`, `fullmove` and `repLimit` (AUD-07/AUD-09).
+- **AUD-309-04 — self-play observations are now independent and reported.** The
+  seed selects a legal start position instead of being discarded, every game
+  reports its seed and start FEN, colours are balanced, W/D/L are accounted for,
+  and an optional validation sample uses a disjoint seed range. Validation is
+  reported but never influences acceptance, so tuning cannot leak into it.
+- **AUD-309-01 — package and CI artifact identity.** `version`, `main`, `browser`
+  and the built HTML now agree; CI resolves the artifact name from
+  `package.json` instead of a hardcoded v3.0.8 path.
+- **AUD-309-05 — en passant origin square.** A FEN is rejected when the pawn's
+  double-push origin square is occupied, so the position has no possible
+  predecessor.
+- **AUD-309-06 — safe integer FEN counters.** Halfmove and fullmove must be
+  exact, non-negative (fullmove >= 1) safe integers; rounded oversized values
+  can no longer silently change draw detection or move numbering.
+- **AUD-08 — dead material is terminal inside the search.** `negamax()` and
+  `quiescence()` now return a draw when the rule authority reports insufficient
+  material, so a position that becomes dead after a capture is no longer scored
+  by a static evaluation. The lazy piece cache is refreshed before the derived
+  material query.
+
+### Notes
+
+- **AUD-309-03 (challenger as Black) was not reproducible.** The current
+  `compare()` already assigns challenger/White in even games and
+  challenger/Black in odd games. The audit's own patch snippets were
+  self-contradictory and marked "do not apply"; semantics were derived
+  independently and locked with a regression test instead of patching correct
+  code.
+- New suite `tests/engine.audit309.mjs` covers every finding above and is wired
+  into `npm test`.
+- **W06 closes AUD-07…AUD-09.** The audit suite now locks null-move
+  repetition/history isolation, full canonical state restoration after a search
+  that really uses null moves, all `canNull()` guards, and dead material at
+  interior and horizon nodes, including a forced capture into K vs K.
+- **W07 adds `tests/engine.tactics.mjs`.** An independent tactical suite checks
+  four mate positions across default, no-null, no-TT and no-pruning
+  configurations, a forced capture chain at the horizon, agreement on the
+  forcing move, pawn-only zugzwang guards and TT reuse. No strength claim is
+  made: pruning parameters and evaluation weights are unchanged.
+- **Release artifacts.** `ver/subit_chess_v3.0.10/` and the annotated tag
+  `v3.0.10` publish this correctness increment; the dossier records artifact
+  SHA-256, audit closure and explicit SUBIT/strength status caveats.
+
+---
+
+## [3.0.9] — 2026-11-19
+
+Correctness increment: the six P0 defects from
+`ver/subit_chess_v3.0.8/subit_chess_v3.0.8_audit_2.md` are closed. No strength
+claim — this release makes published scores describe searched, legal positions.
+No interface change; the shipped file is still one offline HTML.
+
+### Fixed
+
+- **AUD-01 — no stand-pat in check.** `quiescence` used to return a static score
+  of a checked position and could cut it off with beta. A static score is not a
+  legal move; the check now starts from `-INF` so the first searched evasion
+  sets the bound.
+- **AUD-02 — qdepth cap while in check.** At the horizon cap, scoring the
+  unresolved check (or returning `-INF` and fabricating a loss) is replaced by
+  `staticCheckEvasion()`: resolve one legal evasion and score that position
+  statically (mate when none exists). No recursion, so the cap stays a cap.
+- **AUD-03 — horizon stalemate at any qdepth.** The stalemate probe no longer
+  runs only at `qdepth === 0`; it runs whenever no capture was generated, so a
+  deeper quiet horizon cannot publish a material score for a drawn position.
+- **AUD-04 — claimable draws are playable inside the search.** `negamax` keeps
+  only the automatic draws (75-move, fivefold) as terminal. The 50-move and
+  threefold claims stay normal positions, matching ADR 0020. This supersedes
+  the search clause of ADR 0011; its game-status clause is intact.
+- **AUD-05 — root honours automatic draws.** `search()` detects the 75-move
+  rule, fivefold repetition and dead material before searching, returning a
+  terminal result with a `reason` that matches `Position.status()`.
+- **AUD-06 — futility sign.** The post-move static score is negated before it
+  is compared with alpha (the position belongs to the opponent); the previous
+  sign pruned exactly the good quiet moves it should keep.
+
+### Notes
+
+- **TT validity narrows to one search.** `TT_MAX_AGE` is `0` and `ttMoveFor()`
+  now applies the same age check as `probe()`. After the quiescence fix, a
+  one-generation-old move hint reordered the tree and changed the published
+  score (cold `-3`, warm `+25` on the ADR 0011 position). Iterative deepening
+  is unaffected and `Memory` still carries move and score across game moves.
+  See ADR 0022.
+- **ADR 0022** records the search terminal-correctness decisions above.
+- **AUD-07…AUD-09** (null-move/repetition contamination, dead material in the
+  horizon, null-move state equivalence) were open P1 items at this release;
+  they were closed in 3.0.10.
+
+### Added
+
+- `tests/engine.audit2.mjs` — 12 checks, one or more per P0 defect, wired into
+  `npm test`, `npm run test:engine` and `npm run test:audit2`.
 
 ---
 

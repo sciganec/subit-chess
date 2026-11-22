@@ -16,9 +16,6 @@ concurrency:
 permissions:
   contents: read
 
-env:
-  ENGINE_HTML: src/subit_chess_v3.0.8.html
-
 jobs:
   # ---------------------------------------------------------------------------
   # 1. Build is deterministic — the shipped HTML matches the modules
@@ -40,6 +37,11 @@ jobs:
 
       - name: Install dependencies
         run: npm install --no-audit --no-fund
+
+      - name: Resolve engine artifact from package version
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "ENGINE_HTML=src/subit_chess_v${VERSION}.html" >> "$GITHUB_ENV"
 
       - name: Verify engine sources exist
         run: |
@@ -187,6 +189,11 @@ jobs:
           cache: 'npm'
 
       - run: npm install --no-audit --no-fund
+
+      - name: Resolve engine artifact from package version
+        run: |
+          VERSION="$(node -p "require('./package.json').version")"
+          echo "ENGINE_HTML=src/subit_chess_v${VERSION}.html" >> "$GITHUB_ENV"
 
       - name: Extract changelog for this tag
         id: changelog
