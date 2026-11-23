@@ -13,19 +13,20 @@ Statuses:
 
 ---
 
-## [3.0.14 candidate] — 2026-11-22
+## [3.0.14] — 2026-11-22
 
-Development candidate in progress. No Elo gain has been established; do not claim release strength.
+Formalized release snapshot. Correctness/measurement/search-safety increment. No Elo gain has been established; do not claim release strength.
 
 - **Version bump.** Prepared `v3.0.14` development candidate after pushing `v3.0.13` candidate commits.
 - **Quiet-threat extension candidate (parked, default off).** Added `search.quietThreatExtension` (`enabled:false`, `maxPly:2`, `minVictim:900`) as a tactical search extension for quiet moves attacking queen/major. g9: catches `...b4c5` at d5 (vs d6 baseline) but still misses at d4; node cost +61% at d6 on that case. A/B self-play 64g d4 seed24: `dS 0.000 SE 0.077`, 12W/40D/12L, inconclusive (unchanged after adjudication fix). Default remains off; no Elo claim.
 - **Self-play adjudication fix (measurement correctness).** Fixed `src/engine/learn.mjs` `playGame`: no-legal-move now uses `pos.status()` so checkmate/stalemate are classified correctly; terminal result mapping now reads `status().result` (`white`/`black`/`draw`) instead of the impossible `'win'` value. Fixed `src/engine/core.mjs` `moveToUci/moveToSan` to handle move 0 safely (`0000`/`(none)`), preventing position corruption when search reports no move. Added regression tests in `tests/engine.learn.mjs`. **Impact**: prior `learn.compare()` A/B runs that ended in checkmates were misadjudicated; reruns required before trusting those measurements.
 - **Self-play repetition sync fix (measurement correctness).** Fixed `src/engine/learn.mjs` `playGame`: sync both engines with FEN + repetition stack (`rep/repHi/repLimit`) after each move, and initialize black with `setFEN` (not `pos.setFEN`) so analysis state is rebuilt. Previously `other.setFEN(fen)` wiped repetition history, breaking fivefold/repetition detection and rep-aware search in self-play. Added regression in `tests/engine.learn.mjs`. **Impact**: prior `learn.compare()` A/B runs may have missed repetition adjudications; effect size unknown, but measurements should be rerun when repetition-sensitive.
 - **LMR threat-exempt candidate (parked, default off).** Added `search.lmr.threatExemptMinVictim` (default `0`, disabled). When set (e.g. 900), quiet moves attacking enemy queen/major are not LMR-reduced. Initial A/B results were invalidated by a checkmate-adjudication bug in `src/engine/learn.mjs` (fixed below). Corrected rerun d4 64g: seed25 `dS -0.156 SE 0.077` 8W/38D/18L (reject); seed26 `dS -0.109 SE 0.086` 12W/33D/19L (inconclusive); seed27 `dS -0.016 SE 0.075` 11W/41D/12L (inconclusive). Corrected signal is negative/neutral across 192g; default remains off.
+- **Root check extension + qsearch mate-delta guard (correctness/consistency).** `negamaxRoot` applies `search.checkExtension` on root check-giving moves; qsearch delta pruning is guarded by `alpha < MATE_THRESHOLD` so mating captures are not pruned in near-mate alpha windows. Added gauntlet guard `horizon c3c2 blunder (SF19 g8, d4 guard)` (reject `c3c2`, depth 4) and regression in `tests/engine.audit2.mjs`. `npm test` PASS, gauntlet 11/11 PASS. No Elo gain claim; `learn.compare` >=2 seeds d4/64g still required before any strength claim.
 
-## [3.0.13 candidate] — 2026-11-22
+## [3.0.13] — 2026-11-22
 
-Development candidate: operationalizes Field Dynamics (`FD-01` through `FD-14`) and mathematical invariants. This is not a release; no Elo gain has been established.
+Formalized release snapshot. Operationalizes Field Dynamics (`FD-01` through `FD-14`) and mathematical invariants. No Elo gain has been established; no external strength claim.
 
 - **Field Dynamics Module (`src/engine/field.mjs`).**
   - **Canonical Board Coordinates (`SC-CORE-COORD-001` & `FD-01/02`).** Strict isomorphism between 0x88 square index, canonical coords $(x, y) \in [0, 7]^2$, and linear index $idx \in [0, 63]$ with $y = 7 - (sq \gg 4)$ mapping 0x88 mailbox row to rank coordinates.
