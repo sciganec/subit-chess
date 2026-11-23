@@ -636,13 +636,16 @@ export class Searcher {
       pos.pushRep();
       const undo = pos.makeMove(m);
       this.nodes++;
+      const givesCheck = pos.inCheck();
+      const ext = (givesCheck && this.params.search.checkExtension > 0) ? 1 : 0;
+      const nextDepth = Math.max(0, depth - 1 + ext);
       let score;
       if (i === 0) {
-        score = -this.negamax(pos, depth - 1, -beta, -alpha, 1);
+        score = -this.negamax(pos, nextDepth, -beta, -alpha, 1);
       } else {
-        score = -this.negamax(pos, depth - 1, -alpha - 1, -alpha, 1);
+        score = -this.negamax(pos, nextDepth, -alpha - 1, -alpha, 1);
         if (score > alpha && !this.stop) {
-          score = -this.negamax(pos, depth - 1, -beta, -alpha, 1);
+          score = -this.negamax(pos, nextDepth, -beta, -alpha, 1);
         }
       }
       pos.unmakeMove(undo);
@@ -982,10 +985,12 @@ export class Searcher {
         const seeCfg = this.params.search.see;
         const seePrune = seeCfg ? seeCfg.qsearchPrune !== false : true;
         if (seePrune && (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && see(pos, m) < 0) continue;
-        // delta pruning: even winning the victim cannot lift alpha
+        // delta pruning: even winning the victim cannot lift alpha. Skip near
+        // mate windows: a capture that delivers mate must not be pruned because
+        // its material delta understates the true score (A.6/qsearch safety).
         const victim = pos.board[MOVE_TO(m)];
         const victimValue = (flags & FLAG_EP) ? MATERIAL[PAWN] : (victim ? MATERIAL[pieceType(victim)] : 0);
-        if (best + victimValue + 200 < alpha && !(flags & FLAG_PROMO)) continue;
+        if (alpha < MATE_THRESHOLD && best + victimValue + 200 < alpha && !(flags & FLAG_PROMO)) continue;
       }
       pos.pushRep();
       const undo = pos.makeMove(m);

@@ -227,5 +227,17 @@ function realSearcher() {
   }
 }
 
+/* qsearch delta pruning must not skip a mating capture in near-mate windows. */
+{
+  const fen = 'r3rk2/1pp2qRQ/p1n1p2B/3p4/Pb6/5N2/5P2/2R2K2 w - - 1 29';
+  for (const [a, b] of [[-1000000, 1000000], [99994, 99995], [-911.79, 99995]]) {
+    const p = new Position().setFEN(fen);
+    const s = realSearcher();
+    const score = s.quiescence(p, a, b, 4, 0);
+    check(`qsearch finds mating capture in near-mate window [${a},${b}]`, score >= 99995,
+      `score=${score}`);
+  }
+}
+
 console.log(`\nAUDIT2: ${fails === 0 ? 'ALL CHECKS PASSED' : fails + ' CHECK(S) FAILED'}`);
 process.exit(fails === 0 ? 0 : 1);
