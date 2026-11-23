@@ -140,6 +140,8 @@ export const CONFIGS = {
   qsee: { label: 'SEE-lite capture pruning in quiescence', params: { search: { qSee: { enabled: true } } }, opts: {} },
   evterms: { label: 'connected pawns + rook on 7th', params: { eval: { connected: 12, rook7: 20 } }, opts: {} },
   rook7: { label: 'rook on 7th only (20cp)', params: { eval: { rook7: 20 } }, opts: {} },
+  rfp80: { label: 'RFP margin 80', params: { search: { rfp: { margin: 80 } } }, opts: {} },
+  rfp180: { label: 'RFP margin 180', params: { search: { rfp: { margin: 180 } } }, opts: {} },
   lmrlog: { label: 'log-table late move reductions', params: { search: { lmrLog: { enabled: true } } }, opts: {} },
   lmp: { label: 'late move pruning (depth<=3, 3+d^2)', params: { search: { lmp: { enabled: true } } }, opts: {} },
   iir: { label: 'internal iterative reduction (no TT move, depth>=4)', params: { search: { iir: { enabled: true } } }, opts: {} },
