@@ -98,3 +98,16 @@ measurably useful at this sample size.
 1. Docs 36, 37, 39, 45 (decision, uncertainty, execution): the uncertainty driver steering verification (ROADMAP Gate 7).
 2. Doc 42 (incremental structural update): the equivalence IncrementalBuild ≡ FullBuild, relevant to the throughput work.
 3. Docs 24, 25, 38 bodies, for anything that translates into ordering or pruning that can be measured by play.
+
+## Update 2026-11-23: documents 48–83 and the articles on main read
+
+Read in full by sub-agents (digests in `docs/spec/digests/theory_48-99_n0…n18.md`): theory documents 48–80 and 82–83 under `docs/theory/48-80`, the articles under `docs/theory`, and the files at 81+ that exist on main. Document 81 is byte-identical to 80 (checked with `cmp`), so the 81–99 folder adds nothing at that position. Documents numbered 84–99 do not exist in the tree I have; the changelog's "81-99+" refers to the folder name.
+
+Result, consistent with the first 55 documents:
+- **No numeric constants** for evaluation, ordering, pruning, extensions or time in any of them. They are conceptual (information theory, complexity, learning, proof-carrying engine, explainability, robustness protocols ROB-01..10). Nothing can be imported as a weight.
+- **Constraints repeated:** move generation returns all and only legal moves; a terminal result outranks any heuristic; the TT key must include castling, side to move, en passant and repetition context (doc 78 RQ-01 admits the minimal key set is undefined); an interrupted search must not return an invalid move; no structural module may prune legal moves without a correctness proof; external engines and imported game histories are not sources.
+- **Gaps:** quiescence and in-check stand-pat are not mentioned in 77–79 and article 05; doc 77 names the 75-move rule as automatic and the 50-move rule as a claim but does not mention fivefold repetition.
+- **Hypotheses measurable by play (no values given):** extra search or time when the best move flips between iterations or the top two scores are close (docs 77 §7.5, 79 §4.4, 80 §9) — the adaptive budget in this branch already does the first part and measured +73 Elo [+28; +121] over 192 games against v3.0.12 without it; depth allocation by position class (article 05 §7.2, §9.1, §11.3); ablation of each eval feature (done for the fast-tier terms: +97 Elo for the set, see CHANGELOG).
+- **Contradictions are notational:** state tuple S=(B,p,c,e,h) versus S=(B,C,H,T) in article 05; the number of reflection levels and stages differ between documents.
+
+The "Not read" list in the Coverage section above is now obsolete for `docs/theory`; subit-subit beyond the parts named there is still unread.
