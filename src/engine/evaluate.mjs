@@ -84,6 +84,7 @@ export const DEFAULT_PARAMS = {
     checkExtension: 1,
     rfp: { enabled: true, margin: 120, maxDepth: 3 },      // reverse futility (v3.0.9: +64 Elo [+8,+125], 120 games)
     qSee: { enabled: false, slack: 50 },
+    seePrune: { enabled: false, maxDepth: 4, margin: 100 },
     lmrLog: { enabled: false, base: 0.75, div: 2.25 },     // log(depth)*log(move index) reduction table (v3.0.12 experiment)
     lmp: { enabled: false, maxDepth: 3, base: 3 },         // late move pruning of quiet moves (v3.0.12 experiment)
     iir: { enabled: false, minDepth: 4 },                  // internal iterative reduction when there is no TT move

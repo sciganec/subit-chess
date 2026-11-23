@@ -27,6 +27,7 @@ Measured post-v3.0.11 search-safety/plumbing increment. No external Elo-gain cla
 
 ## [Unreleased] — merged onto 3.0.11 (measured at 100-300 ms/move; 60 games each, harness noise ~ ±6.5 pp)
 
+- `search.seePrune` (off): SEE pruning of losing captures, depth<=4, 100cp/ply, 96 games: base 56.2% (new ≈ −44 Elo, z=1.4, not significant). RFP margin 80 / 180: base 46.4% / 43.2% (not significant); margin stays 120.
 - Merged onto v3.0.12. Adaptive time budget + RFP vs v3.0.12 search without them (`base` vs `v311` config), 100 ms/move, paired openings, two seed sets of 96 games: 101W/30D/61L = 60.4%, ≈ +73 Elo [+28; +121], z=3.23. INV-009 test now uses exact search (LMR off): LMR reduces different ties in mirrored positions.
 
 - Experiments (all off by default, 96 games each at 100 ms, paired openings, A=base): eval0 (no fast-tier terms) base 63.5% (+97 Elo for the terms); connected pawns + rook on 7th: base 62.0% (new terms ≈ −85 Elo); rook on 7th alone: base 45.3% (new ≈ +33 Elo, z=1.0, not significant). Options `eval.connected`, `eval.rook7`.

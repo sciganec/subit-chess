@@ -780,6 +780,7 @@ export class Searcher {
     const lmr = this.params.search.lmr;
     const futility = this.params.search.futility;
     const lmp = this.params.search.lmp;
+    const seeP = this.params.search.seePrune;
     const malus = this.params.search.historyMalus;
     const tried = malus && malus.enabled ? [] : null;
 
@@ -787,6 +788,14 @@ export class Searcher {
       const m = buf[i];
       const flags = MOVE_FLAGS(m);
       const isQuiet = !(flags & (FLAG_CAPTURE | FLAG_PROMO)) && pos.board[MOVE_TO(m)] === 0;
+
+      // SEE pruning (controlled approximation, off by default): a capture that loses more than margin*depth
+      // by static exchange is skipped at shallow depth in non-PV nodes, after one move has been searched.
+      if (seeP && seeP.enabled && depth <= seeP.maxDepth && !pvNode && !inCheck && legal > 0 &&
+          (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && see(pos, m) < -seeP.margin * depth) {
+        pruned++;
+        continue;
+      }
 
       pos.pushRep();
       const undo = pos.makeMove(m);
