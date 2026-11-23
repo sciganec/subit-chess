@@ -36,6 +36,7 @@ const EMPTY_KILLER = [0, 0];
 const SEE_VAL = [0, 100, 320, 330, 500, 900, 20000];
 
 const PAWN_DF = [-1, 1];
+const QUEEN_DIRS = [...BISHOP_DIRS, ...ROOK_DIRS];
 const KING_STEPS = [-17, -16, -15, -1, 1, 15, 16, 17];
 // scratch for see(): squares already used up in the exchange (indexed 0x88, cleared after each call)
 const SEE_GONE = new Uint8Array(128);
@@ -104,8 +105,8 @@ function maxAttackedVictim(pos, to, piece, us) {
   let best = 0;
   if (piece === PAWN) {
     const dir = us === WHITE ? -16 : 16;
-    for (const df of [-1, 1]) {
-      const t = to + dir + df;
+    for (let k = 0; k < 2; k++) {
+      const t = to + dir + PAWN_DF[k];
       if (t & 0x88) continue;
       const p = board[t];
       if (p && (p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
@@ -113,8 +114,8 @@ function maxAttackedVictim(pos, to, piece, us) {
     return best;
   }
   if (piece === KNIGHT) {
-    for (const d of KNIGHT_DELTAS) {
-      const t = to + d;
+    for (let k = 0; k < 8; k++) {
+      const t = to + KNIGHT_DELTAS[k];
       if (t & 0x88) continue;
       const p = board[t];
       if (p && (p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
@@ -131,8 +132,9 @@ function maxAttackedVictim(pos, to, piece, us) {
     }
     return best;
   }
-  const dirs = piece === BISHOP ? BISHOP_DIRS : piece === ROOK ? ROOK_DIRS : [...BISHOP_DIRS, ...ROOK_DIRS];
-  for (const d of dirs) {
+  const dirs = piece === BISHOP ? BISHOP_DIRS : piece === ROOK ? ROOK_DIRS : QUEEN_DIRS;
+  for (let k = 0; k < dirs.length; k++) {
+    const d = dirs[k];
     let t = to + d;
     while ((t & 0x88) === 0) {
       const p = board[t];
