@@ -19,7 +19,7 @@ Development candidate in progress. No Elo gain has been established; do not clai
 
 - **Version bump.** Prepared `v3.0.14` development candidate after pushing `v3.0.13` candidate commits.
 - **Quiet-threat extension candidate (parked, default off).** Added `search.quietThreatExtension` (`enabled:false`, `maxPly:2`, `minVictim:900`) as a tactical search extension for quiet moves attacking queen/major. g9: catches `...b4c5` at d5 (vs d6 baseline) but still misses at d4; node cost +61% at d6 on that case. A/B self-play 64g d4 seed24: `dS 0.000 SE 0.077`, 12W/40D/12L, inconclusive. Default remains off; no Elo claim.
-- **LMR threat-exempt candidate (testing, default off).** Added `search.lmr.threatExemptMinVictim` (default `0`, disabled). When set (e.g. 900), quiet moves attacking enemy queen/major are not LMR-reduced. A/B self-play d4 64g: seed25 `dS +0.156 SE 0.077` 18W/38D/8L (harness accept); seed26 `dS +0.109 SE 0.086` 19W/33D/12L (inconclusive). Positive direction across 128g but not yet enough to change default; needs larger confirmation or d5 smoke before enabling.
+- **LMR threat-exempt candidate (parked, default off).** Added `search.lmr.threatExemptMinVictim` (default `0`, disabled). When set (e.g. 900), quiet moves attacking enemy queen/major are not LMR-reduced. A/B self-play d4 64g: seed25 `dS +0.156 SE 0.077` 18W/38D/8L; seed26 `dS +0.109 SE 0.086` 19W/33D/12L; seed27 `dS +0.016 SE 0.075` 12W/41D/11L. Signal unstable across 192g; default remains off.
 
 ## [3.0.13 candidate] — 2026-11-22
 
