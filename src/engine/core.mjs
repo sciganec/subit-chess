@@ -195,6 +195,8 @@ function buildZobrist() {
  * Attack geometry tables
  * ------------------------------------------------------------------ */
 
+const PROMO_ORDER = [QUEEN, ROOK, BISHOP, KNIGHT];
+const PAWN_CAP_DC = [-1, 1];
 export const KNIGHT_DELTAS = [33, 31, 18, 14, -14, -18, -31, -33];
 export const KING_DELTAS = [16, -16, 1, -1, 17, 15, -17, -15];
 export const BISHOP_DIRS = [17, 15, -17, -15];
@@ -610,7 +612,7 @@ export class Position {
         const one = from + dir;
         if (one >= 0 && one < 128 && (one & 0x88) === 0 && b[one] === EMPTY) {
           if ((one >> 4) === promoRank) {
-            for (const pt of [QUEEN, ROOK, BISHOP, KNIGHT])
+            for (const pt of PROMO_ORDER)
               out.push(encodeMove(from, one, pt, FLAG_PROMO));
           } else if (!capturesOnly) {
             out.push(encodeMove(from, one));
@@ -619,13 +621,13 @@ export class Position {
               out.push(encodeMove(from, two, 0, FLAG_DOUBLE));
           }
         }
-        for (const dc of [-1, 1]) {
+        for (const dc of PAWN_CAP_DC) {
           const to = one + dc;
           if (to < 0 || to > 127 || (to & 0x88)) continue;
           const target = b[to];
           if (target !== EMPTY && pieceColor(target) === them) {
             if ((to >> 4) === promoRank) {
-              for (const pt of [QUEEN, ROOK, BISHOP, KNIGHT])
+              for (const pt of PROMO_ORDER)
                 out.push(encodeMove(from, to, pt, FLAG_PROMO | FLAG_CAPTURE));
             } else {
               out.push(encodeMove(from, to, 0, FLAG_CAPTURE));
