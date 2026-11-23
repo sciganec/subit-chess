@@ -183,6 +183,21 @@ export function see(pos, move) {
   return gain[0];
 }
 
+/**
+ * Sign-only SEE for callers that ask "does this capture lose material?". A capture whose victim is worth at
+ * least as much as the capturing piece cannot lose (the side may stop after the first exchange), so the
+ * exchange list is skipped and 0 is returned; otherwise the exact value. Not for callers that use the magnitude
+ * of a non-negative result.
+ */
+function seeSign(pos, move) {
+  const flags = MOVE_FLAGS(move);
+  if (!(flags & FLAG_PROMO)) {
+    const victim = (flags & FLAG_EP) ? PAWN : (pos.board[MOVE_TO(move)] & 7);
+    if (SEE_VAL[victim] >= SEE_VAL[pos.board[MOVE_FROM(move)] & 7]) return 0;
+  }
+  return see(pos, move);
+}
+
 /** History counters saturate at this value (see MoveOrder.addHistory). */
 const HISTORY_MAX = 1 << 20;
 
@@ -389,7 +404,7 @@ export class MoveOrder {
         const victim = (flags & FLAG_EP) ? PAWN : (board[to] & 7);
         const attacker = board[MOVE_FROM(m)] & 7;
         const seeOn = this.params.search.see ? this.params.search.see.enabled !== false : true;
-        const seeScore = seeOn ? see(pos, m) : 0;
+        const seeScore = seeOn ? seeSign(pos, m) : 0;
         if (seeOn && seeScore < 0) s += w.tactic * 0.2 + seeScore * 0.01; // bad capture: below quiet killers/history
         else s += w.tactic + MATERIAL[victim] * 10 - MATERIAL[attacker];
       } else if (flags & FLAG_PROMO) {
@@ -1055,7 +1070,7 @@ export class Searcher {
         // bad captures are skipped in qsearch; promos still searched
         const seeCfg = this.params.search.see;
         const seePrune = seeCfg ? seeCfg.qsearchPrune !== false : true;
-        if (seePrune && (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && see(pos, m) < 0) continue;
+        if (seePrune && (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && seeSign(pos, m) < 0) continue;
         // delta pruning: even winning the victim cannot lift alpha
         const victim = pos.board[MOVE_TO(m)];
         const victimValue = (flags & FLAG_EP) ? MATERIAL[PAWN] : (victim ? MATERIAL[pieceType(victim)] : 0);
