@@ -7,11 +7,11 @@ UI that shows what the engine is actually thinking.
 Single-file HTML — no build step for the end user, no server, no CDN, no network access.
 
 **Development candidate: v3.0.14** — in progress; no Elo gain claim until measured under an accepted external protocol.
-Candidate notes: [`CHANGELOG.md`](CHANGELOG.md) § [3.0.14 candidate].
+Candidate notes: [`CHANGELOG.md`](CHANGELOG.md) — [3.0.15 candidate].
 
 ## Quick start
 
-Open `src/subit_chess_v3.0.14.html` in any modern browser (double-click works; the file is
+Open `src/subit_chess_v3.0.15.html` in any modern browser (double-click works; the file is
 fully self-contained).
 
 ```

@@ -13,6 +13,14 @@ Statuses:
 
 ---
 
+## [3.0.15 candidate] — 2026-11-22
+
+Development candidate in progress. No Elo gain has been established; do not claim release strength.
+
+- **Version bump / development start.** Bumped to v3.0.15 candidate after formalizing v3.0.13/v3.0.14 release snapshots. No search/eval default changes in this bump.
+- **Measurement required (67dfd2c).** Root check extension + qsearch mate-delta guard (v3.0.14) are behavior-changing correctness fixes; before any strength claim, run `learn.compare` >= 2 seeds d4/64g against pre-fix baseline (`09706a9`).
+- **Theory/spec familiarization.** Reviewed `docs/theory/` (including UST 101-120) and `c:\Users\sciga\subit-subit\spec\` as research context; theory remains research-only/non-binding, no canonical SUBIT-∞ conformance claim.
+
 ## [3.0.14] — 2026-11-22
 
 Formalized release snapshot. Correctness/measurement/search-safety increment. No Elo gain has been established; do not claim release strength.
