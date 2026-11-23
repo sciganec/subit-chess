@@ -18,7 +18,7 @@ Statuses:
 Development candidate in progress. No Elo gain has been established; do not claim release strength.
 
 - **Version bump / development start.** Bumped to v3.0.15 candidate after formalizing v3.0.13/v3.0.14 release snapshots. No search/eval default changes in this bump.
-- **Measurement required (67dfd2c).** Root check extension + qsearch mate-delta guard (v3.0.14) are behavior-changing correctness fixes; before any strength claim, run `learn.compare` >= 2 seeds d4/64g against pre-fix baseline (`09706a9`).
+- **Measurement (67dfd2c vs 09706a9, no claim).** Two paired UCI batches, d4/64g each: batch1 (`openings.epd`) 19W/26D/19L, score 0.500, 95% CI [-66.9,+66.9] Elo; batch2 (shuffled openings seed 20261122) 21W/27D/16L, score 0.539, 95% CI [-37.9,+94.3] Elo. Combined 128g: 40W/53D/35L, score ~0.520, CI spans 0 — **inconclusive/neutral, no Elo gain claim**. Caveat: `version_match` cycles openings; games 49-64 repeat opening pairs in each batch, so independence is limited. A cleaner independent-seed `learn.compare`/offset protocol is still desirable before any strength claim.
 - **Theory/spec familiarization.** Reviewed `docs/theory/` (including UST 101-120) and `c:\Users\sciga\subit-subit\spec\` as research context; theory remains research-only/non-binding, no canonical SUBIT-∞ conformance claim.
 
 ## [3.0.14] — 2026-11-22
