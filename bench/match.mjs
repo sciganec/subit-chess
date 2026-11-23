@@ -334,6 +334,11 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, pinA = false, pinB = false,
     ms[side] += res.timeMs || 0; mv[side]++;
     if (res.depth > maxDepth) maxDepth = res.depth;
 
+    if (!res.move) {
+      const st = engine.pos.status();
+      return { over: st || { over: true, result: 'draw', reason: 'no legal move' }, plies, nodes, maxDepth, depthSeen };
+    }
+
     const played = engine.play(res.uci);
     if (!played) {
       return { error: `${side} produced an illegal move ${res.uci} from ${before}`, plies, nodes, maxDepth };

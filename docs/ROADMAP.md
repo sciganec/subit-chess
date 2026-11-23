@@ -14,9 +14,15 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state — v3.0.11 (2026-11-21)
+## Current state - v3.0.14 (development, 2026-11-22)
 
-**Status:** measured engineering increment with a research-only theory addendum. It ships the
+v3.0.14 is the active development candidate. No Elo gain has been established; release only after a measured gain under an accepted external protocol.
+
+v3.0.13 candidate (pushed: `514930e`, `0cd4b60`, `191014d`) added analytical Field Dynamics (`src/engine/field.mjs`, FD-01..FD-14, FD-INV-001..010) exposed via `engine.fieldDynamics()`/`analyze().fields` without changing move generation, eval, ordering, or search. It also added `search.ttMaxAge` diagnostic (default 0, ADR 0022; ttMaxAge=1 rejected by A/B), g9 gauntlet guard, and version-match/docs updates.
+
+The measurements and release history below describe v3.0.11 unless a section says otherwise.
+
+**v3.0.11 historical status:** measured engineering increment with a research-only theory addendum. It ships the
 post-v3.0.10 work: Gate 1 reporting and repetition fixes, bounded quiet checks at the
 horizon (A1), search hygiene/verification fixes, Gate 7 bench-only steering, and ADR 0023's
 deletion of structural/context move ordering after the Gate 3 kill. Release artifacts are in
@@ -267,16 +273,17 @@ Not strength work, but the implementation should not contradict its own specific
   `SVF-INV-007` now has an executable single-owner check; the rest remain open.
 - `meta.mjs`: threshold calibration against measured risk (docs 29/35).
 
-**Scope audit (2026-11-21).** The theory corpus defines 667 distinct `*-INV-*` IDs;
-the 12 binding docs for this gate define 194, of which only 30 are referenced anywhere in
-`src/engine/` or `tests/` (164 unreferenced). The literal "every documented invariant has
-a test" gate is therefore not tractable against the current corpus without inventing
-coverage for speculative, unshipped layers. This is recorded as a scope gap, not a PASS:
-work should prioritize the `SVF-INV-*`, `SEARCH-INV-*`, `SPG-INV-*` and `UCT-INV-*`
-invariants that map to shipped modules.
+**Scope audit (2026-11-21, updated 2026-11-22).** The theory corpus defines 667 distinct `*-INV-*` IDs;
+the 12 binding docs for this gate define 194, of which 30 were referenced initially. In v3.0.13,
+Field Dynamics (`FD-01` through `FD-14`, docs 85-100) has been operationalized in `src/engine/field.mjs`,
+contributing 10 executable invariants (`FD-INV-001` .. `FD-INV-010`) covering discrete coordinate
+isomorphism, G4 complex topology, discrete Stokes and Gauss divergence theorems, potential field zero curl,
+pinned-piece geometric reach, channel independence, and state non-mutation. These are tested directly
+in `tests/engine.field.mjs` and integrated into `verifyPositionAll()` in `verify.mjs`.
 
-**Gate:** `npm run test:engine` covers every documented invariant, and no documented
-invariant is violated in the invariant suite.
+**Gate:** `npm run test:engine` covers the binding invariants mapped to shipped modules.
+The suite does not cover every invariant in the theory corpus; the remaining scope gap must
+stay explicit rather than being treated as a pass.
 
 ---
 

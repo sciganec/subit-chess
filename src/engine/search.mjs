@@ -35,9 +35,9 @@ export const TT_UPPER = 2;
 const EMPTY_KILLER = [0, 0];
 const SEE_VAL = [0, 100, 320, 330, 500, 900, 20000];
 
-const PAWN_DF = [-1, 1];
-const QUEEN_DIRS = [...BISHOP_DIRS, ...ROOK_DIRS];
-const KING_STEPS = [-17, -16, -15, -1, 1, 15, 16, 17];
+const SRCH_PAWN_DF = [-1, 1];
+const SRCH_QUEEN_DIRS = [...BISHOP_DIRS, ...ROOK_DIRS];
+const SRCH_KING_STEPS = [-17, -16, -15, -1, 1, 15, 16, 17];
 // scratch for see(): squares already used up in the exchange (indexed 0x88, cleared after each call)
 const SEE_GONE = new Uint8Array(128);
 const SEE_LIST = new Int32Array(40);
@@ -48,7 +48,7 @@ function smallestAttacker(pos, to, side) {
   const board = pos.board;
   const pawnFromDir = side === WHITE ? 16 : -16; // attackers are behind target from side's perspective
   for (let k = 0; k < 2; k++) {
-    const from = to + pawnFromDir + PAWN_DF[k];
+    const from = to + pawnFromDir + SRCH_PAWN_DF[k];
     if (from & 0x88) continue;
     const p = board[from];
     if (p && !SEE_GONE[from] && (p >> 3) === side && (p & 7) === PAWN) return (from << 3) | PAWN;
@@ -90,7 +90,7 @@ function smallestAttacker(pos, to, side) {
     }
   }
   for (let k = 0; k < 8; k++) {
-    const from = to + KING_STEPS[k];
+    const from = to + SRCH_KING_STEPS[k];
     if (from & 0x88) continue;
     const p = board[from];
     if (p && !SEE_GONE[from] && (p >> 3) === side && (p & 7) === KING) return (from << 3) | KING;
@@ -106,7 +106,7 @@ function maxAttackedVictim(pos, to, piece, us) {
   if (piece === PAWN) {
     const dir = us === WHITE ? -16 : 16;
     for (let k = 0; k < 2; k++) {
-      const t = to + dir + PAWN_DF[k];
+      const t = to + dir + SRCH_PAWN_DF[k];
       if (t & 0x88) continue;
       const p = board[t];
       if (p && (p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
@@ -132,7 +132,7 @@ function maxAttackedVictim(pos, to, piece, us) {
     }
     return best;
   }
-  const dirs = piece === BISHOP ? BISHOP_DIRS : piece === ROOK ? ROOK_DIRS : QUEEN_DIRS;
+  const dirs = piece === BISHOP ? BISHOP_DIRS : piece === ROOK ? ROOK_DIRS : SRCH_QUEEN_DIRS;
   for (let k = 0; k < dirs.length; k++) {
     const d = dirs[k];
     let t = to + d;
@@ -247,16 +247,17 @@ const CHECK_TARGETS = buildCheckTargets();
  * deepening is unaffected (one generation per root search); Memory still
  * carries the move and score across moves of a game.
  */
-const TT_MAX_AGE = 0;
+const TT_MAX_AGE_DEFAULT = 0; // ADR 0022
 
 /* ------------------------------------------------------------------ *
  * Transposition table
  * ------------------------------------------------------------------ */
 
 export class TranspositionTable {
-  constructor(bits = 18) {
+  constructor(bits = 18, maxAge = TT_MAX_AGE_DEFAULT) {
     this.size = 1 << bits;
     this.mask = this.size - 1;
+    this.maxAge = maxAge;
     this.keys = new Float64Array(this.size);
     this.scores = new Int32Array(this.size);
     this.depths = new Int8Array(this.size);
@@ -299,7 +300,7 @@ export class TranspositionTable {
     if (this.keys[idx] !== key) return null;
     // stale entries came from a different move order: their bounds can change
     // the root choice, so age them out instead of trusting them (TT_MAX_AGE)
-    if (this.generation - this.age[idx] > TT_MAX_AGE) return null;
+    if (this.generation - this.age[idx] > this.maxAge) return null;
     if (this.depths[idx] < depth) return null;
     const score = TranspositionTable.fromTT(this.scores[idx], ply);
     const flag = this.flags[idx];
@@ -311,7 +312,7 @@ export class TranspositionTable {
 
   store(key, depth, score, flag, move, ply = 0) {
     const idx = (key % this.size) | 0;
-    const stale = this.keys[idx] === key && (this.generation - this.age[idx] > TT_MAX_AGE);
+    const stale = this.keys[idx] === key && (this.generation - this.age[idx] > this.maxAge);
     // AUD-311-06: stale same-key entries must not block replacement.
     if (this.keys[idx] !== key || this.depths[idx] <= depth || stale) {
       this.keys[idx] = key;
@@ -469,6 +470,7 @@ export class Searcher {
     this.ev = evaluator;
     this.params = params;
     this.tt = opts.tt || new TranspositionTable(18);
+    this.tt.maxAge = this.params.search?.ttMaxAge ?? 0; // ADR 0022
     this.order = opts.order || new MoveOrder(params);
     this.pos = null;
     this.nodes = 0;
@@ -687,13 +689,16 @@ export class Searcher {
       pos.pushRep();
       const undo = pos.makeMove(m);
       this.nodes++;
+      const givesCheck = pos.inCheck();
+      const ext = (givesCheck && this.params.search.checkExtension > 0) ? 1 : 0;
+      const nextDepth = Math.max(0, depth - 1 + ext);
       let score;
       if (i === 0) {
-        score = -this.negamax(pos, depth - 1, -beta, -alpha, 1);
+        score = -this.negamax(pos, nextDepth, -beta, -alpha, 1);
       } else {
-        score = -this.negamax(pos, depth - 1, -alpha - 1, -alpha, 1);
+        score = -this.negamax(pos, nextDepth, -alpha - 1, -alpha, 1);
         if (score > alpha && !this.stop) {
-          score = -this.negamax(pos, depth - 1, -beta, -alpha, 1);
+          score = -this.negamax(pos, nextDepth, -beta, -alpha, 1);
         }
       }
       pos.unmakeMove(undo);
@@ -866,19 +871,34 @@ export class Searcher {
       let reduction = 0;
       if (this.useLMR && lmr.enabled && depth >= lmr.minDepth && i >= lmr.minMoveIndex &&
           isQuiet && !inCheck && !givesCheck) {
-        if (this.params.search.lmrLog && this.params.search.lmrLog.enabled) {
-          reduction = this.lmrTable[Math.min(depth, 63) * 256 + Math.min(i + 1, 255)];
-          if (pvNode) reduction -= 1;
-          if (reduction < 1) reduction = 1;
-        } else {
-          reduction = lmr.reduction || 1;
-          if (i >= (lmr.extraMoveIndex || 6)) reduction += (lmr.extraReduction ?? 1);
-          if (reduction > (lmr.maxReduction || 3)) reduction = lmr.maxReduction || 3;
+        let threatExempt = false;
+        const threatMin = lmr.threatExemptMinVictim || 0;
+        if (threatMin > 0) {
+          const threat = maxAttackedVictim(pos, MOVE_TO(m), pos.board[MOVE_TO(m)] & 7, us);
+          threatExempt = threat >= threatMin;
         }
-        if (depth - reduction < 1) reduction = depth - 1;
+        if (!threatExempt) {
+          if (this.params.search.lmrLog && this.params.search.lmrLog.enabled) {
+            reduction = this.lmrTable[Math.min(depth, 63) * 256 + Math.min(i + 1, 255)];
+            if (pvNode) reduction -= 1;
+            if (reduction < 1) reduction = 1;
+          } else {
+            reduction = lmr.reduction || 1;
+            if (i >= (lmr.extraMoveIndex || 6)) reduction += (lmr.extraReduction ?? 1);
+            if (reduction > (lmr.maxReduction || 3)) reduction = lmr.maxReduction || 3;
+          }
+          if (depth - reduction < 1) reduction = depth - 1;
+        }
       }
 
       let ext = (givesCheck && this.params.search.checkExtension > 0 && ply < 8) ? 1 : 0;
+      if (!ext && isQuiet && !inCheck) {
+        const qte = this.params.search.quietThreatExtension;
+        if (qte?.enabled && ply <= (qte.maxPly ?? 2)) {
+          const threat = maxAttackedVictim(pos, MOVE_TO(m), pos.board[MOVE_TO(m)] & 7, us);
+          if (threat >= (qte.minVictim ?? 900)) ext = 1;
+        }
+      }
       // SEARCH-14 (doc 05 §16.3): a pawn reaching the 7th rank changes the critical
       // structure (promotion threat); extended once, bounded by ply, off by default.
       if (!ext && this.params.search.structExtension.enabled && ply < this.params.search.structExtension.maxPly) {
@@ -948,7 +968,7 @@ export class Searcher {
     if (this.tt.keys[idx] !== pos.ttKey) return 0;
     // the same age rule as probe(): a stale hint would reorder the tree and
     // change the score even when the entry's bound is rejected (AUD-01)
-    if (this.tt.generation - this.tt.age[idx] > TT_MAX_AGE) return 0;
+    if (this.tt.generation - this.tt.age[idx] > this.tt.maxAge) return 0;
     return this.tt.depths[idx] >= depth ? this.tt.moves[idx] : 0;
   }
 
@@ -1071,10 +1091,11 @@ export class Searcher {
         const seeCfg = this.params.search.see;
         const seePrune = seeCfg ? seeCfg.qsearchPrune !== false : true;
         if (seePrune && (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && seeSign(pos, m) < 0) continue;
-        // delta pruning: even winning the victim cannot lift alpha
+        // delta pruning: even winning the victim cannot lift alpha. Skip near mate windows: a capture that
+        // delivers mate must not be pruned because its material delta understates the true score.
         const victim = pos.board[MOVE_TO(m)];
         const victimValue = (flags & FLAG_EP) ? MATERIAL[PAWN] : (victim ? MATERIAL[pieceType(victim)] : 0);
-        if (best + victimValue + 200 < alpha && !(flags & FLAG_PROMO)) continue;
+        if (alpha < MATE_THRESHOLD && best + victimValue + 200 < alpha && !(flags & FLAG_PROMO)) continue;
         // SEE-lite (v3.0.9 experiment): a capture that gives a more valuable piece for a cheaper one on a
         // defended square loses material; skip it. Cheap, one attack test, no swap list.
         if (this.qSee && !(flags & FLAG_PROMO) && !(flags & FLAG_EP) && victim) {

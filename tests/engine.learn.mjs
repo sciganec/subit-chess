@@ -2,6 +2,7 @@
  * Learning-protocol tests: determinism, the sign test, and the hill climber.
  */
 import { Position } from '../src/engine/core.mjs';
+import { Engine } from '../src/engine/index.mjs';
 import { Evaluation, DEFAULT_PARAMS, cloneParams } from '../src/engine/evaluate.mjs';
 import {
   makeRng, playGame, compare, summarize, hillClimb, paramsAreUsable, RESULT
@@ -102,6 +103,58 @@ function check(name, cond, extra = '') {
   const b = compare(DEFAULT_PARAMS, cloneParams(DEFAULT_PARAMS), { games: 3, depth: 2, seed: 99 });
   check('the comparison protocol is deterministic',
     a.dS === b.dS && a.games.map((g) => g.line.join(' ')).join('|') === b.games.map((g) => g.line.join(' ')).join('|'));
+}
+
+/* ---------------- terminal adjudication (checkmate/stalemate) ---------------- */
+{
+  // White delivers mate in 1
+  const mateW = playGame(DEFAULT_PARAMS, DEFAULT_PARAMS, {
+    startFen: '6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', depth: 2, maxPlies: 5
+  });
+  check('checkmate is attributed to the winner (white)', mateW.result === RESULT.WHITE && mateW.termination === 'checkmate',
+    `result=${mateW.result} term=${mateW.termination} line=${mateW.line.join(' ')}`);
+
+  // Black is already checkmated (black to move)
+  const mateB = playGame(DEFAULT_PARAMS, DEFAULT_PARAMS, {
+    startFen: 'R5k1/5ppp/8/8/8/8/8/4K3 b - - 0 1', depth: 1, maxPlies: 5
+  });
+  check('checkmate on no-move is attributed correctly', mateB.result === RESULT.WHITE && mateB.termination === 'checkmate',
+    `result=${mateB.result} term=${mateB.termination}`);
+
+  // Stalemate (black to move, no legal moves, not in check)
+  const stale = playGame(DEFAULT_PARAMS, DEFAULT_PARAMS, {
+    startFen: '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1', depth: 1, maxPlies: 5
+  });
+  check('stalemate is a draw', stale.result === RESULT.DRAW && stale.termination === 'stalemate',
+    `result=${stale.result} term=${stale.termination}`);
+}
+
+/* ---------------- repetition history preserved in self-play sync ---------------- */
+{
+  const white = new Engine(DEFAULT_PARAMS, { ttBits: 16, usePlans: false, useMeta: false });
+  const black = new Engine(DEFAULT_PARAMS, { ttBits: 16, usePlans: false, useMeta: false });
+  const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  white.setFEN(startFen);
+  black.setFEN(startFen);
+  // Simulate playGame sync: mover plays, other gets fen+rep.
+  for (let ply = 0; ply < 4; ply++) {
+    const mover = ply % 2 === 0 ? white : black;
+    const other = ply % 2 === 0 ? black : white;
+    const r = mover.search({ depth: 2 });
+    if (!r.move) break;
+    mover.play(r.uci);
+    const rep = { rep: mover.pos.rep.slice(), repHi: mover.pos.repHi.slice(), repLimit: mover.pos.repLimit };
+    other.setFEN(mover.fen);
+    other.pos.rep = rep.rep.slice();
+    other.pos.repHi = rep.repHi.slice();
+    other.pos.repLimit = rep.repLimit;
+  }
+  check('self-play sync preserves repetition stack', white.pos.rep.length === 4 && black.pos.rep.length === 4,
+    `white=${white.pos.rep.length} black=${black.pos.rep.length}`);
+  check('self-play sync keeps rep stacks identical',
+    JSON.stringify(white.pos.rep) === JSON.stringify(black.pos.rep) &&
+    JSON.stringify(white.pos.repHi) === JSON.stringify(black.pos.repHi) &&
+    white.pos.repLimit === black.pos.repLimit);
 }
 
 /* ---------------- start position sanity ---------------- */

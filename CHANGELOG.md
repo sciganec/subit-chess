@@ -13,6 +13,51 @@ Statuses:
 
 ---
 
+## [3.0.15 candidate] — 2026-11-22
+
+Development candidate in progress. No Elo gain has been established; do not claim release strength.
+
+- **Version bump / development start.** Bumped to v3.0.15 candidate after formalizing v3.0.13/v3.0.14 release snapshots. No search/eval default changes in this bump.
+- **Measurement required (67dfd2c).** Root check extension + qsearch mate-delta guard (v3.0.14) are behavior-changing correctness fixes; before any strength claim, run `learn.compare` >= 2 seeds d4/64g against pre-fix baseline (`09706a9`).
+- **Theory/spec familiarization.** Reviewed `docs/theory/` (including UST 101-120) and `c:\Users\sciga\subit-subit\spec\` as research context; theory remains research-only/non-binding, no canonical SUBIT-∞ conformance claim.
+
+## [3.0.14] — 2026-11-22
+
+Formalized release snapshot. Correctness/measurement/search-safety increment. No Elo gain has been established; do not claim release strength.
+
+- **Version bump.** Prepared `v3.0.14` development candidate after pushing `v3.0.13` candidate commits.
+- **Quiet-threat extension candidate (parked, default off).** Added `search.quietThreatExtension` (`enabled:false`, `maxPly:2`, `minVictim:900`) as a tactical search extension for quiet moves attacking queen/major. g9: catches `...b4c5` at d5 (vs d6 baseline) but still misses at d4; node cost +61% at d6 on that case. A/B self-play 64g d4 seed24: `dS 0.000 SE 0.077`, 12W/40D/12L, inconclusive (unchanged after adjudication fix). Default remains off; no Elo claim.
+- **Self-play adjudication fix (measurement correctness).** Fixed `src/engine/learn.mjs` `playGame`: no-legal-move now uses `pos.status()` so checkmate/stalemate are classified correctly; terminal result mapping now reads `status().result` (`white`/`black`/`draw`) instead of the impossible `'win'` value. Fixed `src/engine/core.mjs` `moveToUci/moveToSan` to handle move 0 safely (`0000`/`(none)`), preventing position corruption when search reports no move. Added regression tests in `tests/engine.learn.mjs`. **Impact**: prior `learn.compare()` A/B runs that ended in checkmates were misadjudicated; reruns required before trusting those measurements.
+- **Self-play repetition sync fix (measurement correctness).** Fixed `src/engine/learn.mjs` `playGame`: sync both engines with FEN + repetition stack (`rep/repHi/repLimit`) after each move, and initialize black with `setFEN` (not `pos.setFEN`) so analysis state is rebuilt. Previously `other.setFEN(fen)` wiped repetition history, breaking fivefold/repetition detection and rep-aware search in self-play. Added regression in `tests/engine.learn.mjs`. **Impact**: prior `learn.compare()` A/B runs may have missed repetition adjudications; effect size unknown, but measurements should be rerun when repetition-sensitive.
+- **LMR threat-exempt candidate (parked, default off).** Added `search.lmr.threatExemptMinVictim` (default `0`, disabled). When set (e.g. 900), quiet moves attacking enemy queen/major are not LMR-reduced. Initial A/B results were invalidated by a checkmate-adjudication bug in `src/engine/learn.mjs` (fixed below). Corrected rerun d4 64g: seed25 `dS -0.156 SE 0.077` 8W/38D/18L (reject); seed26 `dS -0.109 SE 0.086` 12W/33D/19L (inconclusive); seed27 `dS -0.016 SE 0.075` 11W/41D/12L (inconclusive). Corrected signal is negative/neutral across 192g; default remains off.
+- **Root check extension + qsearch mate-delta guard (correctness/consistency).** `negamaxRoot` applies `search.checkExtension` on root check-giving moves; qsearch delta pruning is guarded by `alpha < MATE_THRESHOLD` so mating captures are not pruned in near-mate alpha windows. Added gauntlet guard `horizon c3c2 blunder (SF19 g8, d4 guard)` (reject `c3c2`, depth 4) and regression in `tests/engine.audit2.mjs`. `npm test` PASS, gauntlet 11/11 PASS. No Elo gain claim; `learn.compare` >=2 seeds d4/64g still required before any strength claim.
+
+## [3.0.13] — 2026-11-22
+
+Formalized release snapshot. Operationalizes Field Dynamics (`FD-01` through `FD-14`) and mathematical invariants. No Elo gain has been established; no external strength claim.
+
+- **Field Dynamics Module (`src/engine/field.mjs`).**
+  - **Canonical Board Coordinates (`SC-CORE-COORD-001` & `FD-01/02`).** Strict isomorphism between 0x88 square index, canonical coords $(x, y) \in [0, 7]^2$, and linear index $idx \in [0, 63]$ with $y = 7 - (sq \gg 4)$ mapping 0x88 mailbox row to rank coordinates.
+  - **G4 Orthogonal Complex Topology.** Board graph $|V|=64$ vertices, $|E|=112$ orthogonal edges, $|F_{int}|=49$ elementary square faces. Euler characteristic $\chi = V - E + F_{all} = 2$, cycle space dimension $\beta_1 = 49$.
+  - **Discrete Gradient Operator (`FD-05`).** Discrete potential gradient $\text{Grad } \phi(u \to v) = \phi(v) - \phi(u)$ on $G_4$ edges with exact anti-symmetry and zero circulation along arbitrary closed walks.
+  - **Discrete Divergence Operator (`FD-06`).** Nodal flux balance $\text{Div } J(v) = \sum_{e \in out} J(e) - \sum_{e \in in} J(e)$ satisfying the discrete Gauss divergence theorem $\sum_{v \in R} \text{Div } J(v) = \text{Flux}(\partial R)$ on arbitrary subsets of squares.
+  - **Discrete Curl and Circulation Operator (`FD-07`).** Counter-clockwise face curl on 49 elementary faces satisfying the discrete Stokes theorem $\sum_{f \in Z} \text{Curl } J(f) = \text{Circ}(J, \partial Z)$, and the potential field identity $\text{Curl}(\text{Grad } \phi) \equiv 0$ on all 49 faces.
+  - **Influence Vector Tracing & Pinned-Piece Reach (`FD-03` §171).** Geometric influence vectors separated from legal move generation: pinned pieces maintain geometric attack influence across lines while the legal move generator strictly forbids moves off the pin line.
+  - **Channel Independence ("DO NOT COLLAPSE").** White and Black attack, defense, and flux channels are strictly separated in independent buffers.
+- **Engine Integration (`FD-13`).**
+  - Added `Engine.fieldDynamics()` method and integrated `fields` summary into `Engine.analyze()`.
+  - Analytical and observational only: does not alter legal move generation or search decisions (complying with `FD-10 §360` and `ADR 0023`).
+- **Invariant Verification & Testing.**
+  - Added `FD-INV-001` through `FD-INV-010` formal invariants.
+  - Added `tests/engine.field.mjs` test suite; all 26 checks passed in the full suite run on 2026-11-22.
+  - Integrated `verifyFieldInvariants` into `verifyPositionAll()` in `src/engine/verify.mjs`. All 19 `npm test` scripts passed after the verifier follow-up on 2026-11-22.
+- **Verifier completion.** `verifyFieldInvariants()` now executes all ten declared checks, including boundary-of-boundary closure, pinned-piece geometric influence, repeat-build determinism, and complete position-state preservation. The roadmap now states the remaining corpus-wide invariant coverage gap accurately.
+- **External anchor report.** `docs/EXTERNAL_ANCHOR_SF19_2026-11-22.md` records candidate status and explicitly marks the v3.0.11/v3.0.12 Stockfish tables as historical, not v3.0.13 results. No new match was run because this candidate does not change move selection; there is no new Elo result and it is not released.
+- **User documentation.** The console API manual now documents `engine.fieldDynamics()` and the `analyze().fields` summary, including that the output does not affect search or move choice.
+- **TT age diagnostic param (ADR 0022).** Added `search.ttMaxAge` (default `0`) and UCI option `TT.MaxAge`; default behavior unchanged. A/B self-play 64g d4 seed23: `ttMaxAge=1` vs `0` gave `dS -0.203 SE 0.067`, verdict **reject** — confirms ADR 0022.
+- **Gauntlet guard.** Added g9 horizon refutation case (`b4c5` after `d5c6`, depth 6, `score<50`) and `scoreBelow/scoreAbove` support in `bench/gauntlet_strength.mjs`. Gauntlet 10/10 pass.
+- **Eval hook A/B (no default change).** Self-play 64g d4: `kingOpenFile 12 vs 0` `dS +0.063 SE 0.079` inconclusive; `kingAttack 8 vs 0` `dS +0.109 SE 0.083` inconclusive. Defaults unchanged.
+
 ## [3.0.12] — 2026-11-22
 
 Measured post-v3.0.11 search-safety/plumbing increment. No external Elo-gain claim.

@@ -26,8 +26,9 @@ import { allocateTime, updateBank } from './budget.mjs';
 import { explainDecision } from './explain.mjs';
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
+import { buildFieldDynamics, verifyFieldInvariants, FD_INVARIANTS } from './field.mjs';
 
-export const VERSION = '3.0.12';
+export const VERSION = '3.0.15';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -172,11 +173,17 @@ export class Engine {
   /** D(P) = (a*, V, C, Evidence, Alternatives, Confidence) with typed claims and counterfactuals (SCMF §10, §14). */
   explain(opts = {}) { return explainDecision(this, opts); }
 
+  /** Field Dynamics model: geometric attacks, net control potential, flux, grad/div/curl (FD-01..FD-14). */
+  fieldDynamics() {
+    return buildFieldDynamics(this.pos);
+  }
+
   /** Full structural picture: SVF, context, relations, plans, criticality. */
   analyze() {
     if (!this.percept) this.setFEN(this.pos.fen());
     const ev = this.evaluation.structural(this.pos);
     const uncertainty = uncertaintyOf(ev, this.pos, this.percept, this.structure);
+    const fd = this.fieldDynamics();
     // The panel is labelled Pareto, so it must show the Pareto set; the plans
     // dropped by the filter are reported next to the ones rejected earlier
     // (audit v3.0.6 §7.6)
@@ -196,6 +203,14 @@ export class Engine {
       criticality: criticalityVector(this.structure)
         .slice(0, 8)
         .map((c) => ({ sq: squareName(c.sq), color: c.color === WHITE ? 'w' : 'b', q: Number(c.q.toFixed(3)) })),
+      fields: {
+        totalWhiteAttack: fd.summary.totalWhiteAttack,
+        totalBlackAttack: fd.summary.totalBlackAttack,
+        totalWhiteWeight: fd.summary.totalWhiteWeight,
+        totalBlackWeight: fd.summary.totalBlackWeight,
+        maxCurl: fd.summary.maxCurlMagnitude,
+        maxDivergence: fd.summary.maxDivergenceMagnitude
+      },
       legalMoves: this.pos.legalMoves().length,
       plans: kept,
       // Without a search there is no move-quality risk; report the position's
@@ -474,6 +489,7 @@ async function runUci() {
       send(`id name SUBIT-CHESS ${VERSION}`);
       send('id author SUBIT');
       send('option name Hash type spin default 64 min 1 max 1024');
+      send('option name TT.MaxAge type spin default 0 min 0 max 10');
       send('uciok');
       return;
     }
@@ -494,6 +510,7 @@ async function runUci() {
         else if (name === 'nullmove' || name === 'nullmove.enabled' || name === 'nmp') { if (on||off) engine.params.search.nullMove.enabled = on; }
         else if (name === 'see' || name === 'see.enabled') { if (on||off) engine.params.search.see.enabled = on; }
         else if (name === 'see.qsearchprune') { if (on||off) engine.params.search.see.qsearchPrune = on; }
+        else if (name === 'tt.maxage') { const n = Number(value); if (Number.isFinite(n)) { const age = Math.max(0, Math.min(10, n|0)); engine.params.search.ttMaxAge = age; engine.searcher.tt.maxAge = age; } }
         else if (name === 'hash') { const mb = Number(value); if (Number.isFinite(mb) && mb>=1) { /* ignore for now, TT fixed */ } }
       }
       return;
@@ -606,6 +623,7 @@ export function main(argv = process.argv.slice(2)) {
       out.push(`legal   ${a.legalMoves} moves   complexity ${a.complexity.toFixed(3)}   uncertainty ${a.uncertainty.toFixed(3)}`);
       out.push(`U(P)    ${U_TYPES.map((k) => `${U_SYM[k]}=${a.uncertaintyProfile.vector[U_TYPES.indexOf(k)]}`).join(' ')}  driver ${U_SYM[a.uncertaintyProfile.driver]}`);
       out.push(`SVF     ${SVF_COMPONENTS.map((k) => `${k}=${a.vector[k]}`).join(' ')}`);
+      out.push(`fields  W_atk=${a.fields.totalWhiteAttack} B_atk=${a.fields.totalBlackAttack} maxCurl=${a.fields.maxCurl.toFixed(2)} maxDiv=${a.fields.maxDivergence.toFixed(2)}`);
       out.push(`relations ${Object.entries(a.relations).map(([k, v]) => `${k}:${v}`).join(' ')}`);
       out.push(`criticality ${a.criticality.map((c) => `${c.sq}${c.color}:${c.q}`).join(' ')}`);
       out.push('plans:');
@@ -691,3 +709,4 @@ export function main(argv = process.argv.slice(2)) {
 const isCli = typeof process !== 'undefined' && Array.isArray(process.argv) &&
   typeof process.argv[1] === 'string' && /index\.mjs$/.test(process.argv[1]);
 if (isCli) main();
+

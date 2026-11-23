@@ -1,0 +1,12 @@
+﻿import { Engine } from '../src/engine/index.mjs';
+import { moveToUci } from '../src/engine/core.mjs';
+const fen = 'rnb1k2r/pp1pqppp/2P2n2/4N3/1b1QP3/2N5/PPP2PPP/R1B1KB1R b KQkq - 0 8';
+const e = new Engine();
+e.setFEN(fen);
+const pos = e.pos;
+const moves = pos.generateMoves();
+const n = e.searcher.order.scoreMoves(pos, moves, 1, 0, 0, {});
+const buf = e.searcher.order.buffers[1];
+for (let i = 0; i < Math.min(15, n); i++) console.log(i, moveToUci(buf[i]));
+const idx = Array.from({ length: n }, (_, i) => buf[i]).findIndex(m => moveToUci(m) === 'b4c5');
+console.log('b4c5 index', idx);

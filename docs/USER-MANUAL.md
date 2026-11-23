@@ -1,6 +1,6 @@
-# SUBIT-CHESS v3.0.11 — посібник користувача
+# SUBIT-CHESS v3.0.15 — посібник користувача
 
-Документ описує застосунок `src/subit_chess_v3.0.11.html` (інтерфейс українською).
+Документ описує застосунок `src/subit_chess_v3.0.15.html` (інтерфейс українською).
 Позиційна теорія та інваріанти описані в `docs/theory/` (88 документів; нові `81-99/` та
 `article_04.md`/`article_05.md` є research-only), історія змін — у `CHANGELOG.md`.
 
@@ -25,7 +25,7 @@
 
 ## 1. Швидкий старт
 
-Відкрийте файл `src/subit_chess_v3.0.11.html` у браузері (подвійний клік працює: файл
+Відкрийте файл `src/subit_chess_v3.0.15.html` у браузері (подвійний клік працює: файл
 самодостатній, без мережі, без CDN, без збірки).
 
 ```
@@ -277,8 +277,9 @@
 __subit.fen                  // поточний FEN
 __subit.history              // масив ходів (об'єкти з uci/san)
 __subit.move('e2e4')         // зробити хід UCI → true/false
-__subit.analyze()            // повний зріз: context, vector, plans, eval, meta
+__subit.analyze()            // повний зріз: context, vector, plans, eval, meta, fields
 __subit.engine               // екземпляр Engine
+__subit.engine.fieldDynamics() // канали впливу та grad/div/curl поточної позиції
 __subit.engine.search({ depth: 6 })   // { move, uci, san, score, depth, nodes, nps, pv, pvSan, risk, ... }
 __subit.engine.perft(4)      // 197281
 __subit.engine.selfPlay(40)  // партія «двигун проти себе» у пам'яті
@@ -293,6 +294,11 @@ __subit.render()             // перемалювати дошку й пане�
 const r = __subit.engine.search({ depth: 8 });
 console.log(r.san, r.score, r.depth, r.nodes, r.pvSan.join(' '));
 ```
+
+`fieldDynamics()` повертає окремі масиви впливу білих і чорних та похідні поля на дошці.
+`analyze().fields` містить коротке зведення: сумарний вплив сторін, найбільші curl і
+дивергенцію. Ці дані описують геометричну структуру позиції й не змінюють оцінку пошуку
+або вибір ходу.
 
 ---
 

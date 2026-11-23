@@ -6,12 +6,12 @@ UI that shows what the engine is actually thinking.
 
 Single-file HTML — no build step for the end user, no server, no CDN, no network access.
 
-**Current release: v3.0.11** — measured engineering increment with a research-only theory addendum.
-Release dossier: [`ver/subit_chess_v3.0.11/RELEASE.md`](ver/subit_chess_v3.0.11/RELEASE.md).
+**Development candidate: v3.0.14** — in progress; no Elo gain claim until measured under an accepted external protocol.
+Candidate notes: [`CHANGELOG.md`](CHANGELOG.md) — [3.0.15 candidate].
 
 ## Quick start
 
-Open `src/subit_chess_v3.0.11.html` in any modern browser (double-click works; the file is
+Open `src/subit_chess_v3.0.15.html` in any modern browser (double-click works; the file is
 fully self-contained).
 
 ```
@@ -52,6 +52,7 @@ the artifact stays a single HTML file.
 | `learn.mjs` | offline self-play harness with independent observations, colour balance and validation split |
 | `topology.mjs` | bounded local transition graph and cycle detection prototype |
 | `differential.mjs` | bounded SUBIT gradient-profile prototype |
+| `field.mjs` | geometric influence channels and discrete board gradient, divergence and curl |
 | `verify.mjs` | invariant checks over the pipeline (`SVF-INV-*`, `SEARCH-INV-*`) |
 | `index.mjs` | `Engine` facade and in-process `Memory`: `setFEN / legalMoves / analyze / budget / search / play / perft / selfPlay` |
 
@@ -113,12 +114,12 @@ node bench/gate7.mjs --depth 4 --mates --out results/gate7-targeted-vs-uniform-f
 ## Repository layout
 
 ```
-src/engine/     ES-module engine core (15 modules)
+src/engine/     ES-module engine core (16 modules)
 build/          shell.html (UI) + bundle.mjs (inlines src/engine into one HTML)
-src/            subit_chess_v3.0.11.html ← shipped single-file engine (built)
+src/            subit_chess_v3.0.14.html  — shipped single-file engine (built)
                 subit_chess_v2.2.0.html ← legacy v2 engine (diffusion/ρ_s, kept for reference)
 index.html      copy of the shipped v3 file (convenience)
-tests/          core.perft, engine.smoke/plans/eval/verify/topology/differential/audit/
+tests/          core.perft, engine.smoke/plans/eval/verify/topology/differential/field/audit/
                 audit2/audit309/tactics/driver/learn/uncertainty/gate7/worker, app.dom (jsdom UI)
 bench/          match.mjs ablation harness, gate7.mjs verification harness, fens/
 docs/           USER-MANUAL.md, ROADMAP.md, DECISIONS.md, theory/ (52 specs), spec/, papers/
@@ -130,8 +131,8 @@ runners/        legacy v1.9.1 Node CLI (not used by v3 — see "Honest limitatio
 
 ```bash
 npm install                # only devDependency: jsdom (UI smoke test)
-npm run build              # node build/bundle.mjs → src/subit_chess_v3.0.11.html + index.html
-npm test                   # v3 suite: 17 files incl. audit309, tactics, topology, differential, gate7, worker + UI
+npm run build              # node build/bundle.mjs → versioned src HTML + index.html
+npm test                   # v3 suite: 19 files incl. field, audit311, tactics, gate7, worker + UI
 npm run test:engine        # engine only
 npm run test:app           # worker embedding + jsdom UI smoke test
 npm run test:worker        # the embedded worker source runs and answers
@@ -139,7 +140,7 @@ npm run test:legacy        # v2.2.0 single-file suite (128 assertions, kept for 
 ```
 
 `npm run build` is deterministic: the bundled HTML is byte-identical across runs, and
-`src/subit_chess_v3.0.11.html` and `index.html` always match.
+The current versioned `src` HTML and `index.html` always match.
 
 ## Measured status (honest)
 

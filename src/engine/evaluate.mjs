@@ -74,8 +74,9 @@ export const DEFAULT_PARAMS = {
 
   // search policy parameters (doc 05 §15, doc 08)
   search: {
+    ttMaxAge: 0, // ADR 0022: keep 0 by default; A/B only
     nullMove: { enabled: true, minDepth: 3, reduction: 2, maxReduction: 3 },
-    lmr: { enabled: true, minDepth: 3, minMoveIndex: 3, reduction: 1, extraMoveIndex: 6, extraReduction: 0, maxReduction: 1 },
+    lmr: { enabled: true, minDepth: 3, minMoveIndex: 3, reduction: 1, extraMoveIndex: 6, extraReduction: 0, maxReduction: 1, threatExemptMinVictim: 0 },
     // Futility is only sound at the frontier: a pruned quiet move can be a mate
     // in one, so pruning at depth 1..3 hides forced mates (measured on the
     // SmallFish game: a mate in 2 was reported as -471 cp at depth 8 with
@@ -91,6 +92,7 @@ export const DEFAULT_PARAMS = {
     historyMalus: { enabled: false },                      // penalise quiet moves tried before a quiet cutoff move                   // SEE-lite capture pruning in quiescence
     structExtension: { enabled: false, maxPly: 8 },   // SEARCH-14: pawn to 7th extends one ply
     extensionBudget: 6,
+    quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },
     aspiration: { window: 25, widen: 40, maxWiden: 8 },
     maxDepth: 64,
     nodeLimit: 0,          // 0 = unlimited

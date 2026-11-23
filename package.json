@@ -1,6 +1,6 @@
 {
   "name": "subit-chess",
-  "version": "3.0.12",
+  "version": "3.0.15",
   "description": "Browser chess engine v3: modular ES-module core, SVF positional vector, structural plans, budgeted alpha-beta search; ships as a single offline HTML file",
   "keywords": [
     "chess",
@@ -25,8 +25,8 @@
   "bugs": {
     "url": "https://github.com/sciganec/subit-chess/issues"
   },
-  "main": "src/subit_chess_v3.0.12.html",
-  "browser": "src/subit_chess_v3.0.12.html",
+  "main": "src/subit_chess_v3.0.15.html",
+  "browser": "src/subit_chess_v3.0.15.html",
   "files": [
     "src/",
     "build/",
@@ -43,8 +43,8 @@
   },
   "scripts": {
     "build": "node build/bundle.mjs",
-    "test": "node tests/core.perft.mjs && node tests/core.zobrist.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.topology.mjs && node tests/engine.differential.mjs && node tests/engine.audit.mjs && node tests/engine.audit2.mjs && node tests/engine.audit309.mjs && node tests/engine.audit311.mjs && node tests/engine.tactics.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs && node tests/gate7.mjs && node tests/engine.budget.mjs && node tests/scmf.invariants.mjs && node tests/engine.explain.mjs && node tests/engine.belnap.mjs && node tests/engine.evolve.mjs && node tests/scmf.metric.mjs && node tests/scmf.redundancy.mjs && node tests/engine.worker.mjs && node tests/app.dom.mjs",
-    "test:engine": "node tests/core.perft.mjs && node tests/core.zobrist.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.topology.mjs && node tests/engine.differential.mjs && node tests/engine.audit.mjs && node tests/engine.audit2.mjs && node tests/engine.audit309.mjs && node tests/engine.audit311.mjs && node tests/engine.tactics.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs && node tests/gate7.mjs && node tests/engine.budget.mjs && node tests/scmf.invariants.mjs && node tests/engine.explain.mjs && node tests/engine.belnap.mjs && node tests/engine.evolve.mjs && node tests/scmf.metric.mjs && node tests/scmf.redundancy.mjs",
+    "test": "node tests/core.perft.mjs && node tests/core.zobrist.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.topology.mjs && node tests/engine.differential.mjs && node tests/engine.audit.mjs && node tests/engine.audit2.mjs && node tests/engine.audit309.mjs && node tests/engine.audit311.mjs && node tests/engine.tactics.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs && node tests/gate7.mjs && node tests/engine.budget.mjs && node tests/scmf.invariants.mjs && node tests/engine.explain.mjs && node tests/engine.belnap.mjs && node tests/engine.evolve.mjs && node tests/scmf.metric.mjs && node tests/scmf.redundancy.mjs && node tests/engine.field.mjs && node tests/engine.worker.mjs && node tests/app.dom.mjs",
+    "test:engine": "node tests/core.perft.mjs && node tests/core.zobrist.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.topology.mjs && node tests/engine.differential.mjs && node tests/engine.audit.mjs && node tests/engine.audit2.mjs && node tests/engine.audit309.mjs && node tests/engine.audit311.mjs && node tests/engine.tactics.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs && node tests/gate7.mjs && node tests/engine.budget.mjs && node tests/scmf.invariants.mjs && node tests/engine.explain.mjs && node tests/engine.belnap.mjs && node tests/engine.evolve.mjs && node tests/scmf.metric.mjs && node tests/scmf.redundancy.mjs && node tests/engine.field.mjs",
     "test:app": "node tests/engine.worker.mjs && node tests/app.dom.mjs",
     "test:worker": "node tests/engine.worker.mjs",
     "test:perft": "node tests/core.perft.mjs",
@@ -52,6 +52,7 @@
     "test:invariants": "node tests/engine.verify.mjs",
     "test:topology": "node tests/engine.topology.mjs",
     "test:differential": "node tests/engine.differential.mjs",
+    "test:field": "node tests/engine.field.mjs",
     "test:audit": "node tests/engine.audit.mjs",
     "test:audit2": "node tests/engine.audit2.mjs",
     "test:audit309": "node tests/engine.audit309.mjs",
@@ -63,6 +64,7 @@
     "search:engine": "node src/engine/index.mjs search",
     "selfplay:engine": "node src/engine/index.mjs selfplay",
     "match:engine": "node bench/match.mjs --a base --b plain --games 20 --depth 5 --seed 7",
+    "match:versions": "node bench/version_match.mjs",
     "match:ablate": "node bench/match.mjs --a base --b nostruct --games 40 --depth 5 --seed 7",
     "match:depth": "node bench/match.mjs --a base@5 --b base@4 --games 40 --depth 5 --seed 7",
     "clean": "node -e \"require('fs').rmSync('results',{recursive:true,force:true});require('fs').mkdirSync('results',{recursive:true});require('fs').writeFileSync('results/.gitkeep','')\"",

@@ -92,11 +92,13 @@ export function encodeMove(from, to, promo = 0, flags = 0) {
 }
 
 export function moveToUci(m) {
+  if (!m) return '0000';
   const promo = MOVE_PROMO(m);
   return squareName(MOVE_FROM(m)) + squareName(MOVE_TO(m)) + (promo ? ' pnbrq'[promo] : '');
 }
 
 export function moveToSan(pos, m) {
+  if (!m) return '(none)';
   const from = MOVE_FROM(m);
   const to = MOVE_TO(m);
   const flags = MOVE_FLAGS(m);
