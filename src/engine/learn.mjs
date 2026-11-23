@@ -92,7 +92,7 @@ export function playGame(whiteParams, blackParams, opts = {}) {
   const black = new Engine(blackParams, { ttBits: 16, usePlans: false, useMeta: false });
 
   white.setFEN(startFen);
-  black.pos.setFEN(white.fen);
+  black.setFEN(startFen);
 
   const line = [];
   let termination = 'max plies';
@@ -113,10 +113,15 @@ export function playGame(whiteParams, blackParams, opts = {}) {
     }
     line.push(r.uci);
     mover.play(r.uci);
-    // keep both engines on the same position
+    // keep both engines on the same position and game history (ADR 0016):
+    // bare setFEN() wipes rep, breaking repetition detection in self-play.
     const fen = mover.fen;
+    const rep = { rep: mover.pos.rep.slice(), repHi: mover.pos.repHi.slice(), repLimit: mover.pos.repLimit };
     const other = (ply % 2 === 0) ? black : white;
-    if (other.fen !== fen) other.setFEN(fen);
+    other.setFEN(fen);
+    other.pos.rep = rep.rep.slice();
+    other.pos.repHi = rep.repHi.slice();
+    other.pos.repLimit = rep.repLimit;
 
     const st = mover.pos.status();
     if (st && st.over) {

@@ -2,6 +2,7 @@
  * Learning-protocol tests: determinism, the sign test, and the hill climber.
  */
 import { Position } from '../src/engine/core.mjs';
+import { Engine } from '../src/engine/index.mjs';
 import { Evaluation, DEFAULT_PARAMS, cloneParams } from '../src/engine/evaluate.mjs';
 import {
   makeRng, playGame, compare, summarize, hillClimb, paramsAreUsable, RESULT
@@ -126,6 +127,34 @@ function check(name, cond, extra = '') {
   });
   check('stalemate is a draw', stale.result === RESULT.DRAW && stale.termination === 'stalemate',
     `result=${stale.result} term=${stale.termination}`);
+}
+
+/* ---------------- repetition history preserved in self-play sync ---------------- */
+{
+  const white = new Engine(DEFAULT_PARAMS, { ttBits: 16, usePlans: false, useMeta: false });
+  const black = new Engine(DEFAULT_PARAMS, { ttBits: 16, usePlans: false, useMeta: false });
+  const startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  white.setFEN(startFen);
+  black.setFEN(startFen);
+  // Simulate playGame sync: mover plays, other gets fen+rep.
+  for (let ply = 0; ply < 4; ply++) {
+    const mover = ply % 2 === 0 ? white : black;
+    const other = ply % 2 === 0 ? black : white;
+    const r = mover.search({ depth: 2 });
+    if (!r.move) break;
+    mover.play(r.uci);
+    const rep = { rep: mover.pos.rep.slice(), repHi: mover.pos.repHi.slice(), repLimit: mover.pos.repLimit };
+    other.setFEN(mover.fen);
+    other.pos.rep = rep.rep.slice();
+    other.pos.repHi = rep.repHi.slice();
+    other.pos.repLimit = rep.repLimit;
+  }
+  check('self-play sync preserves repetition stack', white.pos.rep.length === 4 && black.pos.rep.length === 4,
+    `white=${white.pos.rep.length} black=${black.pos.rep.length}`);
+  check('self-play sync keeps rep stacks identical',
+    JSON.stringify(white.pos.rep) === JSON.stringify(black.pos.rep) &&
+    JSON.stringify(white.pos.repHi) === JSON.stringify(black.pos.repHi) &&
+    white.pos.repLimit === black.pos.repLimit);
 }
 
 /* ---------------- start position sanity ---------------- */
