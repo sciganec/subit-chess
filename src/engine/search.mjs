@@ -35,57 +35,66 @@ export const TT_UPPER = 2;
 const EMPTY_KILLER = [0, 0];
 const SEE_VAL = [0, 100, 320, 330, 500, 900, 20000];
 
-function smallestAttacker(pos, to, side, occ) {
-  // pawns
+const PAWN_DF = [-1, 1];
+const KING_STEPS = [-17, -16, -15, -1, 1, 15, 16, 17];
+// scratch for see(): squares already used up in the exchange (indexed 0x88, cleared after each call)
+const SEE_GONE = new Uint8Array(128);
+const SEE_LIST = new Int32Array(40);
+const SEE_GAIN = new Int32Array(40);
+
+/** Packed result (from << 3 | piece) of the least valuable attacker of `to` for `side`, or -1. No allocation. */
+function smallestAttacker(pos, to, side) {
+  const board = pos.board;
   const pawnFromDir = side === WHITE ? 16 : -16; // attackers are behind target from side's perspective
-  for (const df of [-1, 1]) {
-    const from = to + pawnFromDir + df;
+  for (let k = 0; k < 2; k++) {
+    const from = to + pawnFromDir + PAWN_DF[k];
     if (from & 0x88) continue;
-    const p = pos.board[from];
-    if (occ[from] && p && (p >> 3) === side && (p & 7) === PAWN) return { from, piece: PAWN };
+    const p = board[from];
+    if (p && !SEE_GONE[from] && (p >> 3) === side && (p & 7) === PAWN) return (from << 3) | PAWN;
   }
-  for (const d of KNIGHT_DELTAS) {
-    const from = to + d;
+  for (let k = 0; k < KNIGHT_DELTAS.length; k++) {
+    const from = to + KNIGHT_DELTAS[k];
     if (from & 0x88) continue;
-    const p = pos.board[from];
-    if (occ[from] && p && (p >> 3) === side && (p & 7) === KNIGHT) return { from, piece: KNIGHT };
+    const p = board[from];
+    if (p && !SEE_GONE[from] && (p >> 3) === side && (p & 7) === KNIGHT) return (from << 3) | KNIGHT;
   }
-  for (const d of BISHOP_DIRS) {
+  for (let k = 0; k < BISHOP_DIRS.length; k++) {
+    const d = BISHOP_DIRS[k];
     let from = to + d;
     while ((from & 0x88) === 0) {
-      if (occ[from]) {
-        const p = pos.board[from];
-        if (p && (p >> 3) === side) {
+      const p = board[from];
+      if (p && !SEE_GONE[from]) {
+        if ((p >> 3) === side) {
           const pt = p & 7;
-          if (pt === BISHOP || pt === QUEEN) return { from, piece: pt };
+          if (pt === BISHOP || pt === QUEEN) return (from << 3) | pt;
         }
         break;
       }
       from += d;
     }
   }
-  for (const d of ROOK_DIRS) {
+  for (let k = 0; k < ROOK_DIRS.length; k++) {
+    const d = ROOK_DIRS[k];
     let from = to + d;
     while ((from & 0x88) === 0) {
-      if (occ[from]) {
-        const p = pos.board[from];
-        if (p && (p >> 3) === side) {
+      const p = board[from];
+      if (p && !SEE_GONE[from]) {
+        if ((p >> 3) === side) {
           const pt = p & 7;
-          if (pt === ROOK || pt === QUEEN) return { from, piece: pt };
+          if (pt === ROOK || pt === QUEEN) return (from << 3) | pt;
         }
         break;
       }
       from += d;
     }
   }
-  for (let dr = -1; dr <= 1; dr++) for (let df = -1; df <= 1; df++) {
-    if (!dr && !df) continue;
-    const from = to + dr * 16 + df;
+  for (let k = 0; k < 8; k++) {
+    const from = to + KING_STEPS[k];
     if (from & 0x88) continue;
-    const p = pos.board[from];
-    if (occ[from] && p && (p >> 3) === side && (p & 7) === KING) return { from, piece: KING };
+    const p = board[from];
+    if (p && !SEE_GONE[from] && (p >> 3) === side && (p & 7) === KING) return (from << 3) | KING;
   }
-  return null;
+  return -1;
 }
 
 /** Max material value of enemy piece attacked by `piece` on `to` (quiet-move threat heuristic). */
@@ -141,32 +150,33 @@ export function see(pos, move) {
   const from = MOVE_FROM(move);
   const to = MOVE_TO(move);
   const flags = MOVE_FLAGS(move);
-  let victimPiece = (flags & FLAG_EP) ? PAWN : (pos.board[to] ? (pos.board[to] & 7) : 0);
+  const victimPiece = (flags & FLAG_EP) ? PAWN : (pos.board[to] ? (pos.board[to] & 7) : 0);
   let gain0 = SEE_VAL[victimPiece];
   if (flags & FLAG_PROMO) gain0 += SEE_VAL[MOVE_PROMO(move)] - SEE_VAL[PAWN];
-  let attacker = (flags & FLAG_PROMO) ? MOVE_PROMO(move) : (pos.board[from] & 7);
-  const gain = [gain0];
-  const occ = new Uint8Array(128);
-  for (let i = 0; i < 128; i++) occ[i] = pos.board[i] ? 1 : 0;
-  occ[from] = 0;
+  const gain = SEE_GAIN;
+  gain[0] = gain0;
+  let nGone = 0;
+  SEE_GONE[from] = 1; SEE_LIST[nGone++] = from;
   if (flags & FLAG_EP) {
     const capSq = to + (pos.turn === WHITE ? 16 : -16);
-    occ[capSq] = 0;
+    SEE_GONE[capSq] = 1; SEE_LIST[nGone++] = capSq;
   }
   let side = opposite(pos.turn);
   let depth = 0;
-  let cur = attacker;
+  let cur = (flags & FLAG_PROMO) ? MOVE_PROMO(move) : (pos.board[from] & 7);
   while (true) {
     depth++;
     gain[depth] = SEE_VAL[cur] - gain[depth - 1];
     if (Math.max(-gain[depth - 1], gain[depth]) < 0) break;
-    const att = smallestAttacker(pos, to, side, occ);
-    if (!att) break;
-    occ[att.from] = 0;
-    cur = att.piece;
+    const att = smallestAttacker(pos, to, side);
+    if (att < 0) break;
+    const af = att >> 3;
+    SEE_GONE[af] = 1; SEE_LIST[nGone++] = af;
+    cur = att & 7;
     side ^= 1;
     if (depth > 31) break;
   }
+  for (let i = 0; i < nGone; i++) SEE_GONE[SEE_LIST[i]] = 0;
   while (--depth > 0) gain[depth - 1] = -Math.max(-gain[depth - 1], gain[depth]);
   return gain[0];
 }
