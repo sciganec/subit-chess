@@ -25,6 +25,8 @@
  * deserves.
  */
 
+import { classifyTrace } from './belnap.mjs';
+
 export const BUDGET_DEFAULTS = Object.freeze({
   softFrac: 0.6,        // share of the allowance after which a stable decision may stop
   hardFrac: 2.0,        // hard cap as a multiple of the allowance
@@ -34,7 +36,9 @@ export const BUDGET_DEFAULTS = Object.freeze({
   stableScoreCp: 30,    // drift between iterations that still counts as stable
   clearSpreadCp: 80,    // gap best vs second-best root move that makes the choice clear
   minStableIters: 2,    // the root move must survive this many consecutive iterations
-  growth: 2.2           // expected cost ratio of the next iteration over the last one
+  growth: 2.2,          // expected cost ratio of the next iteration over the last one
+  omegaGate: false,     // SUBIT Ω proxy: a CYCLIC or CHAOTIC trace of iteration scores is not a settled decision
+  omegaWindow: 5        // number of last iteration scores the classifier reads
 });
 
 const finite = (x, d) => (typeof x === 'number' && Number.isFinite(x) ? x : d);
@@ -77,6 +81,13 @@ export function decisionStability(history, params = BUDGET_DEFAULTS) {
   }
   // 2. bound type: a bound is not a score (SEARCH-INV-002)
   if (last.flag !== 0 && last.flag != null) return { stable: false, instability: 0.8, reason: 'bound, not exact' };
+  // 2b. Ω proxy (SPEC §7): scores that keep flipping direction or swing widely have not converged, whatever the
+  // last two iterations say. Uncertainty never lowers the effort (docs 17, 37 §21, 39 §11).
+  if (p.omegaGate) {
+    const scores = history.slice(-p.omegaWindow).map((h) => finite(h.score, 0));
+    const o = classifyTrace(scores);
+    if (o.omega === 'CYCLIC' || o.omega === 'CHAOTIC') return { stable: false, instability: 0.7, reason: 'omega ' + o.omega };
+  }
   // 3. score drift between the last two completed iterations
   const drift = Math.abs(finite(last.score, 0) - finite(history[n - 2].score, 0));
   if (drift > p.stableScoreCp) return { stable: false, instability: Math.min(1, drift / (4 * p.stableScoreCp)), reason: 'score drift' };

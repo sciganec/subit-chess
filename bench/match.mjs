@@ -145,6 +145,7 @@ export const CONFIGS = {
   seeprune: { label: 'SEE pruning of losing captures (depth<=4, 100cp/ply)', params: { search: { seePrune: { enabled: true } } }, opts: {} },
   kingatk: { label: 'kingAttack 8 (main hook)', params: { eval: { kingAttack: 8 } }, opts: {} },
   nokof: { label: 'kingOpenFile off (main default is 12)', params: { eval: { kingOpenFile: 0 } }, opts: {} },
+  omega: { label: 'Ω gate on the stop rule (cyclic/chaotic score trace is not stable)', params: { search: { budgetOpts: { omegaGate: true } } }, opts: {} },
   lmrlog: { label: 'log-table late move reductions', params: { search: { lmrLog: { enabled: true } } }, opts: {} },
   lmp: { label: 'late move pruning (depth<=3, 3+d^2)', params: { search: { lmp: { enabled: true } } }, opts: {} },
   iir: { label: 'internal iterative reduction (no TT move, depth>=4)', params: { search: { iir: { enabled: true } } }, opts: {} },

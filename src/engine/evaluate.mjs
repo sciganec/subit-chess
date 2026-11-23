@@ -86,6 +86,7 @@ export const DEFAULT_PARAMS = {
     rfp: { enabled: true, margin: 120, maxDepth: 3 },      // reverse futility (v3.0.9: +64 Elo [+8,+125], 120 games)
     qSee: { enabled: false, slack: 50 },
     seePrune: { enabled: false, maxDepth: 4, margin: 100 },
+    budgetOpts: null,   // overrides of BUDGET_DEFAULTS for the stop rule (e.g. { omegaGate: true })
     lmrLog: { enabled: false, base: 0.75, div: 2.25 },     // log(depth)*log(move index) reduction table (v3.0.12 experiment)
     lmp: { enabled: false, maxDepth: 3, base: 3 },         // late move pruning of quiet moves (v3.0.12 experiment)
     iir: { enabled: false, minDepth: 4 },                  // internal iterative reduction when there is no TT move
@@ -225,6 +226,7 @@ const PST_CHARS = ' PNBRQK';
 
 function buildPieceSquareTables(params) {
   const tables = [null];   // index 0 unused
+  const pd = params.pstDelta || null;
   // flat copies: `mid[t * 128 + sq]` avoids the double indirection of
   // `tables[t].mid[sq]` in the leaf loop (measured: 42% of search time there)
   const mid = new Int32Array(7 * 128);
@@ -240,8 +242,12 @@ function buildPieceSquareTables(params) {
       const r = sq >> 4, f = sq & 7;
       const idx = r * 8 + f;
       const v = t === KING ? 0 : mat;
-      m[sq] = v + pst[idx];
-      e[sq] = v + (t === KING ? KING_ENDGAME[idx] : pst[idx]);
+      // pstDelta: optional learned correction (bench/texel); { mid: {P:[64],...}, end: {...} } in the same
+      // rank-major order as PST. Absent in the shipped defaults, so nothing changes unless it is set.
+      const dm = pd && pd.mid && pd.mid[ch] ? pd.mid[ch][idx] || 0 : 0;
+      const de = pd && pd.end && pd.end[ch] ? pd.end[ch][idx] || 0 : 0;
+      m[sq] = v + pst[idx] + dm;
+      e[sq] = v + (t === KING ? KING_ENDGAME[idx] : pst[idx]) + de;
       mid[t * 128 + sq] = m[sq];
       end[t * 128 + sq] = e[sq];
     }
@@ -258,7 +264,7 @@ let TABLES_SIG = '';
 
 function tablesSig(params) {
   const m = params && params.material ? params.material : DEFAULT_PARAMS.material;
-  return `${m.P}|${m.N}|${m.B}|${m.R}|${m.Q}`;
+  return `${m.P}|${m.N}|${m.B}|${m.R}|${m.Q}|${params && params.pstRev ? params.pstRev : 0}`;
 }
 
 function tables(params) {

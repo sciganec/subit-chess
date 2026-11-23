@@ -630,7 +630,7 @@ export class Searcher {
         if (rootMoves.length === 1 && depth >= 3) break;
         const now = Date.now();
         const verdict = shouldStop({ elapsedMs: now - t0, softMs: budget.softMs, hardMs: budget.hardMs,
-          lastIterMs: now - iterStart, history });
+          lastIterMs: now - iterStart, history }, this.params.search.budgetOpts || undefined);
         if (verdict.stop) { this.budgetReason = verdict.reason; break; }
       }
     }
