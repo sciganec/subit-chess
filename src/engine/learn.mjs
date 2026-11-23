@@ -101,7 +101,16 @@ export function playGame(whiteParams, blackParams, opts = {}) {
   for (let ply = 0; ply < maxPlies; ply++) {
     const mover = (ply % 2 === 0) ? white : black;
     const r = mover.search({ depth });
-    if (!r.move) { termination = 'no legal move'; break; }
+    if (!r.move) {
+      const st = mover.pos.status();
+      if (st && st.over) {
+        termination = st.reason || 'no legal move';
+        result = st.result === 'white' ? RESULT.WHITE : st.result === 'black' ? RESULT.BLACK : RESULT.DRAW;
+      } else {
+        termination = 'no legal move';
+      }
+      break;
+    }
     line.push(r.uci);
     mover.play(r.uci);
     // keep both engines on the same position
@@ -112,9 +121,7 @@ export function playGame(whiteParams, blackParams, opts = {}) {
     const st = mover.pos.status();
     if (st && st.over) {
       termination = st.reason || st.result;
-      result = st.result === 'win' ? (ply % 2 === 0 ? RESULT.WHITE : RESULT.BLACK)
-        : st.result === 'draw' ? RESULT.DRAW
-          : (ply % 2 === 0 ? RESULT.BLACK : RESULT.WHITE);
+      result = st.result === 'white' ? RESULT.WHITE : st.result === 'black' ? RESULT.BLACK : RESULT.DRAW;
       break;
     }
   }

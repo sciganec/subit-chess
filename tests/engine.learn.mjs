@@ -104,6 +104,30 @@ function check(name, cond, extra = '') {
     a.dS === b.dS && a.games.map((g) => g.line.join(' ')).join('|') === b.games.map((g) => g.line.join(' ')).join('|'));
 }
 
+/* ---------------- terminal adjudication (checkmate/stalemate) ---------------- */
+{
+  // White delivers mate in 1
+  const mateW = playGame(DEFAULT_PARAMS, DEFAULT_PARAMS, {
+    startFen: '6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', depth: 2, maxPlies: 5
+  });
+  check('checkmate is attributed to the winner (white)', mateW.result === RESULT.WHITE && mateW.termination === 'checkmate',
+    `result=${mateW.result} term=${mateW.termination} line=${mateW.line.join(' ')}`);
+
+  // Black is already checkmated (black to move)
+  const mateB = playGame(DEFAULT_PARAMS, DEFAULT_PARAMS, {
+    startFen: 'R5k1/5ppp/8/8/8/8/8/4K3 b - - 0 1', depth: 1, maxPlies: 5
+  });
+  check('checkmate on no-move is attributed correctly', mateB.result === RESULT.WHITE && mateB.termination === 'checkmate',
+    `result=${mateB.result} term=${mateB.termination}`);
+
+  // Stalemate (black to move, no legal moves, not in check)
+  const stale = playGame(DEFAULT_PARAMS, DEFAULT_PARAMS, {
+    startFen: '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1', depth: 1, maxPlies: 5
+  });
+  check('stalemate is a draw', stale.result === RESULT.DRAW && stale.termination === 'stalemate',
+    `result=${stale.result} term=${stale.termination}`);
+}
+
 /* ---------------- start position sanity ---------------- */
 {
   const p = new Position();
