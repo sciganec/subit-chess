@@ -28,6 +28,7 @@ import {
   buildFieldDynamics, verifyFieldInvariants, FD_INVARIANTS
 } from '../src/engine/field.mjs';
 import { verifyMakeUnmake, report } from '../src/engine/verify.mjs';
+import { Engine } from '../src/engine/index.mjs';
 
 let fails = 0;
 function check(name, cond, extra = '') {
@@ -265,6 +266,30 @@ const ROOK_FEN  = '7k/8/8/8/8/8/8/R6K w - - 0 1';
     }
   }
   check('verifyFieldInvariants passes on all test FENs', allInvariantsPass);
+}
+
+/* ---------------- 10. No-search-effect guard (analytical-only FD) ---------------- */
+{
+  // FD is observational/analytical (v3.0.13). It must not change search results.
+  const FENS = [
+    START_FEN,
+    'r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1',
+    '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1'
+  ];
+  for (const fen of FENS) {
+    const e = new Engine();
+    e.setFEN(fen);
+    const before = e.search({ depth: 3, timeMs: 1000 });
+    const fd = e.fieldDynamics();
+    const an = e.analyze({ depth: 0 }).fields;
+    const after = e.search({ depth: 3, timeMs: 1000 });
+    check(`FD no-search-effect move (${fen.slice(0, 20)}...)`, before.move === after.move,
+      `before=${moveToUci(before.move)} after=${moveToUci(after.move)}`);
+    check(`FD no-search-effect score (${fen.slice(0, 20)}...)`, before.score === after.score,
+      `before=${before.score} after=${after.score}`);
+    check(`FD fieldDynamics/analyze.fields present (${fen.slice(0, 20)}...)`,
+      !!fd && !!fd.summary && !!an && typeof an === 'object');
+  }
 }
 
 if (fails > 0) {
