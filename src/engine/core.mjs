@@ -478,29 +478,30 @@ export class Position {
 
   isAttacked(sq, byColor) {
     const b = this.board;
+    const base = byColor << 3;
     // pawns
     if (byColor === WHITE) {
-      let t = sq + 17; if ((t & 0x88) === 0 && b[t] === makePiece(PAWN, WHITE)) return true;
-      t = sq + 15;     if ((t & 0x88) === 0 && b[t] === makePiece(PAWN, WHITE)) return true;
+      let t = sq + 17; if ((t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
+      t = sq + 15;     if ((t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
     } else {
-      let t = sq - 17; if ((t & 0x88) === 0 && b[t] === makePiece(PAWN, BLACK)) return true;
-      t = sq - 15;     if ((t & 0x88) === 0 && b[t] === makePiece(PAWN, BLACK)) return true;
+      let t = sq - 17; if ((t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
+      t = sq - 15;     if ((t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
     }
     // knights
-    const n = makePiece(KNIGHT, byColor);
+    const n = base | KNIGHT;
     for (let i = 0; i < KNIGHT_DELTAS.length; i++) {
       const t = sq + KNIGHT_DELTAS[i];
       if ((t & 0x88) === 0 && b[t] === n) return true;
     }
     // king
-    const k = makePiece(KING, byColor);
+    const k = base | KING;
     for (let i = 0; i < KING_DELTAS.length; i++) {
       const t = sq + KING_DELTAS[i];
       if ((t & 0x88) === 0 && b[t] === k) return true;
     }
     // bishops / queens
-    const bo = makePiece(BISHOP, byColor);
-    const qu = makePiece(QUEEN, byColor);
+    const bo = base | BISHOP;
+    const qu = base | QUEEN;
     for (let i = 0; i < BISHOP_DIRS.length; i++) {
       const d = BISHOP_DIRS[i];
       let t = sq + d;
@@ -511,7 +512,7 @@ export class Position {
       }
     }
     // rooks / queens
-    const ro = makePiece(ROOK, byColor);
+    const ro = base | ROOK;
     for (let i = 0; i < ROOK_DIRS.length; i++) {
       const d = ROOK_DIRS[i];
       let t = sq + d;
