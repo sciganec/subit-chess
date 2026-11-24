@@ -477,6 +477,57 @@ export class Position {
 
   /* ---------------- attacks ---------------- */
 
+  /** FD-inspired geometric attack weight on sq by byColor (P=1,N=3.2,B=3.3,R=5,Q=9,K=2). */
+  attackWeight(sq, byColor) {
+    const b = this.board;
+    const base = byColor << 3;
+    let w = 0;
+    // pawns
+    if (byColor === WHITE) {
+      let t = sq + 17; if ((t & 0x88) === 0 && b[t] === (base | PAWN)) w += 1;
+      t = sq + 15;     if ((t & 0x88) === 0 && b[t] === (base | PAWN)) w += 1;
+    } else {
+      let t = sq - 17; if ((t & 0x88) === 0 && b[t] === (base | PAWN)) w += 1;
+      t = sq - 15;     if ((t & 0x88) === 0 && b[t] === (base | PAWN)) w += 1;
+    }
+    // knights
+    const n = base | KNIGHT;
+    for (let i = 0; i < KNIGHT_DELTAS.length; i++) {
+      const t = sq + KNIGHT_DELTAS[i];
+      if ((t & 0x88) === 0 && b[t] === n) w += 3.2;
+    }
+    // king
+    const k = base | KING;
+    for (let i = 0; i < KING_DELTAS.length; i++) {
+      const t = sq + KING_DELTAS[i];
+      if ((t & 0x88) === 0 && b[t] === k) w += 2;
+    }
+    // bishops / queens
+    const bo = base | BISHOP;
+    const qu = base | QUEEN;
+    for (let i = 0; i < BISHOP_DIRS.length; i++) {
+      const d = BISHOP_DIRS[i];
+      let t = sq + d;
+      while ((t & 0x88) === 0) {
+        const p = b[t];
+        if (p !== EMPTY) { if (p === bo) w += 3.3; else if (p === qu) w += 9; break; }
+        t += d;
+      }
+    }
+    // rooks / queens
+    const ro = base | ROOK;
+    for (let i = 0; i < ROOK_DIRS.length; i++) {
+      const d = ROOK_DIRS[i];
+      let t = sq + d;
+      while ((t & 0x88) === 0) {
+        const p = b[t];
+        if (p !== EMPTY) { if (p === ro) w += 5; else if (p === qu) w += 9; break; }
+        t += d;
+      }
+    }
+    return w;
+  }
+
   isAttacked(sq, byColor) {
     const b = this.board;
     const base = byColor << 3;

@@ -71,6 +71,7 @@ export const DEFAULT_PARAMS = {
     kingShieldEndgame: 0.25,                   // shield matters less in the endgame
     kingOpenFile: 12,                          // open/semi-open file near king; A/B smoke +0.33 SE0.15 n=24 d4 seed1
     kingAttack: 0,                             // penalty per attacker weight on king zone; A/B before enabling
+    fdAttackWeight: 0,                         // FD-inspired cheap geometric attacker-weight sum on king zone; default off, A/B before enabling
     fdPressure: 0                              // FD-inspired king-zone weighted pressure from buildFieldDynamics; default off, A/B before enabling
   },
 
@@ -292,6 +293,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const cfgShieldEndgame = cfg.kingShieldEndgame || 0;
   const cfgKingOpenFile = cfg.kingOpenFile || 0;
   const cfgKingAttack = cfg.kingAttack || 0;
+  const cfgFdAttackWeight = cfg.fdAttackWeight || 0;
   const flatMid = T.flatMid;
   const flatEnd = T.flatEnd;
   pos.refreshPieces();
@@ -419,18 +421,26 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
       if (openFiles) score -= sign * openWeight * openFiles;
     }
 
-    if (cfgKingAttack) {
+    if (cfgKingAttack || cfgFdAttackWeight) {
       const ksq = kingSq[color];
       const kr = ksq >> 4, kf = ksq & 7;
       const enemy = color ^ 1;
       let atk = 0;
+      let wAtk = 0;
       for (let dr = -1; dr <= 1; dr++) for (let df = -1; df <= 1; df++) {
         if (dr === 0 && df === 0) continue;
         const r = kr + dr, f = kf + df;
         if (r < 0 || r > 7 || f < 0 || f > 7) continue;
-        if (pos.isAttacked((r << 4) | f, enemy)) atk++;
+        const sq = (r << 4) | f;
+        if (cfgFdAttackWeight) {
+          const aw = pos.attackWeight(sq, enemy);
+          if (aw > 0) { atk++; wAtk += aw; }
+        } else if (pos.isAttacked(sq, enemy)) {
+          atk++;
+        }
       }
-      if (atk) score -= sign * cfgKingAttack * atk * (1 - 0.4 * phase);
+      if (atk && cfgKingAttack) score -= sign * cfgKingAttack * atk * (1 - 0.4 * phase);
+      if (wAtk && cfgFdAttackWeight) score -= sign * cfgFdAttackWeight * wAtk * (1 - 0.4 * phase);
     }
   }
 
