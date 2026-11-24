@@ -14,9 +14,13 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state - v3.0.15 (released, 2026-11-24)
+## Current state - v3.0.16 (development candidate, post v3.0.15)
 
-v3.0.15 is a formalized release snapshot. No Elo gain has been established; no external strength claim. The release focuses on measurement/verification hardening and behavior-preserving perf work.
+v3.0.16 is the active development candidate. No Elo gain has been established; no external strength claim.
+
+- **FD experiment hook (default off).** `eval.fdPressure` (default 0) adds FD-inspired weighted king-zone pressure from `buildFieldDynamics()` to structural eval K axis (FD-03/FD-08 inspired). Default-off: no behavior change, `bench:engine` baseline identical, tests/gauntlet green. No Elo/strength claim; A/B required before enabling.
+
+v3.0.15 (released 2026-11-24) is a formalized release snapshot. No Elo gain has been established; no external strength claim. The release focuses on measurement/verification hardening and behavior-preserving perf work.
 
 - **Behavior-preserving perf micro-opts.** Hot-path cleanups in `core.mjs`/`search.mjs` (isAttacked/generateMoves/makeMove/unmakeMove/SEE/ordering loops, optional generateMoves out buffer, per-ply/probe/check move buffers, optional makeMove outUndo with per-ply/probe undo reuse, TT probe move-hint reuse). Verification: identical `bench:engine` baseline (`d6=20969/8/b1c3, d7=46933/28/b1c3, d8=139085/19/b1c3, total 206987`), `test:perft` CORE OK, `npm test` PASS, gauntlet 12/12 PASS. No strength/Elo claim.
 - **TT exact-preference A/B (neutral/inconclusive).** `TranspositionTable.store` keeps exact over non-exact at equal depth/same key/non-stale. A/B vs `72eb3b8` (48g, d4, seed 20261124, no-cycle): 15W/18D/15L, 0.500, CI [-79.9,+79.9]. No Elo gain claim.

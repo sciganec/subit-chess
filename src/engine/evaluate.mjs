@@ -24,6 +24,7 @@ import {
 import { Percept } from './percept.mjs';
 import { Structure } from './structure.mjs';
 import { computeContext } from './context.mjs';
+import { buildFieldDynamics } from './field.mjs';
 
 /* ------------------------------------------------------------------ *
  * Parameter set θ  (all values are centipawn-scaled and tunable)
@@ -69,7 +70,8 @@ export const DEFAULT_PARAMS = {
     kingShield: 10,
     kingShieldEndgame: 0.25,                   // shield matters less in the endgame
     kingOpenFile: 12,                          // open/semi-open file near king; A/B smoke +0.33 SE0.15 n=24 d4 seed1
-    kingAttack: 0                              // penalty per attacker weight on king zone; A/B before enabling
+    kingAttack: 0,                             // penalty per attacker weight on king zone; A/B before enabling
+    fdPressure: 0                              // FD-inspired king-zone weighted pressure from buildFieldDynamics; default off, A/B before enabling
   },
 
   // search policy parameters (doc 05 §15, doc 08)
@@ -785,6 +787,12 @@ export class Evaluation {
     // (audit v3.0.6 §6.1)
     const ctx = computeContext(pos, percept, structure);
     const vec = structuralVector(pos, percept, structure, ctx, this.params);
+    const fdP = this.params.eval?.fdPressure || 0;
+    let fd = null;
+    if (fdP) {
+      fd = buildFieldDynamics(pos);
+      vec[1] += fdKingPressureDelta(pos, fd, fdP);
+    }
     const { E, E0, Ei, Ec } = scalarize(vec, ctx, this.params);
     const uncertainty = estimateUncertainty(pos, percept, structure, vec);
     const result = {
@@ -799,7 +807,8 @@ export class Evaluation {
       confidence: confidenceVector(percept, structure),
       uncertainty,
       structure,
-      percept
+      percept,
+      fd
     };
     if (this.cache) {
       if (this.cache.size > 4096) this.cache.clear();
@@ -819,6 +828,37 @@ export class Evaluation {
 
 function buildStructureSafe(pos, percept) {
   return new Structure(pos, percept);
+}
+
+/**
+ * FD-inspired king-zone pressure delta (stm-relative).
+ * Uses Field Dynamics weighted geometric influence (FD-03/FD-08) on squares
+ * around both kings. Default-off via params.eval.fdPressure.
+ */
+function fdKingPressureDelta(pos, fd, weight) {
+  const us = pos.turn;
+  const them = opposite(us);
+  const myPressure = kingZoneFdPressure(pos.kingSq[us], fd.channels[them === WHITE ? 'white' : 'black'].weight);
+  const theirPressure = kingZoneFdPressure(pos.kingSq[them], fd.channels[us === WHITE ? 'white' : 'black'].weight);
+  // Positive = more pressure on enemy king than our king, same direction as K.
+  return (theirPressure - myPressure) * weight;
+}
+
+function kingZoneFdPressure(ksq, weightMap) {
+  const kf = fileOf(ksq), kr = 7 - rankOf(ksq); // rankOf is 0x88 row; convert to chess rank 0=rank1
+  let sum = 0;
+  for (let dr = -1; dr <= 1; dr++) {
+    const r = kr + dr;
+    if (r < 0 || r > 7) continue;
+    for (let df = -1; df <= 1; df++) {
+      if (dr === 0 && df === 0) continue;
+      const f = kf + df;
+      if (f < 0 || f > 7) continue;
+      const idx = (7 - r) * 8 + f; // linear idx: y = 7-rank, x = file
+      sum += weightMap[idx];
+    }
+  }
+  return sum;
 }
 
 function confidenceVector(percept, structure) {

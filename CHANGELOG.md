@@ -13,6 +13,12 @@ Statuses:
 
 ---
 
+## [3.0.16 candidate] — 2026-11-24
+
+Development candidate in progress. No Elo gain has been established; do not claim release strength.
+
+- **FD experiment hook (default off, no default behavior change).** Added `eval.fdPressure` (default 0) in `src/engine/evaluate.mjs`: when enabled, `Evaluation.structural()` computes `buildFieldDynamics()` and applies an FD-inspired weighted king-zone pressure delta to the structural K axis (geometric influence/weight, FD-03/FD-08 inspired). Default-off path unchanged; `bench:engine` baseline identical (`d6=20969/8/b1c3, d7=46933/28/b1c3, d8=139085/19/b1c3, total 206987`), `test:perft` CORE OK, `npm test` PASS, gauntlet 12/12 PASS. **No Elo/strength claim; A/B required before enabling.**
+
 ## [3.0.15] — 2026-11-24
 
 Formalized release snapshot. Measurement/verification hardening and behavior-preserving perf work. No Elo gain has been established; no external strength claim.
