@@ -36,7 +36,7 @@ No `A.6-A.11` / `A.6..A.11` eval-invariant source was found in `docs/`, `tests/`
 | `FD-INV-004` | `tests/engine.field.mjs` | Curl(Grad phi)=0 / anti-symmetry. |
 | `FD-INV-005` | `tests/engine.field.mjs` | Discrete Stokes theorem. |
 | `FD-INV-006` | `tests/engine.field.mjs` | Discrete Gauss/divergence theorem. |
-| `FD-INV-007` | `tests/engine.field.mjs` / field implementation | Boundary of boundary = 0 (covered by field invariant suite). |
+| `FD-INV-007` | `tests/engine.field.mjs`, `src/engine/field.mjs` (`verifyFieldInvariants`) | Boundary of boundary = 0 on every oriented face. |
 | `FD-INV-008` | `tests/engine.field.mjs` | Pinned pieces retain geometric attack influence. |
 | `FD-INV-009` | `tests/engine.field.mjs` | Determinism of field computations. |
 | `FD-INV-010` | `tests/engine.field.mjs` | Non-mutation of position state. |

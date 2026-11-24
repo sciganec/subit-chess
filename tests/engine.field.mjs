@@ -76,6 +76,14 @@ const ROOK_FEN  = '7k/8/8/8/8/8/8/R6K w - - 0 1';
   check('G4 has 49 internal faces', TOPOLOGY.F === 49);
   check('G4 cycle rank beta1 is 49', TOPOLOGY.E - TOPOLOGY.V + 1 === 49);
   check('Euler characteristic V - E + F_all is 2', TOPOLOGY.V - TOPOLOGY.E + TOPOLOGY.F + 1 === 2);
+  // FD-INV-007: boundary of boundary is empty for every oriented face.
+  let boundaryOfBoundaryOk = true;
+  for (const face of TOPOLOGY.faces) {
+    const bb = new Int8Array(BOARD_SQUARES);
+    for (const edge of face.boundary) { bb[edge.u]--; bb[edge.v]++; }
+    if (face.boundary.length !== 4 || bb.some((c) => c !== 0)) { boundaryOfBoundaryOk = false; break; }
+  }
+  check('FD-INV-007 boundary of boundary is empty (d1*b_T==0)', boundaryOfBoundaryOk);
 }
 
 /* ---------------- 3. Potential Field Theorem: Curl(Grad phi) == 0 ---------------- */
