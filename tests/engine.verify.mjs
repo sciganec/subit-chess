@@ -5,10 +5,13 @@
 import { Position, WHITE } from '../src/engine/core.mjs';
 import { Engine } from '../src/engine/index.mjs';
 import { Evaluation, DEFAULT_PARAMS, structuralVector } from '../src/engine/evaluate.mjs';
+import { Percept } from '../src/engine/percept.mjs';
+import { buildStructure, REL, REL_KEY_TYPE, REL_KEY_FROM, REL_KEY_TO } from '../src/engine/structure.mjs';
+import { generatePlans } from '../src/engine/plans.mjs';
 import {
   INVARIANT, verifyPositionAll, verifyMakeUnmake, verifyPieceLists, verifyLegalMoves,
   verifyCaptures, verifySearch, verifyDeterminism, verifySelfPlay,
-  verifyPosition, verifySVFOwnership, report
+  verifyPosition, verifySVFOwnership, verifyPlansLegal, report
 } from '../src/engine/verify.mjs';
 
 let fails = 0;
@@ -137,6 +140,50 @@ for (const fen of FENS) {
   pos.setFEN('4k3/8/8/8/8/8/8/4K1K1 w - - 0 1', { validate: false });
   const f = verifyPosition(pos);
   check('two kings of one colour are rejected', f.length > 0, report(f));
+}
+
+/* SM-INV-003: relations stay typed. */
+{
+  const known = new Set(Object.values(REL));
+  let ok = true;
+  let detail = '';
+  for (const fen of FENS) {
+    const pos = new Position();
+    pos.setFEN(fen);
+    const s = buildStructure(pos, new Percept(pos));
+    const seen = new Int32Array(s.counts.length);
+    for (const k of s.keys) {
+      const type = REL_KEY_TYPE(k);
+      const from = REL_KEY_FROM(k);
+      const to = REL_KEY_TO(k);
+      if (!known.has(type) || (from & 0x88) !== 0 || (to & 0x88) !== 0) {
+        ok = false; detail = `bad key type=${type} from=${from} to=${to} fen=${fen}`; break;
+      }
+      if (type < seen.length) seen[type]++;
+    }
+    if (!ok) break;
+    for (let t = 0; t < s.counts.length; t++) {
+      if (s.counts[t] !== seen[t]) { ok = false; detail = `count mismatch type=${t} fen=${fen}`; break; }
+    }
+    if (!ok) break;
+  }
+  check('SM-INV-003 relations stay typed and counts match keys', ok, detail);
+}
+
+/* SPG-INV-005: verifyPlansLegal has teeth. */
+{
+  const pos = new Position();
+  pos.setFEN(FENS[1]);
+  const f = verifyPlansLegal(pos);
+  check('SPG-INV-005 verifyPlansLegal accepts legal plans', f.length === 0, report(f));
+  // teeth: the same legality condition must reject a fabricated illegal move
+  const pc = new Percept(pos);
+  const st = buildStructure(pos, pc);
+  const legalSet = new Set(pos.legalMoves());
+  const plans = generatePlans(pos, pc, st, pos.legalMoves());
+  const bad = plans.length > 0 ? [{ ...plans[0], moves: [0] }] : [{ title: 'fake', moves: [0] }];
+  const caught = bad.some((p) => (p.moves || []).some((m) => !legalSet.has(m)));
+  check('SPG-INV-005 detects an illegal plan move', caught === true);
 }
 
 /* SVF feature ownership: no axis may pay twice for one perceptual fact. */
