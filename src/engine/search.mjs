@@ -208,15 +208,19 @@ function buildCheckTargets() {
   for (let king = 0; king < 128; king++) {
     if (king & 0x88) { table[king] = null; continue; }
     const hit = new Uint8Array(128);
-    for (const d of KNIGHT_DELTAS) {
-      const to = king + d;
+    for (let i = 0; i < KNIGHT_DELTAS.length; i++) {
+      const to = king + KNIGHT_DELTAS[i];
       if ((to & 0x88) === 0) hit[to] = 1;
     }
-    for (const d of [...BISHOP_DIRS, ...ROOK_DIRS]) {
-      let to = king + d;
-      while ((to & 0x88) === 0) {
-        hit[to] = 1;
-        to += d;
+    for (let di = 0; di < 2; di++) {
+      const dirs = di === 0 ? BISHOP_DIRS : ROOK_DIRS;
+      for (let i = 0; i < dirs.length; i++) {
+        const d = dirs[i];
+        let to = king + d;
+        while ((to & 0x88) === 0) {
+          hit[to] = 1;
+          to += d;
+        }
       }
     }
     table[king] = hit;
@@ -506,7 +510,9 @@ export class Searcher {
     pos.refreshPieces();
     const us = pos.turn;
     const them = us ^ 1;
-    for (const m of pos.generateMoves(false)) {
+    const moves = pos.generateMoves(false);
+    for (let i = 0; i < moves.length; i++) {
+      const m = moves[i];
       const victim = pos.board[MOVE_TO(m)];
       if (victim && pieceType(victim) === KING) continue;
       const undo = pos.makeMove(m);
@@ -1051,7 +1057,9 @@ export class Searcher {
       // one of those squares can be a discovered check. Everything else is
       // skipped before make/unmake. The full legality test remains below.
       const targets = CHECK_TARGETS[pos.kingSq[them]];
-      for (const m of pos.generateMoves(false)) {
+      const checkMoves = pos.generateMoves(false);
+      for (let i = 0; i < checkMoves.length; i++) {
+        const m = checkMoves[i];
         const flags = MOVE_FLAGS(m);
         if (flags & (FLAG_CAPTURE | FLAG_EP | FLAG_PROMO)) continue;
         const from = MOVE_FROM(m), to = MOVE_TO(m);
