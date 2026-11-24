@@ -100,7 +100,7 @@ async function oneGame(a, b, startFen, aWhite, depth, maxPlies = 240) {
   for (let ply = 0; ply < maxPlies; ply++) {
     const engine = pos.turn === 0 ? (aWhite ? a : b) : (aWhite ? b : a);
     engine.send(`position fen ${startFen}${moves.length ? ` moves ${moves.join(' ')}` : ''}`);
-    engine.send(`go depth ${depth}`);
+    engine.send(process.env.MOVETIME_MS ? `go movetime ${process.env.MOVETIME_MS}` : `go depth ${depth}`);
     const line = await engine.waitFor((text) => text.startsWith('bestmove '), 120000);
     const uci = line.split(/\s+/)[1];
     if (!uci || uci === '0000' || uci === '(none)') {
