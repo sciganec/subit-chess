@@ -286,7 +286,11 @@ export class TranspositionTable {
     const idx = (key % this.size) | 0;
     const stale = this.keys[idx] === key && (this.generation - this.age[idx] > this.maxAge);
     // AUD-311-06: stale same-key entries must not block replacement.
-    if (this.keys[idx] !== key || this.depths[idx] <= depth || stale) {
+    // Prefer exact entries at equal depth: do not overwrite an exact bound with a
+    // non-exact one from the same ply/depth generation.
+    const replace = this.keys[idx] !== key || stale || this.depths[idx] < depth ||
+      (this.depths[idx] === depth && !(this.flags[idx] === TT_EXACT && flag !== TT_EXACT));
+    if (replace) {
       this.keys[idx] = key;
       this.scores[idx] = TranspositionTable.toTT(score, ply);
       this.depths[idx] = depth;

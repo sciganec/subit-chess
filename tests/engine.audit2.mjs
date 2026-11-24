@@ -285,6 +285,21 @@ function realSearcher() {
     `default=${new TranspositionTable(4).maxAge} searcher=${realSearcher().tt.maxAge}`);
 }
 
+{
+  // Prefer exact entries at equal depth over non-exact replacements.
+  const tt = new TranspositionTable(4);
+  const key = 0xABCDEF;
+  tt.store(key, 6, 11, 0, 111, 0); // EXACT
+  tt.store(key, 6, 22, 1, 222, 0); // LOWER should not overwrite exact at equal depth
+  let e = tt.probe(key, 6, -1000, 1000, 0);
+  check('TT keeps exact over non-exact at equal depth', !!e && e.score === 11 && e.flag === 0,
+    e ? `score=${e.score} flag=${e.flag}` : 'null');
+  tt.store(key, 6, 33, 0, 333, 0); // EXACT may replace exact
+  e = tt.probe(key, 6, -1000, 1000, 0);
+  check('TT allows exact to replace exact at equal depth', !!e && e.score === 33 && e.flag === 0,
+    e ? `score=${e.score} flag=${e.flag}` : 'null');
+}
+
 /* ================================================================== *
  * Qsearch edge cases: automatic draws and quiet-check boundaries
  * ================================================================== */
