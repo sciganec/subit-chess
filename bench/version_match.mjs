@@ -128,6 +128,13 @@ function score(result, aWhite) {
 
 function summarize(rows) {
   const scores = rows.map((row) => row.score);
+  if (scores.length === 0) {
+    return {
+      games: 0, wins: 0, draws: 0, losses: 0,
+      score: null, scoreCi95: null, eloDifference: null, eloCi95: null,
+      uncertainty: 'no completed games'
+    };
+  }
   const mean = scores.reduce((sum, value) => sum + value, 0) / scores.length;
   const variance = scores.length > 1
     ? scores.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (scores.length - 1)
