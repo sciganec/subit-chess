@@ -715,10 +715,10 @@ export class Position {
     const flags = MOVE_FLAGS(m);
     const promo = MOVE_PROMO(m);
     const us = this.turn;
-    const them = opposite(us);
+    const them = us ^ 1;
     const b = this.board;
     const piece = b[from];
-    const type = pieceType(piece);
+    const type = piece & 7;
 
     const undo = {
       move: m, captured: EMPTY, capSq: -1,
@@ -745,7 +745,7 @@ export class Position {
     // move piece
     this.xorPiece(from, piece);
     b[from] = EMPTY;
-    const placed = promo ? makePiece(promo, us) : piece;
+    const placed = promo ? (promo | (us << 3)) : piece;
     b[to] = placed;
     this.xorPiece(to, placed);
     if (type === KING) this.kingSq[us] = to;
