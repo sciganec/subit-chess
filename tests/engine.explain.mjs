@@ -46,5 +46,16 @@ for (const fen of FENS) {
 }
 check('confidence: unfinished search -> 0; wider gap -> higher', confidence(100, 8, false) === 0 && confidence(200, 8, true) > confidence(20, 8, true));
 
+{
+  const { Engine } = await import('../src/engine/index.mjs');
+  const { explainDecision } = await import('../src/engine/explain.mjs');
+  const e = new Engine(); e.setFEN('r1bqkbnr/pppp1ppp/2n5/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R w KQkq - 2 3');
+  const r = e.search({ depth: 4 });
+  if (!r.boundary || r.boundary.committedDepth !== r.depth) { check('boundary','x'==='y'); }
+  const x = explainDecision(e, { depth: 3 });
+  if (!x.claimSources || x.claimSources.length !== x.evidence.length) { check('claimSources',false); }
+  check('boundary and claim provenance',true);
+}
+
 console.log(fails === 0 ? '\nEXPLAIN OK' : `\nEXPLAIN FAILURES: ${fails}`);
 process.exit(fails ? 1 : 0);

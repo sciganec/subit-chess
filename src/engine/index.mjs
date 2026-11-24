@@ -362,7 +362,7 @@ export class Engine {
       pv: result.pv.map(moveToUci),
       pvMoves: result.pv,
       pvSan,
-      completed: result.completed,
+      completed: result.completed, boundary: result.boundary,
       // bound flag of the iteration behind score/depth (SEARCH-INV-002);
       // 0 = exact, 1 = lower bound, 2 = upper bound
       flag: result.flag,

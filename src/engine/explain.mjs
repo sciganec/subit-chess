@@ -226,7 +226,11 @@ export function explainDecision(engine, opts = {}) {
     belnap,
     omega,
     unresolved,
-    search: { depth: chosen.depth, completed: chosen.completed, nodes: chosen.nodes },
+    search: { depth: chosen.depth, completed: chosen.completed, nodes: chosen.nodes, boundary: chosen.boundary || null },
+    // SUBIT-CPU §10: every claim carries where it came from (claim index -> source record)
+    claimSources: claims.map((c, i) => ({ claim: i, type: c.type, status: c.status,
+      source: c.status === EVIDENCE.EXACT ? 'rules (move generator)' : c.status === EVIDENCE.HEURISTIC ? 'evaluation / Belnap fusion' : `search depth ${chosen.depth}`,
+      committedDepth: chosen.boundary ? chosen.boundary.committedDepth : chosen.depth })),
     provenance: { generator: 'explainDecision', version: engine.version, source: 'own search, no external engine' }
   };
 }

@@ -619,6 +619,7 @@ export class Searcher {
     let best = (opts.prevBest && rootMoves.includes(opts.prevBest)) ? opts.prevBest : rootMoves[0];
     let bestScore = -INF;
     let lastCompleted = null;
+    let abortedDepth = 0;
     // a remembered score from an earlier search of this position seeds the
     // aspiration window and the first move ordering (doc 05 §21, P3.1)
     let prevScore = typeof opts.prevScore === 'number' && Number.isFinite(opts.prevScore) ? opts.prevScore : 0;
@@ -659,6 +660,9 @@ export class Searcher {
           seldepth: this.seldepth,
           secondScore: result.secondScore
         };
+      } else if (result && !result.completed) {
+        abortedDepth = depth; // an incomplete iteration is rolled back: it never replaces the last committed one
+        if (!lastCompleted && result.move) { best = result.move; bestScore = result.score; }
       } else if (result && !lastCompleted && result.move) {
         best = result.move;
         bestScore = result.score;
@@ -702,6 +706,8 @@ export class Searcher {
       timeMs: elapsed,
       nps: elapsed > 0 ? Math.round((this.nodes * 1000) / elapsed) : 0,
       completed: !!lastCompleted,
+      // transactional boundary: what was committed and what was rolled back
+      boundary: { committedDepth: info ? info.depth : 0, abortedDepth, rolledBack: abortedDepth > 0, reason: this.budgetReason || (this.stop ? 'stopped' : 'depth') },
       // the bound flag of the iteration that produced score/depth: a published
       // score must be exact (SEARCH-INV-002), never a fail-low/fail-high bound
       flag: info ? info.flag : null,
