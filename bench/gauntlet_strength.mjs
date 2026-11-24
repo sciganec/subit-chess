@@ -5,6 +5,7 @@ const CASES = [
   { name:'mate1 scholar', fen:'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4', expect:['h5f7'], depth:4 },
   { name:'mate1 backrank', fen:'6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1', expect:['a1a8'], depth:4 },
   { name:'mate1 smothered', fen:'6rk/6pp/7N/8/8/8/8/7K w - - 0 1', expect:['h6f7'], depth:4 },
+  { name:'mate1 backrank e-file', fen:'6k1/5ppp/8/8/8/8/5PPP/4R1K1 w - - 0 1', expect:['e1e8'], depth:4 },
   { name:'take hanging queen', fen:'4k3/8/8/8/8/8/4q3/4K2R w - - 0 1', expect:['e1e2'], depth:4 },
   { name:'take hanging rook', fen:'4k3/8/8/3r4/8/8/8/4K2Q w - - 0 1', expect:['h1d5'], depth:4 },
   { name:'promote to queen', fen:'8/P6k/8/8/8/8/8/4K3 w - - 0 1', expect:['a7a8q'], depth:6 },
