@@ -19,6 +19,7 @@ import {
 import { structuralVector, SVF_COMPONENTS } from './evaluate.mjs';
 import { Percept } from './percept.mjs';
 import { buildStructure, REL, REL_KEY_TYPE, REL_KEY_FROM, REL_KEY_TO } from './structure.mjs';
+import { generatePlans } from './plans.mjs';
 import { verifyFieldInvariants, FD_INVARIANTS } from './field.mjs';
 
 export const INVARIANT = {
@@ -300,6 +301,22 @@ export function verifyRelationsTyped(pos) {
   return failures;
 }
 
+/** SPG-INV-005: a plan never contains an illegal move. */
+export function verifyPlansLegal(pos) {
+  const failures = [];
+  const pc = new Percept(pos);
+  const st = buildStructure(pos, pc);
+  const legal = pos.legalMoves();
+  const legalSet = new Set(legal);
+  const plans = generatePlans(pos, pc, st, legal);
+  for (const plan of plans) {
+    for (const m of plan.moves || []) {
+      if (!legalSet.has(m)) fail(failures, INVARIANT.SPG_005, `plan ${plan.title || plan.id} contains illegal move ${moveToUci(m)}`);
+    }
+  }
+  return failures;
+}
+
 /** Self-play legality: every move of the line must be legal in sequence. */
 export function verifySelfPlay(fen, plies, engine, depth = 4) {
   const failures = [];
@@ -331,6 +348,7 @@ export function verifyPositionAll(pos) {
     ...verifyCaptures(pos),
     ...verifyMakeUnmake(pos),
     ...verifyRelationsTyped(pos),
+    ...verifyPlansLegal(pos),
     ...verifyFieldInvariants(pos)
   ];
 }
