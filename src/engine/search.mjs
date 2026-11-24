@@ -378,7 +378,7 @@ export class MoveOrder {
    * Fill `buf` with the moves in descending priority order and return the count.
    * Priority = heuristic score; legality is never decided here.
    */
-  scoreMoves(pos, moves, ply, ttMove, pvMove, ctx) {
+  scoreMoves(pos, moves, ply, ttMove, pvMove) {
     this.ensureCapacity(moves.length);
     const n = moves.length;
     const packed = this.packed;
@@ -652,7 +652,7 @@ export class Searcher {
 
     const ttEntry = this.useTT ? this.tt.probe(pos.ttKey, depth, alpha, beta, 0) : null;
     const ttMove = ttEntry ? ttEntry.move : 0;
-    const orderedCount = this.order.scoreMoves(pos, rootMoves, 0, ttMove, prevBest || 0, {});
+    const orderedCount = this.order.scoreMoves(pos, rootMoves, 0, ttMove, prevBest || 0);
 
     let alphaOrig = alpha;
     for (let i = 0; i < orderedCount; i++) {
@@ -762,7 +762,7 @@ export class Searcher {
     const us = pos.turn;
     const them = opposite(us);
     const moves = pos.generateMoves(false);
-    const orderedCount = this.order.scoreMoves(pos, moves, ply, this.ttMoveFor(pos, depth), 0, {});
+    const orderedCount = this.order.scoreMoves(pos, moves, ply, this.ttMoveFor(pos, depth), 0);
     const buf = this.order.buffers[ply];
 
     let bestScore = -INF;
@@ -996,7 +996,7 @@ export class Searcher {
 
     const us = pos.turn;
     const them = opposite(us);
-    const orderedCount = this.order.scoreMoves(pos, moves, ply, 0, 0, {});
+    const orderedCount = this.order.scoreMoves(pos, moves, ply, 0, 0);
     const buf = this.order.buffers[ply];
     let legal = 0;
 
@@ -1063,7 +1063,7 @@ export class Searcher {
         if (givesCheck) checks.push(m);
       }
       const checkCount = Math.min(qc.maxChecks,
-        checks.length ? this.order.scoreMoves(pos, checks, ply, 0, 0, {}) : 0);
+        checks.length ? this.order.scoreMoves(pos, checks, ply, 0, 0) : 0);
       const checkBuf = this.order.buffers[ply];
       for (let i = 0; i < checkCount; i++) {
         const m = checkBuf[i];
