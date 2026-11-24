@@ -676,20 +676,20 @@ export class Position {
     const them = opposite(us);
     if (us === WHITE && from === 116) {
       if ((this.castling & CASTLE_WK) &&
-          b[117] === EMPTY && b[118] === EMPTY && b[119] === makePiece(ROOK, WHITE) &&
+          b[117] === EMPTY && b[118] === EMPTY && b[119] === (ROOK | (WHITE << 3)) &&
           !this.isAttacked(116, them) && !this.isAttacked(117, them) && !this.isAttacked(118, them))
         out.push(encodeMove(116, 118, 0, FLAG_CASTLE));
       if ((this.castling & CASTLE_WQ) &&
-          b[115] === EMPTY && b[114] === EMPTY && b[113] === EMPTY && b[112] === makePiece(ROOK, WHITE) &&
+          b[115] === EMPTY && b[114] === EMPTY && b[113] === EMPTY && b[112] === (ROOK | (WHITE << 3)) &&
           !this.isAttacked(116, them) && !this.isAttacked(115, them) && !this.isAttacked(114, them))
         out.push(encodeMove(116, 114, 0, FLAG_CASTLE));
     } else if (us === BLACK && from === 4) {
       if ((this.castling & CASTLE_BK) &&
-          b[5] === EMPTY && b[6] === EMPTY && b[7] === makePiece(ROOK, BLACK) &&
+          b[5] === EMPTY && b[6] === EMPTY && b[7] === (ROOK | (BLACK << 3)) &&
           !this.isAttacked(4, them) && !this.isAttacked(5, them) && !this.isAttacked(6, them))
         out.push(encodeMove(4, 6, 0, FLAG_CASTLE));
       if ((this.castling & CASTLE_BQ) &&
-          b[3] === EMPTY && b[2] === EMPTY && b[1] === EMPTY && b[0] === makePiece(ROOK, BLACK) &&
+          b[3] === EMPTY && b[2] === EMPTY && b[1] === EMPTY && b[0] === (ROOK | (BLACK << 3)) &&
           !this.isAttacked(4, them) && !this.isAttacked(3, them) && !this.isAttacked(2, them))
         out.push(encodeMove(4, 2, 0, FLAG_CASTLE));
     }
