@@ -14,11 +14,16 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state - v3.0.14 (development, 2026-11-22)
+## Current state - v3.0.15 (released, 2026-11-24)
 
-v3.0.14 is the active development candidate. No Elo gain has been established; release only after a measured gain under an accepted external protocol.
+v3.0.15 is a formalized release snapshot. No Elo gain has been established; no external strength claim. The release focuses on measurement/verification hardening and behavior-preserving perf work.
 
-v3.0.13 candidate (pushed: `514930e`, `0cd4b60`, `191014d`) added analytical Field Dynamics (`src/engine/field.mjs`, FD-01..FD-14, FD-INV-001..010) exposed via `engine.fieldDynamics()`/`analyze().fields` without changing move generation, eval, ordering, or search. It also added `search.ttMaxAge` diagnostic (default 0, ADR 0022; ttMaxAge=1 rejected by A/B), g9 gauntlet guard, and version-match/docs updates.
+- **Behavior-preserving perf micro-opts.** Hot-path cleanups in `core.mjs`/`search.mjs` (isAttacked/generateMoves/makeMove/unmakeMove/SEE/ordering loops, optional generateMoves out buffer, per-ply/probe/check move buffers, optional makeMove outUndo with per-ply/probe undo reuse, TT probe move-hint reuse). Verification: identical `bench:engine` baseline (`d6=20969/8/b1c3, d7=46933/28/b1c3, d8=139085/19/b1c3, total 206987`), `test:perft` CORE OK, `npm test` PASS, gauntlet 12/12 PASS. No strength/Elo claim.
+- **TT exact-preference A/B (neutral/inconclusive).** `TranspositionTable.store` keeps exact over non-exact at equal depth/same key/non-stale. A/B vs `72eb3b8` (48g, d4, seed 20261124, no-cycle): 15W/18D/15L, 0.500, CI [-79.9,+79.9]. No Elo gain claim.
+- **67dfd2c vs 09706a9 measurement (neutral/inconclusive).** Four paired UCI batches, 234g combined ~0.524, CI spans 0. Clean no-cycle batch4: 15W/19D/14L 0.510 CI [-70.9,+86.1]. No Elo gain claim.
+- **Measurement/verification hardening.** `bench/version_match.mjs` strict no-cycle/opening IDs/git HEAD/abort capture; openings expanded to 48; audit/FD no-search-effect guards; Gate 4 traceability snapshot (`docs/INVARIANT-COVERAGE.md`); executable `SM-INV-003`/`SPG-INV-005` checks.
+
+v3.0.14 (2026-11-22) formalized correctness/measurement/search-safety increment (quiet-threat/LMR candidates parked default off, adjudication/repetition fixes, root check extension + qsearch mate-delta guard). v3.0.13 added analytical Field Dynamics (`src/engine/field.mjs`, FD-01..FD-14, FD-INV-001..010) exposed via `engine.fieldDynamics()`/`analyze().fields` without changing move generation, eval, ordering, or search; `search.ttMaxAge` diagnostic (default 0, ADR 0022; ttMaxAge=1 rejected by A/B).
 
 The measurements and release history below describe v3.0.11 unless a section says otherwise.
 

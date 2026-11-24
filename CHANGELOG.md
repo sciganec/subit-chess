@@ -13,15 +13,16 @@ Statuses:
 
 ---
 
-## [3.0.15 candidate] — 2026-11-22
+## [3.0.15] — 2026-11-24
 
-Development candidate in progress. No Elo gain has been established; do not claim release strength.
+Formalized release snapshot. Measurement/verification hardening and behavior-preserving perf work. No Elo gain has been established; no external strength claim.
 
 - **Version bump / development start.** Bumped to v3.0.15 candidate after formalizing v3.0.13/v3.0.14 release snapshots. No search/eval default changes in this bump.
 - **Measurement (67dfd2c vs 09706a9, no claim).** Paired UCI batches (A=current, B=09706a9): batch1 d4/64g 19W/26D/19L 0.500 CI [-66.9,+66.9]; batch2 d4/64g seed 20261122 21W/27D/16L 0.539 CI [-37.9,+94.3]; batch3 d4/58g seed 20261123 18W/27D/13L 0.543 CI [-35.7,+97.9]; batch4 d4/48g seed 20261125 **no-cycle/strict-no-cycle** (48-opening set) **15W/19D/14L 0.510 CI [-70.9,+86.1]**. Combined 234g 73W/99D/62L ~0.524, CI spans 0 — **inconclusive/neutral, no Elo gain claim**. Batches 1-3 cycled the old 24-opening set; batch4 is the clean protocol.
 - **Audit-gap tests (no engine behavior change).** Added TT/quiet-check/qsearch edge regressions in `tests/engine.audit2.mjs` (TT_MAX_AGE/ttMoveFor/generation boundaries, qsearch automatic draws, quiet-check qdepth boundary, in-check mate, qdepth==0 stalemate) and FD analytical no-search-effect guard in `tests/engine.field.mjs` (search move/score unchanged after `fieldDynamics()`/`analyze().fields`).
 - **Measurement harness.** `bench/version_match.mjs` adds `--opening-seed/--opening-offset/--max-plies`, `--strict-no-cycle`, opening IDs in rows, boolean-flag arg parsing, engine git HEAD metadata, per-game abort capture/partial report, and records settings for cleaner paired comparisons. `bench/fens/openings.epd` expanded from 24 to 48 validated openings (gate1-25..48), enabling clean 48-pair/96-game no-cycle batches.
 - **TT exact-preference (behavior change, measured).** `TranspositionTable.store` now keeps an exact entry over a non-exact replacement at equal depth/same key/non-stale. `npm test`/gauntlet green. A/B vs `72eb3b8` (48g, d4, seed 20261124, no opening-pair cycle, A=HEAD/B=72eb3b8): **15W/18D/15L, score 0.500, 95% CI [-79.9,+79.9]** — neutral/inconclusive, **no Elo gain claim**. Result: `results/v3015-tt-exact-vs-72eb3b8-d4-g48-seed20261124.json` (gitignored).
+- **Behavior-preserving perf micro-opts (no search/eval/ordering behavior change).** Hot-path cleanups in `src/engine/core.mjs` and `src/engine/search.mjs`: `isAttacked`/`smallestAttacker`/`generateMoves`/`maxAttackedVictim` loop and bit-op tightening, hoisted SEE-enabled check in `scoreMoves`, removed unused `scoreMoves` ctx arg, `opposite()`→`us^1` in hot paths, promotion/castle constant cleanup, indexed loops in `hasLegalMove`/check-prefilter/`staticCheckEvasion`, reusable SEE attacker object, optional `generateMoves` out buffer, per-ply/probe/check move buffers, optional `makeMove` outUndo with per-ply/probe undo reuse, and TT probe move-hint reuse in alphabeta. Each change verified with identical `bench:engine` baseline (`d6=20969/8/b1c3, d7=46933/28/b1c3, d8=139085/19/b1c3, total 206987`), `test:perft` CORE OK, `npm test` PASS, gauntlet 12/12 PASS. NPS is noisy; **no strength/Elo claim**.
 - **Theory/spec familiarization.** Reviewed `docs/theory/` (including UST 101-120) and `c:\Users\sciga\subit-subit\spec\` as research context; theory remains research-only/non-binding, no canonical SUBIT-∞ conformance claim.
 
 ## [3.0.14] — 2026-11-22
