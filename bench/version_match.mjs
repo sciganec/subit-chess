@@ -10,8 +10,14 @@ function argsOf(argv) {
   const out = {};
   for (let i = 0; i < argv.length; i++) {
     if (!argv[i].startsWith('--')) continue;
-    out[argv[i].slice(2)] = argv[i + 1];
-    i++;
+    const key = argv[i].slice(2);
+    const next = argv[i + 1];
+    if (next === undefined || next.startsWith('--')) {
+      out[key] = true;
+    } else {
+      out[key] = next;
+      i++;
+    }
   }
   return out;
 }
@@ -79,9 +85,11 @@ function readOpenings(file) {
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('#'))
     .map((line) => {
-      const fen = line.split(/\s+id\s+/)[0].replace(/;$/, '').trim();
+      const [fenPart, idPart] = line.split(/\s+id\s+/);
+      const fen = fenPart.replace(/;$/, '').trim();
+      const id = idPart ? idPart.replace(/;$/, '').trim().replace(/^"|"$/g, '') : '';
       Position.fromFEN(fen);
-      return fen;
+      return { fen, id };
     });
 }
 
@@ -146,7 +154,7 @@ async function main() {
   const opts = argsOf(process.argv.slice(2));
   const aEntry = opts.a;
   const bEntry = opts.b;
-  if (!aEntry || !bEntry) throw new Error('usage: node bench/version_match.mjs --a <engine-index.mjs> --b <engine-index.mjs> [--games 100] [--depth 4] [--max-plies 240] [--openings file] [--opening-seed N] [--opening-offset N] [--out results/file.json]');
+  if (!aEntry || !bEntry) throw new Error('usage: node bench/version_match.mjs --a <engine-index.mjs> --b <engine-index.mjs> [--games 100] [--depth 4] [--max-plies 240] [--openings file] [--opening-seed N] [--opening-offset N] [--strict-no-cycle] [--out results/file.json]');
   const games = Number(opts.games || 100);
   if (!Number.isInteger(games) || games < 2 || games % 2 !== 0) throw new Error('--games must be an even integer >= 2 to balance colours');
   const depth = Number(opts.depth || 4);
@@ -155,6 +163,7 @@ async function main() {
   const openingsPath = path.resolve(opts.openings || 'bench/fens/openings.epd');
   const openingOffset = Number(opts['opening-offset'] || 0);
   const openingSeed = opts['opening-seed'] === undefined ? null : Number(opts['opening-seed']);
+  const strictNoCycle = opts['strict-no-cycle'] !== undefined;
   if (!Number.isInteger(openingOffset) || openingOffset < 0) throw new Error('--opening-offset must be a non-negative integer');
   if (openingSeed !== null && !Number.isFinite(openingSeed)) throw new Error('--opening-seed must be a number');
   let openings = readOpenings(openingsPath);
@@ -162,7 +171,11 @@ async function main() {
   if (openingOffset) openings = openings.slice(openingOffset).concat(openings.slice(0, openingOffset));
   const pairCount = games / 2;
   const openingCycles = pairCount > openings.length;
-  if (openingCycles) console.warn(`warning: ${pairCount} opening pairs requested but only ${openings.length} openings available; pairs will cycle`);
+  if (openingCycles) {
+    const msg = `${pairCount} opening pairs requested but only ${openings.length} openings available; pairs will cycle`;
+    if (strictNoCycle) throw new Error(msg);
+    console.warn(`warning: ${msg}`);
+  }
   const a = startEngine('A', aEntry);
   const b = startEngine('B', bEntry);
   const rows = [];
@@ -176,9 +189,9 @@ async function main() {
       const openingIndex = pair % openings.length;
       const opening = openings[openingIndex];
       const aWhite = i % 2 === 0;
-      const game = await oneGame(a, b, opening, aWhite, depth, maxPlies);
+      const game = await oneGame(a, b, opening.fen, aWhite, depth, maxPlies);
       const value = score(game.result, aWhite);
-      rows.push({ game: i + 1, opening: openingIndex, aWhite, ...game, score: value });
+      rows.push({ game: i + 1, opening: openingIndex, openingId: opening.id, aWhite, ...game, score: value });
       console.log(`game ${i + 1}/${games}: A=${aWhite ? 'W' : 'B'} ${game.result} ${game.reason}, ${game.plies} plies`);
     }
   } finally {
@@ -192,7 +205,7 @@ async function main() {
     engines: { a: path.resolve(aEntry), b: path.resolve(bEntry) },
     settings: {
       games, depth, maxPlies, openings: openingsPath,
-      openingCount: openings.length, openingSeed, openingOffset, openingCycles
+      openingCount: openings.length, openingSeed, openingOffset, openingCycles, strictNoCycle
     },
     summary: summarize(rows),
     rows
