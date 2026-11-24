@@ -29,6 +29,7 @@ export const BISHOP = 3;
 export const ROOK = 4;
 export const QUEEN = 5;
 export const KING = 6;
+const PROMO_PIECES = [QUEEN, ROOK, BISHOP, KNIGHT];
 
 export const WHITE = 0;
 export const BLACK = 1;
@@ -605,8 +606,10 @@ export class Position {
         const one = from + dir;
         if ((one & 0x88) === 0 && b[one] === EMPTY) {
           if ((one >> 4) === promoRank) {
-            for (const pt of [QUEEN, ROOK, BISHOP, KNIGHT])
+            for (let pi = 0; pi < 4; pi++) {
+              const pt = PROMO_PIECES[pi];
               out.push(encodeMove(from, one, pt, FLAG_PROMO));
+            }
           } else if (!capturesOnly) {
             out.push(encodeMove(from, one));
             const two = from + 2 * dir;
@@ -620,8 +623,10 @@ export class Position {
           const target = b[to];
           if (target !== EMPTY && (target >> 3) === them) {
             if ((to >> 4) === promoRank) {
-              for (const pt of [QUEEN, ROOK, BISHOP, KNIGHT])
+              for (let pi = 0; pi < 4; pi++) {
+                const pt = PROMO_PIECES[pi];
                 out.push(encodeMove(from, to, pt, FLAG_PROMO | FLAG_CAPTURE));
+              }
             } else {
               out.push(encodeMove(from, to, 0, FLAG_CAPTURE));
             }
