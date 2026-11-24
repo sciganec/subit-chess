@@ -20,7 +20,7 @@ No `A.6-A.11` / `A.6..A.11` eval-invariant source was found in `docs/`, `tests/`
 | `UCA-INV-013` | `tests/engine.verify.mjs` (`verifyDeterminism`), `tests/engine.determinism.mjs` | Deterministic mode reproducibility. |
 | `UCA-INV-019` | `tests/engine.verify.mjs` (`verifyMakeUnmake`), `tests/engine.audit311.mjs` hash/make-unmake checks | Full canonical-state identity after make/unmake. |
 | `SVF-INV-007` | `tests/engine.verify.mjs` (`verifySVFOwnership`) | Structural feature owned by one SVF component. |
-| `SM-INV-003` | `src/engine/verify.mjs` declares ID; `src/engine/structure.mjs` typed relations | **Gap in explicit executable test mapping** in this snapshot (ID declared; dedicated test not identified). |
+| `SM-INV-003` | `tests/engine.verify.mjs` | Relations stay typed; keys decode to known REL types, 0x88-valid squares, and counts match keys. |
 | `SPG-INV-005` | `tests/engine.plans.mjs` | Plans contain only legal moves. |
 | `FD-INV-001..008` | `src/engine/verify.mjs` includes `verifyFieldInvariants`; `tests/engine.field.mjs`, `tests/engine.verify.mjs` via `verifyPositionAll` | See Field Dynamics section. |
 
