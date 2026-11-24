@@ -69,6 +69,7 @@ export const DEFAULT_PARAMS = {
     kingShield: 10,
     kingShieldEndgame: 0.25,                   // shield matters less in the endgame
     kingOpenFile: 12,                          // open/semi-open file near king; A/B smoke +0.33 SE0.15 n=24 d4 seed1
+    kingZone: 0,                               // attack-unit king pressure weight (0 = off)
     kingAttack: 0                              // penalty per attacker weight on king zone; A/B before enabling
   },
 
@@ -307,6 +308,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const cfgShieldEndgame = cfg.kingShieldEndgame || 0;
   const cfgKingOpenFile = cfg.kingOpenFile || 0;
   const cfgKingAttack = cfg.kingAttack || 0;
+  const cfgKingZone = cfg.kingZone || 0;
   const flatMid = T.flatMid;
   const flatEnd = T.flatEnd;
   pos.refreshPieces();
@@ -464,6 +466,32 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
     }
   }
 
+  // King-zone pressure (attack units, quadratic, middlegame only). Each attacking N/B/R/Q whose attack set
+  // reaches the squares around the enemy king and the three in front of them adds a weight (2/2/3/5) plus one per
+  // extra zone square; with two or more attackers (or the queen) the penalty grows with the square of the units.
+  if (cfgKingZone && phase < 0.85) {
+    for (let color = 0; color < 2; color++) {
+      const sign = color === WHITE ? 1 : -1;       // the attacker's colour, white-positive
+      const eks = pos.kingSq[color ^ 1];
+      zoneMark(b, eks, color, 1);
+      let units = 0, attackers = 0, queen = false;
+      const list = pos.listSq[color];
+      const n = pos.listCnt[color];
+      for (let i = 0; i < n; i++) {
+        const sq = list[i];
+        const t = b[sq] & 7;
+        if (t < KNIGHT || t > QUEEN) continue;
+        const hits = zoneHits(b, sq, t);
+        if (hits) { attackers++; units += ZONE_W[t] + hits - 1; if (t === QUEEN) queen = true; }
+      }
+      zoneMark(b, eks, color, 0);
+      if (attackers >= 2 || (attackers === 1 && queen)) {
+        const pen = Math.min(400, cfgKingZone * units * units / 2);
+        score += sign * pen * (1 - phase);
+      }
+    }
+  }
+
   return clampScore(score * stmSign + params.tempo, params);
 }
 
@@ -487,6 +515,43 @@ function knightMobility(b, sq, color) {
     const p = b[to];
     if (p && (p >> 3) === color) continue;
     n++;
+  }
+  return n;
+}
+
+
+/* ---------------- king-zone helpers (scratch-marked 0x88 board) ---------------- */
+const _zone = new Uint8Array(128);
+const ZONE_W = [0, 0, 2, 2, 3, 5, 0];     // by piece type: N, B, R, Q
+/** Mark (or clear) the king ring plus the three squares in front of it (towards the attacker). */
+function zoneMark(b, ksq, attackerColor, v) {
+  const fwd = attackerColor === WHITE ? 16 : -16;   // from the defending king towards the board centre (0x88 rows: rank 8 is row 0)
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let df = -1; df <= 1; df++) {
+      const t = ksq + dr * 16 + df;
+      if (!(t & 0x88)) _zone[t] = v;
+    }
+  }
+  for (let df = -1; df <= 1; df++) {
+    const t = ksq + 2 * fwd + df;
+    if (!(t & 0x88)) _zone[t] = v;
+  }
+}
+/** Number of zone squares a piece attacks (sliders stop at the first piece, which is counted). */
+function zoneHits(b, sq, type) {
+  let n = 0;
+  if (type === KNIGHT) {
+    for (let i = 0; i < 8; i++) { const to = sq + KNIGHT_DELTAS[i]; if (!(to & 0x88) && _zone[to]) n++; }
+    return n;
+  }
+  const dirs = type === BISHOP ? BISHOP_DIRS : type === ROOK ? ROOK_DIRS : QUEEN_DIRS;
+  for (let d = 0; d < dirs.length; d++) {
+    let to = sq + dirs[d];
+    while (!(to & 0x88)) {
+      if (_zone[to]) n++;
+      if (b[to]) break;
+      to += dirs[d];
+    }
   }
   return n;
 }
