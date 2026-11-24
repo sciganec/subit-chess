@@ -96,8 +96,8 @@ function maxAttackedVictim(pos, to, piece, us) {
   let best = 0;
   if (piece === PAWN) {
     const dir = us === WHITE ? -16 : 16;
-    for (const df of [-1, 1]) {
-      const t = to + dir + df;
+    for (let i = 0; i < 2; i++) {
+      const t = to + dir + (i === 0 ? -1 : 1);
       if (t & 0x88) continue;
       const p = board[t];
       if (p && (p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
@@ -105,8 +105,8 @@ function maxAttackedVictim(pos, to, piece, us) {
     return best;
   }
   if (piece === KNIGHT) {
-    for (const d of KNIGHT_DELTAS) {
-      const t = to + d;
+    for (let i = 0; i < KNIGHT_DELTAS.length; i++) {
+      const t = to + KNIGHT_DELTAS[i];
       if (t & 0x88) continue;
       const p = board[t];
       if (p && (p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
@@ -123,16 +123,32 @@ function maxAttackedVictim(pos, to, piece, us) {
     }
     return best;
   }
-  const dirs = piece === BISHOP ? BISHOP_DIRS : piece === ROOK ? ROOK_DIRS : [...BISHOP_DIRS, ...ROOK_DIRS];
-  for (const d of dirs) {
-    let t = to + d;
-    while ((t & 0x88) === 0) {
-      const p = board[t];
-      if (p) {
-        if ((p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
-        break;
+  if (piece === BISHOP || piece === QUEEN) {
+    for (let i = 0; i < BISHOP_DIRS.length; i++) {
+      const d = BISHOP_DIRS[i];
+      let t = to + d;
+      while ((t & 0x88) === 0) {
+        const p = board[t];
+        if (p) {
+          if ((p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
+          break;
+        }
+        t += d;
       }
-      t += d;
+    }
+  }
+  if (piece === ROOK || piece === QUEEN) {
+    for (let i = 0; i < ROOK_DIRS.length; i++) {
+      const d = ROOK_DIRS[i];
+      let t = to + d;
+      while ((t & 0x88) === 0) {
+        const p = board[t];
+        if (p) {
+          if ((p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
+          break;
+        }
+        t += d;
+      }
     }
   }
   return best;
