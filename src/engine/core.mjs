@@ -589,18 +589,20 @@ export class Position {
     const us = this.turn;
     const them = opposite(us);
     const b = this.board;
+    const listCnt = this.listCnt[us];
+    const listSq = this.listSq[us];
 
-    for (let i = 0; i < this.listCnt[us]; i++) {
-      const from = this.listSq[us][i];
+    for (let i = 0; i < listCnt; i++) {
+      const from = listSq[i];
       const piece = b[from];
-      const type = pieceType(piece);
+      const type = piece & 7;
 
       if (type === PAWN) {
         const dir = us === WHITE ? -16 : 16;
         const startRank = us === WHITE ? 6 : 1;
         const promoRank = us === WHITE ? 0 : 7;
         const one = from + dir;
-        if (one >= 0 && one < 128 && (one & 0x88) === 0 && b[one] === EMPTY) {
+        if ((one & 0x88) === 0 && b[one] === EMPTY) {
           if ((one >> 4) === promoRank) {
             for (const pt of [QUEEN, ROOK, BISHOP, KNIGHT])
               out.push(encodeMove(from, one, pt, FLAG_PROMO));
@@ -611,11 +613,11 @@ export class Position {
               out.push(encodeMove(from, two, 0, FLAG_DOUBLE));
           }
         }
-        for (const dc of [-1, 1]) {
+        for (let dc = -1; dc <= 1; dc += 2) {
           const to = one + dc;
-          if (to < 0 || to > 127 || (to & 0x88)) continue;
+          if ((to & 0x88) !== 0) continue;
           const target = b[to];
-          if (target !== EMPTY && pieceColor(target) === them) {
+          if (target !== EMPTY && (target >> 3) === them) {
             if ((to >> 4) === promoRank) {
               for (const pt of [QUEEN, ROOK, BISHOP, KNIGHT])
                 out.push(encodeMove(from, to, pt, FLAG_PROMO | FLAG_CAPTURE));
@@ -631,11 +633,11 @@ export class Position {
 
       if (type === KNIGHT || type === KING) {
         const deltas = type === KNIGHT ? KNIGHT_DELTAS : KING_DELTAS;
-        for (const d of deltas) {
-          const to = from + d;
-          if (to < 0 || to > 127 || (to & 0x88)) continue;
+        for (let j = 0; j < deltas.length; j++) {
+          const to = from + deltas[j];
+          if ((to & 0x88) !== 0) continue;
           const target = b[to];
-          if (target !== EMPTY && pieceColor(target) === us) continue;
+          if (target !== EMPTY && (target >> 3) === us) continue;
           if (capturesOnly && target === EMPTY) continue;
           out.push(encodeMove(from, to, 0, target !== EMPTY ? FLAG_CAPTURE : 0));
         }
@@ -644,14 +646,15 @@ export class Position {
       }
 
       const dirs = type === BISHOP ? BISHOP_DIRS : type === ROOK ? ROOK_DIRS : QUEEN_DIRS;
-      for (const d of dirs) {
+      for (let j = 0; j < dirs.length; j++) {
+        const d = dirs[j];
         let to = from + d;
-        while (to < 128 && (to & 0x88) === 0) {
+        while ((to & 0x88) === 0) {
           const target = b[to];
           if (target === EMPTY) {
             if (!capturesOnly) out.push(encodeMove(from, to));
           } else {
-            if (pieceColor(target) === them)
+            if ((target >> 3) === them)
               out.push(encodeMove(from, to, 0, FLAG_CAPTURE));
             break;
           }
