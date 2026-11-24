@@ -82,7 +82,7 @@ export const DEFAULT_PARAMS = {
     // in one, so pruning at depth 1..3 hides forced mates (measured on the
     // SmallFish game: a mate in 2 was reported as -471 cp at depth 8 with
     // maxDepth 3, and as -99996 with maxDepth <= 1).
-    futility: { enabled: true, margin: 120, maxDepth: 1 },
+    futility: { enabled: true, margin: 120, maxDepth: 2 },
     checkExtension: 1,
     rfp: { enabled: true, margin: 120, maxDepth: 3 },      // reverse futility (v3.0.9: +64 Elo [+8,+125], 120 games)
     qSee: { enabled: false, slack: 50 },

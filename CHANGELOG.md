@@ -74,6 +74,7 @@ Measured post-v3.0.11 search-safety/plumbing increment. No external Elo-gain cla
 - **Notes.** No scalar blend `U(P)` (ADR 0019). No structural/context move ordering (ADR 0023 / Gate 3 kill). `TT_MAX_AGE = 0` preserved (ADR 0022). Theory docs 81-99+ remain research-only/non-binding.
 
 ## [Unreleased] — merged onto 3.0.11 (measured at 100-300 ms/move; 60 games each, harness noise ~ ±6.5 pp)
+- **Futility pruning now reaches depth 2** (`search.futility.maxDepth` 1 → 2). 400 paired games at 100 ms/move, two independent opening sets: +40 [−3;+84] and +49 [+7;+92], combined 56.4% ≈ +45 Elo (z≈3.2). Engine tests, including the forced-mate checks, pass. Measured and rejected in the same session: LMR maxReduction 2 (−35 Elo, n.s., 200 games).
 - **SEE least-valuable-attacker order (finding).** The conformance suite (`tests/engine.conformance.mjs`, 832k checks) showed that `smallestAttacker` returned a queen on a diagonal before a rook on a file (pre-existing, also upstream). The exact order is available as `search.see.exactLva` (default **off**): in 400 paired games at 100 ms/move the exact order scored 46.5% (≈ −24 Elo, not significant, 2 runs of 200: −40 and −9). The legacy order stays the default until a larger match shows otherwise; the conformance reference uses the exact order.
 - SUBIT-CPU §2: normative Belnap encoding N=0,F=1,T=2,B=3 and FOUR_WORD plane operations in `belnap.mjs` (`tests/engine.cpuspec.mjs`, 12,341 checks).
 
