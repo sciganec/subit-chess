@@ -749,10 +749,12 @@ export class Searcher {
     const pvNode = beta - alpha > 1;
     const alphaOrig = alpha;
 
+    let ttMove = 0;
     if (this.useTT && ply > 0) {
       const entry = this.tt.probe(pos.ttKey, depth, alpha, beta, ply);
       if (entry) {
         this.tt.hits++;
+        ttMove = entry.move;
         // AUD-311-07: count only actual TT cutoffs as cutoffs; partial entries are hits/hints.
         if (!entry.partial) {
           this.tt.cutoffs++;
@@ -775,7 +777,7 @@ export class Searcher {
     const us = pos.turn;
     const them = us ^ 1;
     const moves = pos.generateMoves(false, this.genBuf[ply]);
-    const orderedCount = this.order.scoreMoves(pos, moves, ply, this.ttMoveFor(pos, depth), 0);
+    const orderedCount = this.order.scoreMoves(pos, moves, ply, ttMove, 0);
     const buf = this.order.buffers[ply];
 
     let bestScore = -INF;
