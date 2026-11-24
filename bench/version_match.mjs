@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** Paired UCI match between two local engine versions. */
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import readline from 'node:readline';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -200,9 +200,21 @@ async function main() {
       try { engine.child.kill(); } catch {}
     }
   }
+  const gitHead = (dir) => {
+    try {
+      const r = spawnSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8', windowsHide: true });
+      return r.status === 0 ? r.stdout.trim() : null;
+    } catch { return null; }
+  };
+  const aPath = path.resolve(aEntry);
+  const bPath = path.resolve(bEntry);
   const report = {
     method: 'paired version match, alternating colours, curated EPD openings, fixed depth',
-    engines: { a: path.resolve(aEntry), b: path.resolve(bEntry) },
+    engines: {
+      a: aPath, b: bPath,
+      aHead: gitHead(path.dirname(aPath)),
+      bHead: gitHead(path.dirname(bPath))
+    },
     settings: {
       games, depth, maxPlies, openings: openingsPath,
       openingCount: openings.length, openingSeed, openingOffset, openingCycles, strictNoCycle
