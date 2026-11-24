@@ -11,16 +11,19 @@
  * pure functions that READ numbers produced elsewhere. Nothing in this file touches the search or the evaluation, so
  * it cannot change a move (SCMF-INV-011).
  *
- * Representation: a value is a pair (t, f) of "there is evidence for" / "there is evidence against":
- *   N = (0,0) no information, T = (1,0), F = (0,1), B = (1,1) contradiction.
+ * Representation (SUBIT-CPU v0.1 §2.2, normative): a value is a pair (t, f) of "there is evidence for" /
+ * "there is evidence against", packed as two bits with t as the HIGH bit:
+ *   N = 00 = (0,0) no information, F = 01 = (0,1), T = 10 = (1,0), B = 11 = (1,1) contradiction.
+ * Until v3.0.15 this file had T = 1 and F = 2 (the other way round); the operations are unchanged, only the numeric
+ * codes moved, so that a serialised value means the same here and in a conforming SUBIT-CPU implementation.
  */
 
-export const N = 0, T = 1, F = 2, B = 3;
-export const NAMES = ['N', 'T', 'F', 'B'];
+export const N = 0, F = 1, T = 2, B = 3;
+export const NAMES = ['N', 'F', 'T', 'B'];
 
-const tOf = (v) => v & 1;
-const fOf = (v) => (v >> 1) & 1;
-const make = (t, f) => (t ? 1 : 0) | (f ? 2 : 0);
+const tOf = (v) => (v >> 1) & 1;
+const fOf = (v) => v & 1;
+const make = (t, f) => (t ? 2 : 0) | (f ? 1 : 0);
 
 /** Knowledge order join ⊕: accumulates evidence. N is the identity, B absorbs. */
 export const join = (a, b) => a | b;
@@ -32,6 +35,37 @@ export const and = (a, b) => make(tOf(a) & tOf(b), fOf(a) | fOf(b));
 export const or = (a, b) => make(tOf(a) | tOf(b), fOf(a) & fOf(b));
 /** Negation swaps evidence for and against; N and B are fixed. */
 export const not = (a) => make(fOf(a), tOf(a));
+
+/** Bitwise exclusive-or of the two components (SUBIT-CPU §2.6). Not a knowledge operation. */
+export const bxor = (a, b) => a ^ b;
+/** NAND / NOR in the truth order (SUBIT-CPU §2.6). */
+export const nand = (a, b) => not(and(a, b));
+export const nor = (a, b) => not(or(a, b));
+
+/**
+ * FOUR_WORD (SUBIT-CPU §3.1, §2.4): eight FOUR cells in 16 bits, stored as two 8-bit planes.
+ * Cell i occupies bits 2i+1 (t) and 2i (f) of the word; `planes(word)` gives { t, f } with bit i = cell i.
+ * All operations work on every cell at once.
+ */
+export const wordGet = (word, i) => (word >> (2 * i)) & 3;
+export const wordSet = (word, i, v) => (word & ~(3 << (2 * i))) | ((v & 3) << (2 * i));
+export function planes(word) {
+  let t = 0, f = 0;
+  for (let i = 0; i < 8; i++) { t |= ((word >> (2 * i + 1)) & 1) << i; f |= ((word >> (2 * i)) & 1) << i; }
+  return { t, f };
+}
+export function fromPlanes(t, f) {
+  let w = 0;
+  for (let i = 0; i < 8; i++) w |= ((((t >> i) & 1) << 1) | ((f >> i) & 1)) << (2 * i);
+  return w;
+}
+const P = (word) => planes(word & 0xffff);
+export const wordNot = (a) => { const p = P(a); return fromPlanes(p.f, p.t); };
+export const wordJoin = (a, b) => (a | b) & 0xffff;        // SJOIN: both planes OR
+export const wordMeet = (a, b) => (a & b) & 0xffff;        // SMEET: both planes AND
+export const wordAnd = (a, b) => { const x = P(a), y = P(b); return fromPlanes(x.t & y.t, x.f | y.f); };
+export const wordOr = (a, b) => { const x = P(a), y = P(b); return fromPlanes(x.t | y.t, x.f & y.f); };
+export const wordBxor = (a, b) => (a ^ b) & 0xffff;
 
 /** Fold a list of values with ⊕. The empty list is N. */
 export function combine(values) {

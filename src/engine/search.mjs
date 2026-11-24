@@ -42,6 +42,8 @@ const SRCH_QUEEN_DIRS = [...BISHOP_DIRS, ...ROOK_DIRS];
 const SRCH_KING_STEPS = [-17, -16, -15, -1, 1, 15, 16, 17];
 // scratch for see(): squares already used up in the exchange (indexed 0x88, cleared after each call)
 const SEE_GONE = new Uint8Array(128);
+let SEE_EXACT_LVA = false; // set from params.search.see.exactLva; false = legacy order (measured stronger, see CHANGELOG)
+export function setSeeExactLva(v) { SEE_EXACT_LVA = !!v; }
 const SEE_LIST = new Int32Array(40);
 const SEE_GAIN = new Int32Array(40);
 
@@ -61,6 +63,9 @@ function smallestAttacker(pos, to, side) {
     const p = board[from];
     if (p && !SEE_GONE[from] && (p >> 3) === side && (p & 7) === KNIGHT) return (from << 3) | KNIGHT;
   }
+  // sliders: a bishop or a rook is cheaper than a queen, so a queen found on a diagonal must not be returned before
+  // a rook on a file has been looked for (conformance finding, tests/engine.conformance.mjs)
+  let queenSq = -1;
   for (let k = 0; k < BISHOP_DIRS.length; k++) {
     const d = BISHOP_DIRS[k];
     let from = to + d;
@@ -69,7 +74,8 @@ function smallestAttacker(pos, to, side) {
       if (p && !SEE_GONE[from]) {
         if ((p >> 3) === side) {
           const pt = p & 7;
-          if (pt === BISHOP || pt === QUEEN) return (from << 3) | pt;
+          if (pt === BISHOP) return (from << 3) | BISHOP;
+          if (pt === QUEEN) { if (!SEE_EXACT_LVA) return (from << 3) | QUEEN; if (queenSq < 0) queenSq = from; }
         }
         break;
       }
@@ -84,13 +90,15 @@ function smallestAttacker(pos, to, side) {
       if (p && !SEE_GONE[from]) {
         if ((p >> 3) === side) {
           const pt = p & 7;
-          if (pt === ROOK || pt === QUEEN) return (from << 3) | pt;
+          if (pt === ROOK) return (from << 3) | ROOK;
+          if (pt === QUEEN) { if (!SEE_EXACT_LVA) return (from << 3) | QUEEN; if (queenSq < 0) queenSq = from; }
         }
         break;
       }
       from += d;
     }
   }
+  if (queenSq >= 0) return (queenSq << 3) | QUEEN;
   for (let k = 0; k < 8; k++) {
     const from = to + SRCH_KING_STEPS[k];
     if (from & 0x88) continue;
@@ -496,6 +504,7 @@ export class Searcher {
   constructor(evaluator, params, opts = {}) {
     this.ev = evaluator;
     this.params = params;
+    SEE_EXACT_LVA = !!(params.search && params.search.see && params.search.see.exactLva);
     this.tt = opts.tt || new TranspositionTable(18);
     this.stopFlag = opts.stopFlag || null;   // shared Int32Array(1): a helper thread stops when it reaches its search id
     this.stopId = 0;

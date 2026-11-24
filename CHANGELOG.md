@@ -74,6 +74,8 @@ Measured post-v3.0.11 search-safety/plumbing increment. No external Elo-gain cla
 - **Notes.** No scalar blend `U(P)` (ADR 0019). No structural/context move ordering (ADR 0023 / Gate 3 kill). `TT_MAX_AGE = 0` preserved (ADR 0022). Theory docs 81-99+ remain research-only/non-binding.
 
 ## [Unreleased] — merged onto 3.0.11 (measured at 100-300 ms/move; 60 games each, harness noise ~ ±6.5 pp)
+- **SEE least-valuable-attacker order (finding).** The conformance suite (`tests/engine.conformance.mjs`, 832k checks) showed that `smallestAttacker` returned a queen on a diagonal before a rook on a file (pre-existing, also upstream). The exact order is available as `search.see.exactLva` (default **off**): in 400 paired games at 100 ms/move the exact order scored 46.5% (≈ −24 Elo, not significant, 2 runs of 200: −40 and −9). The legacy order stays the default until a larger match shows otherwise; the conformance reference uses the exact order.
+- SUBIT-CPU §2: normative Belnap encoding N=0,F=1,T=2,B=3 and FOUR_WORD plane operations in `belnap.mjs` (`tests/engine.cpuspec.mjs`, 12,341 checks).
 
 - `search.seePrune` (off): SEE pruning of losing captures, depth<=4, 100cp/ply, 96 games: base 56.2% (new ≈ −44 Elo, z=1.4, not significant). RFP margin 80 / 180: base 46.4% / 43.2% (not significant); margin stays 120.
 - **Speed: allocation-free SEE.** Profiling showed `see()` + `smallestAttacker()` took 54% of search time (a Uint8Array(128) and an object per call). Rewritten with module scratch buffers and packed returns. Identical results on 445,239 random-game moves (0 mismatches); identical node counts and scores at depth 7 on three positions; 6443 ms -> 2852 ms (2.26x). Search depth at 200 ms: ~5 -> ~5.8.
