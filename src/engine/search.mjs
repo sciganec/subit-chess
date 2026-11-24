@@ -479,6 +479,9 @@ export class Searcher {
     this.nodeLimit = 0;
     this.pvTable = new Int32Array(128 * 64);   // triangular PV: pvTable[ply*64 + i]
     this.pvLength = new Int32Array(128);
+    this.genBuf = Array.from({ length: 128 }, () => []);
+    this.probeBuf = [];
+    this.checkGenBuf = [];
     this.seldepth = 0;
     this.qStalemate = true;   // horizon stalemate check (audit v3.0.6 §4.1)
     this.useTT = true;
@@ -511,7 +514,7 @@ export class Searcher {
     pos.refreshPieces();
     const us = pos.turn;
     const them = us ^ 1;
-    const moves = pos.generateMoves(false);
+    const moves = pos.generateMoves(false, this.probeBuf);
     for (let i = 0; i < moves.length; i++) {
       const m = moves[i];
       const victim = pos.board[MOVE_TO(m)];
@@ -768,7 +771,7 @@ export class Searcher {
 
     const us = pos.turn;
     const them = us ^ 1;
-    const moves = pos.generateMoves(false);
+    const moves = pos.generateMoves(false, this.genBuf[ply]);
     const orderedCount = this.order.scoreMoves(pos, moves, ply, this.ttMoveFor(pos, depth), 0);
     const buf = this.order.buffers[ply];
 
@@ -976,7 +979,7 @@ export class Searcher {
     let moves;
 
     if (inCheck) {
-      moves = pos.generateMoves(false);
+      moves = pos.generateMoves(false, this.genBuf[ply]);
       // No stand-pat in check (AUD-01): a static score is not a legal move, so
       // it cannot produce a beta cutoff. -INF lets the first *searched*
       // evasion set the real bound; a node where every evasion is bad cannot
@@ -987,7 +990,7 @@ export class Searcher {
       if (stand >= beta) return stand;
       if (stand > alpha) alpha = stand;
       best = stand;
-      moves = pos.generateMoves(true);
+      moves = pos.generateMoves(true, this.genBuf[ply]);
       // Stalemate at the horizon, at any qdepth (AUD-03). A quiet position
       // without captures is not evidence of a legal move, and a static score
       // would report a won game as drawn (or the reverse). The probe runs only
@@ -1058,7 +1061,7 @@ export class Searcher {
       // one of those squares can be a discovered check. Everything else is
       // skipped before make/unmake. The full legality test remains below.
       const targets = CHECK_TARGETS[pos.kingSq[them]];
-      const checkMoves = pos.generateMoves(false);
+      const checkMoves = pos.generateMoves(false, this.checkGenBuf);
       for (let i = 0; i < checkMoves.length; i++) {
         const m = checkMoves[i];
         const flags = MOVE_FLAGS(m);

@@ -585,9 +585,9 @@ export class Position {
   /* ---------------- move generation ---------------- */
 
   /** Pseudo-legal moves. `capturesOnly` restricts to captures/promotions (quiescence). */
-  generateMoves(capturesOnly = false) {
+  generateMoves(capturesOnly = false, out = null) {
     this.refreshPieces();
-    const out = [];
+    if (out) out.length = 0; else out = [];
     const us = this.turn;
     const them = opposite(us);
     const b = this.board;
