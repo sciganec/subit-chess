@@ -488,44 +488,45 @@ export class Position {
 
   isAttacked(sq, byColor) {
     const b = this.board;
+    const base = byColor << 3;           // makePiece(type, colour) = (colour << 3) | type
     // pawns
     if (byColor === WHITE) {
-      let t = sq + 17; if (t < 128 && (t & 0x88) === 0 && b[t] === makePiece(PAWN, WHITE)) return true;
-      t = sq + 15;     if (t < 128 && (t & 0x88) === 0 && b[t] === makePiece(PAWN, WHITE)) return true;
+      let t = sq + 17; if (t < 128 && (t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
+      t = sq + 15;     if (t < 128 && (t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
     } else {
-      let t = sq - 17; if (t >= 0 && (t & 0x88) === 0 && b[t] === makePiece(PAWN, BLACK)) return true;
-      t = sq - 15;     if (t >= 0 && (t & 0x88) === 0 && b[t] === makePiece(PAWN, BLACK)) return true;
+      let t = sq - 17; if (t >= 0 && (t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
+      t = sq - 15;     if (t >= 0 && (t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
     }
     // knights
-    const n = makePiece(KNIGHT, byColor);
-    for (const d of KNIGHT_DELTAS) {
-      const t = sq + d;
-      if (t < 0 || t > 127 || (t & 0x88)) continue;
-      if (b[t] === n) return true;
+    const n = base | KNIGHT;
+    for (let i = 0; i < 8; i++) {
+      const t = sq + KNIGHT_DELTAS[i];
+      if ((t & 0x88) === 0 && t >= 0 && b[t] === n) return true;
     }
     // king
-    const k = makePiece(KING, byColor);
-    for (const d of KING_DELTAS) {
-      const t = sq + d;
-      if (t < 0 || t > 127 || (t & 0x88)) continue;
-      if (b[t] === k) return true;
+    const k = base | KING;
+    for (let i = 0; i < 8; i++) {
+      const t = sq + KING_DELTAS[i];
+      if ((t & 0x88) === 0 && t >= 0 && b[t] === k) return true;
     }
     // bishops / queens
-    const bo = makePiece(BISHOP, byColor);
-    const qu = makePiece(QUEEN, byColor);
-    for (const d of BISHOP_DIRS) {
+    const bo = base | BISHOP;
+    const qu = base | QUEEN;
+    for (let i = 0; i < 4; i++) {
+      const d = BISHOP_DIRS[i];
       let t = sq + d;
-      while (t < 128 && (t & 0x88) === 0) {
+      while ((t & 0x88) === 0 && t >= 0) {
         const p = b[t];
         if (p !== EMPTY) { if (p === bo || p === qu) return true; break; }
         t += d;
       }
     }
     // rooks / queens
-    const ro = makePiece(ROOK, byColor);
-    for (const d of ROOK_DIRS) {
+    const ro = base | ROOK;
+    for (let i = 0; i < 4; i++) {
+      const d = ROOK_DIRS[i];
       let t = sq + d;
-      while (t < 128 && (t & 0x88) === 0) {
+      while ((t & 0x88) === 0 && t >= 0) {
         const p = b[t];
         if (p !== EMPTY) { if (p === ro || p === qu) return true; break; }
         t += d;
