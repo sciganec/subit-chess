@@ -179,20 +179,27 @@ async function main() {
   const a = startEngine('A', aEntry);
   const b = startEngine('B', bEntry);
   const rows = [];
+  let aborted = null;
   try {
     await Promise.all([init(a), init(b)]);
     for (let i = 0; i < games; i++) {
-      await Promise.all([ready(a), ready(b)]);
-      a.send('ucinewgame');
-      b.send('ucinewgame');
-      const pair = Math.floor(i / 2);
-      const openingIndex = pair % openings.length;
-      const opening = openings[openingIndex];
-      const aWhite = i % 2 === 0;
-      const game = await oneGame(a, b, opening.fen, aWhite, depth, maxPlies);
-      const value = score(game.result, aWhite);
-      rows.push({ game: i + 1, opening: openingIndex, openingId: opening.id, aWhite, ...game, score: value });
-      console.log(`game ${i + 1}/${games}: A=${aWhite ? 'W' : 'B'} ${game.result} ${game.reason}, ${game.plies} plies`);
+      try {
+        await Promise.all([ready(a), ready(b)]);
+        a.send('ucinewgame');
+        b.send('ucinewgame');
+        const pair = Math.floor(i / 2);
+        const openingIndex = pair % openings.length;
+        const opening = openings[openingIndex];
+        const aWhite = i % 2 === 0;
+        const game = await oneGame(a, b, opening.fen, aWhite, depth, maxPlies);
+        const value = score(game.result, aWhite);
+        rows.push({ game: i + 1, opening: openingIndex, openingId: opening.id, aWhite, ...game, score: value });
+        console.log(`game ${i + 1}/${games}: A=${aWhite ? 'W' : 'B'} ${game.result} ${game.reason}, ${game.plies} plies`);
+      } catch (err) {
+        aborted = { game: i + 1, error: String(err && err.message ? err.message : err) };
+        console.error(`aborted at game ${i + 1}: ${aborted.error}`);
+        break;
+      }
     }
   } finally {
     for (const engine of [a, b]) {
@@ -220,6 +227,7 @@ async function main() {
       openingCount: openings.length, openingSeed, openingOffset, openingCycles, strictNoCycle
     },
     summary: summarize(rows),
+    aborted,
     rows
   };
   if (opts.out) {
