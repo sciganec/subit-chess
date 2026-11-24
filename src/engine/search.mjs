@@ -482,6 +482,9 @@ export class Searcher {
     this.genBuf = Array.from({ length: 128 }, () => []);
     this.probeBuf = [];
     this.checkGenBuf = [];
+    this.undoBuf = Array.from({ length: 128 }, () => ({}));
+    this.probeUndo = {};
+    this.nullUndo = {};
     this.seldepth = 0;
     this.qStalemate = true;   // horizon stalemate check (audit v3.0.6 §4.1)
     this.useTT = true;
@@ -519,7 +522,7 @@ export class Searcher {
       const m = moves[i];
       const victim = pos.board[MOVE_TO(m)];
       if (victim && pieceType(victim) === KING) continue;
-      const undo = pos.makeMove(m);
+      const undo = pos.makeMove(m, this.probeUndo);
       const legal = !pos.isAttacked(pos.kingSq[us], them);
       pos.unmakeMove(undo);
       if (legal) return true;
@@ -668,7 +671,7 @@ export class Searcher {
     for (let i = 0; i < orderedCount; i++) {
       const m = this.order.buffers[0][i];
       pos.pushRep();
-      const undo = pos.makeMove(m);
+      const undo = pos.makeMove(m, this.undoBuf[0]);
       this.nodes++;
       const givesCheck = pos.inCheck();
       const ext = (givesCheck && this.params.search.checkExtension > 0) ? 1 : 0;
@@ -788,7 +791,7 @@ export class Searcher {
       const isQuiet = !(flags & (FLAG_CAPTURE | FLAG_PROMO)) && pos.board[MOVE_TO(m)] === 0;
 
       pos.pushRep();
-      const undo = pos.makeMove(m);
+      const undo = pos.makeMove(m, this.undoBuf[ply]);
 
       // UCA-INV-003: legality is decided by the rules here, not by the ordering
       if (pos.isAttacked(pos.kingSq[us], them)) {
@@ -945,7 +948,7 @@ export class Searcher {
     for (let i = 0; i < moves.length; i++) {
       const m = moves[i];
       pos.pushRep();
-      const undo = pos.makeMove(m);
+      const undo = pos.makeMove(m, this.undoBuf[ply]);
       if (pos.isAttacked(pos.kingSq[us], them)) {
         pos.unmakeMove(undo);
         pos.popRep();
@@ -1028,7 +1031,7 @@ export class Searcher {
         if (alpha < MATE_THRESHOLD && best + victimValue + 200 < alpha && !(flags & FLAG_PROMO)) continue;
       }
       pos.pushRep();
-      const undo = pos.makeMove(m);
+      const undo = pos.makeMove(m, this.undoBuf[ply]);
       if (pos.isAttacked(pos.kingSq[us], them)) {
         pos.unmakeMove(undo);
         pos.popRep();
@@ -1070,7 +1073,7 @@ export class Searcher {
         // AUD-311-09: castling moves the rook; a discovered rook check can occur
         // even when the king's from/to squares are not in CHECK_TARGETS.
         if (!targets[from] && !targets[to] && !(flags & FLAG_CASTLE)) continue;
-        const undo = pos.makeMove(m);
+        const undo = pos.makeMove(m, this.undoBuf[ply]);
         const givesCheck = pos.isAttacked(pos.kingSq[them], us);
         pos.unmakeMove(undo);
         if (givesCheck) checks.push(m);
@@ -1081,7 +1084,7 @@ export class Searcher {
       for (let i = 0; i < checkCount; i++) {
         const m = checkBuf[i];
         pos.pushRep();
-        const undo = pos.makeMove(m);
+        const undo = pos.makeMove(m, this.undoBuf[ply]);
         if (pos.isAttacked(pos.kingSq[us], them)) {
           pos.unmakeMove(undo);
           pos.popRep();

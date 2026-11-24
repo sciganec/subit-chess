@@ -714,7 +714,7 @@ export class Position {
 
   /* ---------------- transitions ---------------- */
 
-  makeMove(m) {
+  makeMove(m, outUndo = null) {
     const from = MOVE_FROM(m);
     const to = MOVE_TO(m);
     const flags = MOVE_FLAGS(m);
@@ -725,13 +725,12 @@ export class Position {
     const piece = b[from];
     const type = piece & 7;
 
-    const undo = {
-      move: m, captured: EMPTY, capSq: -1,
-      castling: this.castling, ep: this.ep, halfmove: this.halfmove,
-      fullmove: this.fullmove, hashLo: this.hashLo, hashHi: this.hashHi,
-      kingW: this.kingSq[WHITE], kingB: this.kingSq[BLACK], phaseMaterial: this.phaseMaterial,
-      repLimit: this.repLimit
-    };
+    const undo = outUndo || {};
+    undo.move = m; undo.captured = EMPTY; undo.capSq = -1;
+    undo.castling = this.castling; undo.ep = this.ep; undo.halfmove = this.halfmove;
+    undo.fullmove = this.fullmove; undo.hashLo = this.hashLo; undo.hashHi = this.hashHi;
+    undo.kingW = this.kingSq[WHITE]; undo.kingB = this.kingSq[BLACK]; undo.phaseMaterial = this.phaseMaterial;
+    undo.repLimit = this.repLimit;
 
     // remove captured piece
     let capSq = -1;
