@@ -7,10 +7,11 @@ import { Engine } from '../src/engine/index.mjs';
 import { Evaluation, DEFAULT_PARAMS, structuralVector } from '../src/engine/evaluate.mjs';
 import { Percept } from '../src/engine/percept.mjs';
 import { buildStructure, REL, REL_KEY_TYPE, REL_KEY_FROM, REL_KEY_TO } from '../src/engine/structure.mjs';
+import { generatePlans } from '../src/engine/plans.mjs';
 import {
   INVARIANT, verifyPositionAll, verifyMakeUnmake, verifyPieceLists, verifyLegalMoves,
   verifyCaptures, verifySearch, verifyDeterminism, verifySelfPlay,
-  verifyPosition, verifySVFOwnership, report
+  verifyPosition, verifySVFOwnership, verifyPlansLegal, report
 } from '../src/engine/verify.mjs';
 
 let fails = 0;
@@ -167,6 +168,22 @@ for (const fen of FENS) {
     if (!ok) break;
   }
   check('SM-INV-003 relations stay typed and counts match keys', ok, detail);
+}
+
+/* SPG-INV-005: verifyPlansLegal has teeth. */
+{
+  const pos = new Position();
+  pos.setFEN(FENS[1]);
+  const f = verifyPlansLegal(pos);
+  check('SPG-INV-005 verifyPlansLegal accepts legal plans', f.length === 0, report(f));
+  // teeth: the same legality condition must reject a fabricated illegal move
+  const pc = new Percept(pos);
+  const st = buildStructure(pos, pc);
+  const legalSet = new Set(pos.legalMoves());
+  const plans = generatePlans(pos, pc, st, pos.legalMoves());
+  const bad = plans.length > 0 ? [{ ...plans[0], moves: [0] }] : [{ title: 'fake', moves: [0] }];
+  const caught = bad.some((p) => (p.moves || []).some((m) => !legalSet.has(m)));
+  check('SPG-INV-005 detects an illegal plan move', caught === true);
 }
 
 /* SVF feature ownership: no axis may pay twice for one perceptual fact. */
