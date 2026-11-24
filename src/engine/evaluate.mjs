@@ -246,20 +246,19 @@ function buildPieceSquareTables(params) {
 
 let TABLES = null;
 let TABLES_PARAMS = null;
-let TABLES_SIG = '';
+let TABLES_M = null;
 
-function tablesSig(params) {
-  const m = params && params.material ? params.material : DEFAULT_PARAMS.material;
-  return `${m.P}|${m.N}|${m.B}|${m.R}|${m.Q}`;
+function sameMaterial(a, b) {
+  return a.P === b.P && a.N === b.N && a.B === b.B && a.R === b.R && a.Q === b.Q;
 }
 
 function tables(params) {
-  const sig = tablesSig(params);
+  const m = params && params.material ? params.material : DEFAULT_PARAMS.material;
   // AUD-311-11: invalidate on content change, not only object identity.
-  if (!TABLES || TABLES_PARAMS !== params || TABLES_SIG !== sig) {
+  if (!TABLES || TABLES_PARAMS !== params || !TABLES_M || !sameMaterial(TABLES_M, m)) {
     TABLES = buildPieceSquareTables(params);
     TABLES_PARAMS = params;
-    TABLES_SIG = sig;
+    TABLES_M = { P: m.P, N: m.N, B: m.B, R: m.R, Q: m.Q };
   }
   return TABLES;
 }

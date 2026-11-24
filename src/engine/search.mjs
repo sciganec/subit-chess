@@ -136,6 +136,9 @@ function maxAttackedVictim(pos, to, piece, us) {
   return best;
 }
 
+const SEE_GAIN = new Int32Array(34);
+const SEE_OCC = new Uint8Array(128);
+
 export function see(pos, move) {
   const from = MOVE_FROM(move);
   const to = MOVE_TO(move);
@@ -144,30 +147,29 @@ export function see(pos, move) {
   let gain0 = SEE_VAL[victimPiece];
   if (flags & FLAG_PROMO) gain0 += SEE_VAL[MOVE_PROMO(move)] - SEE_VAL[PAWN];
   let attacker = (flags & FLAG_PROMO) ? MOVE_PROMO(move) : (pos.board[from] & 7);
-  const gain = [gain0];
-  const occ = new Uint8Array(128);
-  for (let i = 0; i < 128; i++) occ[i] = pos.board[i] ? 1 : 0;
-  occ[from] = 0;
+  SEE_GAIN[0] = gain0;
+  for (let i = 0; i < 128; i++) SEE_OCC[i] = pos.board[i] ? 1 : 0;
+  SEE_OCC[from] = 0;
   if (flags & FLAG_EP) {
     const capSq = to + (pos.turn === WHITE ? 16 : -16);
-    occ[capSq] = 0;
+    SEE_OCC[capSq] = 0;
   }
   let side = opposite(pos.turn);
   let depth = 0;
   let cur = attacker;
   while (true) {
     depth++;
-    gain[depth] = SEE_VAL[cur] - gain[depth - 1];
-    if (Math.max(-gain[depth - 1], gain[depth]) < 0) break;
-    const att = smallestAttacker(pos, to, side, occ);
+    SEE_GAIN[depth] = SEE_VAL[cur] - SEE_GAIN[depth - 1];
+    if (Math.max(-SEE_GAIN[depth - 1], SEE_GAIN[depth]) < 0) break;
+    const att = smallestAttacker(pos, to, side, SEE_OCC);
     if (!att) break;
-    occ[att.from] = 0;
+    SEE_OCC[att.from] = 0;
     cur = att.piece;
     side ^= 1;
     if (depth > 31) break;
   }
-  while (--depth > 0) gain[depth - 1] = -Math.max(-gain[depth - 1], gain[depth]);
-  return gain[0];
+  while (--depth > 0) SEE_GAIN[depth - 1] = -Math.max(-SEE_GAIN[depth - 1], SEE_GAIN[depth]);
+  return SEE_GAIN[0];
 }
 
 /** History counters saturate at this value (see MoveOrder.addHistory). */
