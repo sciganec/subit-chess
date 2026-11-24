@@ -18,7 +18,7 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 v3.0.16 is the active development candidate. No Elo gain has been established; no external strength claim.
 
-- **FD experiment hook (default off).** `eval.fdPressure` (default 0) adds FD-inspired weighted king-zone pressure from `buildFieldDynamics()` to structural eval K axis (FD-03/FD-08 inspired). Default-off: no behavior change, `bench:engine` baseline identical, tests/gauntlet green. No Elo/strength claim; A/B required before enabling.
+- **FD experiment hook (default off).** `eval.fdPressure` (default 0) adds FD-inspired weighted king-zone pressure from `buildFieldDynamics()` to structural eval K axis (FD-03/FD-08 inspired). Default-off: no behavior change, `bench:engine` baseline identical, tests/gauntlet green. A/B `Eval.FDPressure=2` vs `0` (48g, d4, seed 20261126, strict no-cycle): 13W/22D/13L, 0.500, CI [-74.21,+74.21] — neutral/inconclusive, no Elo gain claim.
 
 v3.0.15 (released 2026-11-24) is a formalized release snapshot. No Elo gain has been established; no external strength claim. The release focuses on measurement/verification hardening and behavior-preserving perf work.
 
