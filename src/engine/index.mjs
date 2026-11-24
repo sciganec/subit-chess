@@ -290,7 +290,7 @@ export class Engine {
     let budget = null;
     let hardMs = timeMs;
     if (this.opts.adaptiveTime && timeMs > 0 && !opts.fixedTime) {
-      const a = allocateTime({ nominalMs: timeMs, bankMs: this.timeBank });
+      const a = allocateTime({ nominalMs: timeMs, bankMs: this.timeBank }, this.params.search.budgetOpts || undefined);
       budget = { softMs: a.softMs, hardMs: a.hardMs };
       hardMs = a.hardMs;
     }

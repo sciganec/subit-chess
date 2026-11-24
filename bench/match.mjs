@@ -146,6 +146,8 @@ export const CONFIGS = {
   kingatk: { label: 'kingAttack 8 (main hook)', params: { eval: { kingAttack: 8 } }, opts: {} },
   nokof: { label: 'kingOpenFile off (main default is 12)', params: { eval: { kingOpenFile: 0 } }, opts: {} },
   omega: { label: 'Ω gate on the stop rule (cyclic/chaotic score trace is not stable)', params: { search: { budgetOpts: { omegaGate: true } } }, opts: {} },
+  reserve: { label: 'larger tactical reserve: hard cap 4.5x nominal, 3x allowance, bank ceiling 10', params: { search: { budgetOpts: { hardCap: 4.5, hardFrac: 3.0, maxBank: 10 } } }, opts: {} },
+  smallres: { label: 'smaller reserve: hard cap 2x nominal, 1.5x allowance', params: { search: { budgetOpts: { hardCap: 2.0, hardFrac: 1.5 } } }, opts: {} },
   lmrlog: { label: 'log-table late move reductions', params: { search: { lmrLog: { enabled: true } } }, opts: {} },
   lmp: { label: 'late move pruning (depth<=3, 3+d^2)', params: { search: { lmp: { enabled: true } } }, opts: {} },
   iir: { label: 'internal iterative reduction (no TT move, depth>=4)', params: { search: { iir: { enabled: true } } }, opts: {} },
