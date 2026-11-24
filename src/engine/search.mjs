@@ -932,7 +932,8 @@ export class Searcher {
     const them = us ^ 1;
     let best = -INF;
     let legal = 0;
-    for (const m of moves) {
+    for (let i = 0; i < moves.length; i++) {
+      const m = moves[i];
       pos.pushRep();
       const undo = pos.makeMove(m);
       if (pos.isAttacked(pos.kingSq[us], them)) {
