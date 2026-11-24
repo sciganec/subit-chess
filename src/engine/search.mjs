@@ -372,6 +372,7 @@ export class MoveOrder {
     const w = this.params.search.ordering;
     const killers = this.killers[ply] || EMPTY_KILLER;
     const history = this.history;
+    const seeOn = this.params.search.see ? this.params.search.see.enabled !== false : true;
 
     for (let i = 0; i < n; i++) {
       const m = moves[i];
@@ -384,7 +385,6 @@ export class MoveOrder {
       if (flags & (FLAG_CAPTURE | FLAG_EP)) {
         const victim = (flags & FLAG_EP) ? PAWN : (board[to] & 7);
         const attacker = board[MOVE_FROM(m)] & 7;
-        const seeOn = this.params.search.see ? this.params.search.see.enabled !== false : true;
         const seeScore = seeOn ? see(pos, m) : 0;
         if (seeOn && seeScore < 0) s += w.tactic * 0.2 + seeScore * 0.01; // bad capture: below quiet killers/history
         else s += w.tactic + MATERIAL[victim] * 10 - MATERIAL[attacker];
