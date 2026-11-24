@@ -126,8 +126,16 @@ export class Engine {
 
   get fen() { return this.pos.fen(); }
 
+  /** Lazy SMP: use the pool's shared table and run its helpers during search (see smp.mjs). */
+  attachPool(pool) {
+    this.pool = pool;
+    this.tt = pool.tt;
+    this.searcher.tt = this.tt;
+  }
+
   reset() {
-    this.tt = new TranspositionTable(this.opts.ttBits);
+    if (this.pool) { this.tt = this.pool.tt; this.tt.clear(); }
+    else this.tt = new TranspositionTable(this.opts.ttBits);
     this.order = new MoveOrder(this.params);
     this.searcher = new Searcher(this.evaluation, this.params, { tt: this.tt, order: this.order });
     this.memory = new Memory();
@@ -300,11 +308,17 @@ export class Engine {
     const remembered = this.memory.lookup(this.pos);
     // the searcher re-reads its limits from the options it is given, so the node
     // budget has to travel with them -- setLimits() alone is silently reset
-    const result = this.searcher.search(this.pos, {
-      depth, timeMs: hardMs, nodes: opts.nodes || 0, budget,
-      prevBest: remembered ? remembered.move : 0,
-      prevScore: remembered ? remembered.score : 0
-    });
+    if (this.pool) this.pool.start(this.pos.fen(), hardMs, depth);
+    let result;
+    try {
+      result = this.searcher.search(this.pos, {
+        depth, timeMs: hardMs, nodes: opts.nodes || 0, budget,
+        prevBest: remembered ? remembered.move : 0,
+        prevScore: remembered ? remembered.score : 0
+      });
+    } finally {
+      if (this.pool) this.pool.stop();
+    }
 
     if (budget) this.timeBank = updateBank(this.timeBank, timeMs, result.timeMs);
     if (this.opts.rootStruct && result.move && result.completed && result.depth >= 3) this.rootStructReselect(result);
@@ -490,6 +504,7 @@ async function runUci() {
       send('id author SUBIT');
       send('option name Hash type spin default 64 min 1 max 1024');
       send('option name TT.MaxAge type spin default 0 min 0 max 10');
+      send('option name Threads type spin default 1 min 1 max 64');
       send('uciok');
       return;
     }
@@ -511,6 +526,11 @@ async function runUci() {
         else if (name === 'see' || name === 'see.enabled') { if (on||off) engine.params.search.see.enabled = on; }
         else if (name === 'see.qsearchprune') { if (on||off) engine.params.search.see.qsearchPrune = on; }
         else if (name === 'tt.maxage') { const n = Number(value); if (Number.isFinite(n)) { const age = Math.max(0, Math.min(10, n|0)); engine.params.search.ttMaxAge = age; engine.searcher.tt.maxAge = age; } }
+        else if (name === 'threads') {
+          const n = Math.max(1, Math.min(64, Number(value) | 0 || 1));
+          if (engine.pool) { engine.pool.close(); engine.pool = null; engine.reset(); }
+          if (n > 1) import('./smp.mjs').then((m) => m.createPool(engine, n - 1));
+        }
         else if (name === 'hash') { const mb = Number(value); if (Number.isFinite(mb) && mb>=1) { /* ignore for now, TT fixed */ } }
       }
       return;

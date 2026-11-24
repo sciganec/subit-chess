@@ -16,6 +16,7 @@
 import { createInterface } from 'node:readline';
 import { Engine, VERSION } from '../src/engine/index.mjs';
 import { Position } from '../src/engine/core.mjs';
+import { createPool } from '../src/engine/smp.mjs';
 import { cloneParams, DEFAULT_PARAMS } from '../src/engine/evaluate.mjs';
 
 /* Ablation configs, mirrored from bench/match.mjs CONFIGS (importing it would run its CLI). */
@@ -48,7 +49,9 @@ function newEngine() {
 }
 
 const START = Position.start().fen();
+let threads = Math.max(1, Number(process.env.SUBIT_THREADS) | 0 || 1);
 let engine = newEngine();
+if (threads > 1) createPool(engine, threads - 1);
 let defaultDepth = 0;          // 0 = unlimited (use go limits)
 let mode = 'fast';
 
@@ -114,12 +117,13 @@ rl.on('line', (line) => {
       send(`id name SUBIT-CHESS ${VERSION}`);
       send('id author SUBIT');
       send('option name Depth type spin default 0 min 0 max 24');
+      send('option name Threads type spin default 1 min 1 max 64');
       send(`option name Config type combo default base ${Object.keys(CONFIGS).map((k) => 'var ' + k).join(' ')}`);
       send('option name Mode type combo default fast var fast var structural');
       send('uciok');
       break;
     case 'isready': send('readyok'); break;
-    case 'ucinewgame': engine = newEngine(); engine.setEvalMode?.(mode); break;
+    case 'ucinewgame': engine.pool?.close(); engine = newEngine(); engine.setEvalMode?.(mode); if (threads > 1) createPool(engine, threads - 1); break;
     case 'position': setPosition(t.slice(1)); break;
     case 'go': go(t.slice(1)); break;
     case 'stop': break;
@@ -128,6 +132,7 @@ rl.on('line', (line) => {
       const name = t.slice(n + 1, v > -1 ? v : undefined).join(' ').toLowerCase();
       const val = v > -1 ? t.slice(v + 1).join(' ') : '';
       if (name === 'depth') defaultDepth = Number(val) || 0;
+      if (name === 'threads') { threads = Math.max(1, Math.min(64, Number(val) | 0 || 1)); engine.pool?.close(); engine.pool = null; engine = newEngine(); engine.setEvalMode?.(mode); if (threads > 1) createPool(engine, threads - 1); }
       if (name === 'config') { config = val; engine = newEngine(); }
       if (name === 'mode') { mode = val; engine.setEvalMode?.(mode); }
       break;

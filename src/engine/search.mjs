@@ -34,6 +34,8 @@ export const TT_UPPER = 2;
 
 const EMPTY_KILLER = [0, 0];
 const SEE_VAL = [0, 100, 320, 330, 500, 900, 20000];
+const SKIP_SIZE = [1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4];
+const SKIP_PHASE = [0, 1, 0, 1, 2, 3, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6, 7];
 
 const SRCH_PAWN_DF = [-1, 1];
 const SRCH_QUEEN_DIRS = [...BISHOP_DIRS, ...ROOK_DIRS];
@@ -254,19 +256,39 @@ const TT_MAX_AGE_DEFAULT = 0; // ADR 0022
  * ------------------------------------------------------------------ */
 
 export class TranspositionTable {
-  constructor(bits = 18, maxAge = TT_MAX_AGE_DEFAULT) {
+  /**
+   * `shared`: allocate every array on a SharedArrayBuffer so worker threads can search into the same table
+   * (Lazy SMP, see smp.mjs). `attach` is a buffer record produced by `buffers()` on another thread.
+   * Entries are written key-last and read key-twice, so a torn entry is dropped rather than trusted.
+   */
+  constructor(bits = 18, maxAge = TT_MAX_AGE_DEFAULT, shared = false, attach = null) {
     this.size = 1 << bits;
     this.mask = this.size - 1;
     this.maxAge = maxAge;
-    this.keys = new Float64Array(this.size);
-    this.scores = new Int32Array(this.size);
-    this.depths = new Int8Array(this.size);
-    this.flags = new Int8Array(this.size);
-    this.moves = new Int32Array(this.size);
-    this.age = new Int32Array(this.size);
-    this.generation = 0;
+    this.shared = !!(shared || attach);
+    const mk = (Ctor, name) => {
+      if (attach) return new Ctor(attach[name]);
+      if (this.shared) return new Ctor(new SharedArrayBuffer(Ctor.BYTES_PER_ELEMENT * (name === 'gen' ? 1 : this.size)));
+      return new Ctor(name === 'gen' ? 1 : this.size);
+    };
+    this.keys = mk(Float64Array, 'keys');
+    this.scores = mk(Int32Array, 'scores');
+    this.depths = mk(Int8Array, 'depths');
+    this.flags = mk(Int8Array, 'flags');
+    this.moves = mk(Int32Array, 'moves');
+    this.age = mk(Int32Array, 'age');
+    this.gen = mk(Int32Array, 'gen');
     this.hits = 0;
     this.cutoffs = 0;
+  }
+
+  get generation() { return this.gen[0]; }
+  set generation(v) { this.gen[0] = v; }
+
+  /** Buffers to hand to another thread (only meaningful for a shared table). */
+  buffers() {
+    return { keys: this.keys.buffer, scores: this.scores.buffer, depths: this.depths.buffer, flags: this.flags.buffer,
+      moves: this.moves.buffer, age: this.age.buffer, gen: this.gen.buffer };
   }
 
   clear() {
@@ -304,6 +326,7 @@ export class TranspositionTable {
     if (this.depths[idx] < depth) return null;
     const score = TranspositionTable.fromTT(this.scores[idx], ply);
     const flag = this.flags[idx];
+    if (this.shared && this.keys[idx] !== key) return null;   // overwritten while reading
     if (flag === TT_EXACT) return { score, move: this.moves[idx], flag };
     if (flag === TT_LOWER && score >= beta) return { score, move: this.moves[idx], flag };
     if (flag === TT_UPPER && score <= alpha) return { score, move: this.moves[idx], flag };
@@ -318,12 +341,13 @@ export class TranspositionTable {
     const replace = this.keys[idx] !== key || stale || this.depths[idx] < depth ||
       (this.depths[idx] === depth && !(this.flags[idx] === TT_EXACT && flag !== TT_EXACT));
     if (replace) {
-      this.keys[idx] = key;
+      if (this.shared) this.keys[idx] = 0;      // readers reject the entry while it is being rewritten
       this.scores[idx] = TranspositionTable.toTT(score, ply);
       this.depths[idx] = depth;
       this.flags[idx] = flag;
       this.moves[idx] = move;
       this.age[idx] = this.generation;
+      this.keys[idx] = key;
     }
   }
 
@@ -473,6 +497,8 @@ export class Searcher {
     this.ev = evaluator;
     this.params = params;
     this.tt = opts.tt || new TranspositionTable(18);
+    this.stopFlag = opts.stopFlag || null;   // shared Int32Array(1): a helper thread stops when it reaches its search id
+    this.stopId = 0;
     this.tt.maxAge = this.params.search?.ttMaxAge ?? 0; // ADR 0022
     this.order = opts.order || new MoveOrder(params);
     this.pos = null;
@@ -507,6 +533,7 @@ export class Searcher {
 
   checkStop() {
     if (this.stop) return true;
+    if (this.stopFlag && this.stopFlag[0] >= this.stopId) { this.stop = true; return true; }
     if (this.nodeLimit && this.nodes >= this.nodeLimit) { this.stop = true; return true; }
     if (this.deadline && Date.now() >= this.deadline) { this.stop = true; return true; }
     return false;
@@ -559,7 +586,7 @@ export class Searcher {
     this.nodeLimit = opts.nodes || 0;
     this.pvLength.fill(0);
     this.order.clear();
-    this.tt.newGeneration();
+    if (!opts.helper) this.tt.newGeneration();
 
     const rootMoves = pos.legalMoves();
     if (rootMoves.length === 0) {
@@ -591,6 +618,12 @@ export class Searcher {
     const history = [];
     let iterStart = t0;
     for (let depth = 1; depth <= this.maxDepth; depth++) {
+      // Lazy SMP helper: skip some iterations (Stockfish-style skip blocks) so the helpers fill the shared table
+      // with depths the main thread has not reached yet instead of repeating its tree.
+      if (opts.helper) {
+        const hx = (this.helperIndex | 0) % 20;
+        if (depth > 1 && Math.floor((depth + SKIP_PHASE[hx]) / SKIP_SIZE[hx]) % 2 === 1) continue;
+      }
       iterStart = Date.now();
       const window = this.params.search.aspiration;
       let alpha = depth >= 4 ? prevScore - window.window : -INF;
