@@ -37,19 +37,20 @@ const SEE_VAL = [0, 100, 320, 330, 500, 900, 20000];
 function smallestAttacker(pos, to, side, occ) {
   // pawns
   const pawnFromDir = side === WHITE ? 16 : -16; // attackers are behind target from side's perspective
-  for (const df of [-1, 1]) {
-    const from = to + pawnFromDir + df;
+  for (let i = 0; i < 2; i++) {
+    const from = to + pawnFromDir + (i === 0 ? -1 : 1);
     if (from & 0x88) continue;
     const p = pos.board[from];
     if (occ[from] && p && (p >> 3) === side && (p & 7) === PAWN) return { from, piece: PAWN };
   }
-  for (const d of KNIGHT_DELTAS) {
-    const from = to + d;
+  for (let i = 0; i < KNIGHT_DELTAS.length; i++) {
+    const from = to + KNIGHT_DELTAS[i];
     if (from & 0x88) continue;
     const p = pos.board[from];
     if (occ[from] && p && (p >> 3) === side && (p & 7) === KNIGHT) return { from, piece: KNIGHT };
   }
-  for (const d of BISHOP_DIRS) {
+  for (let i = 0; i < BISHOP_DIRS.length; i++) {
+    const d = BISHOP_DIRS[i];
     let from = to + d;
     while ((from & 0x88) === 0) {
       if (occ[from]) {
@@ -63,7 +64,8 @@ function smallestAttacker(pos, to, side, occ) {
       from += d;
     }
   }
-  for (const d of ROOK_DIRS) {
+  for (let i = 0; i < ROOK_DIRS.length; i++) {
+    const d = ROOK_DIRS[i];
     let from = to + d;
     while ((from & 0x88) === 0) {
       if (occ[from]) {
