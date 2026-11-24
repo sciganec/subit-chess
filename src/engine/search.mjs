@@ -41,13 +41,13 @@ function smallestAttacker(pos, to, side, occ) {
     const from = to + pawnFromDir + (i === 0 ? -1 : 1);
     if (from & 0x88) continue;
     const p = pos.board[from];
-    if (occ[from] && p && (p >> 3) === side && (p & 7) === PAWN) return { from, piece: PAWN };
+    if (occ[from] && p && (p >> 3) === side && (p & 7) === PAWN) { SEE_ATT.from = from; SEE_ATT.piece = PAWN; return SEE_ATT; }
   }
   for (let i = 0; i < KNIGHT_DELTAS.length; i++) {
     const from = to + KNIGHT_DELTAS[i];
     if (from & 0x88) continue;
     const p = pos.board[from];
-    if (occ[from] && p && (p >> 3) === side && (p & 7) === KNIGHT) return { from, piece: KNIGHT };
+    if (occ[from] && p && (p >> 3) === side && (p & 7) === KNIGHT) { SEE_ATT.from = from; SEE_ATT.piece = KNIGHT; return SEE_ATT; }
   }
   for (let i = 0; i < BISHOP_DIRS.length; i++) {
     const d = BISHOP_DIRS[i];
@@ -57,7 +57,7 @@ function smallestAttacker(pos, to, side, occ) {
         const p = pos.board[from];
         if (p && (p >> 3) === side) {
           const pt = p & 7;
-          if (pt === BISHOP || pt === QUEEN) return { from, piece: pt };
+          if (pt === BISHOP || pt === QUEEN) { SEE_ATT.from = from; SEE_ATT.piece = pt; return SEE_ATT; }
         }
         break;
       }
@@ -72,7 +72,7 @@ function smallestAttacker(pos, to, side, occ) {
         const p = pos.board[from];
         if (p && (p >> 3) === side) {
           const pt = p & 7;
-          if (pt === ROOK || pt === QUEEN) return { from, piece: pt };
+          if (pt === ROOK || pt === QUEEN) { SEE_ATT.from = from; SEE_ATT.piece = pt; return SEE_ATT; }
         }
         break;
       }
@@ -84,7 +84,7 @@ function smallestAttacker(pos, to, side, occ) {
     const from = to + dr * 16 + df;
     if (from & 0x88) continue;
     const p = pos.board[from];
-    if (occ[from] && p && (p >> 3) === side && (p & 7) === KING) return { from, piece: KING };
+    if (occ[from] && p && (p >> 3) === side && (p & 7) === KING) { SEE_ATT.from = from; SEE_ATT.piece = KING; return SEE_ATT; }
   }
   return null;
 }
@@ -156,6 +156,7 @@ function maxAttackedVictim(pos, to, piece, us) {
 
 const SEE_GAIN = new Int32Array(34);
 const SEE_OCC = new Uint8Array(128);
+const SEE_ATT = { from: 0, piece: 0 };
 
 export function see(pos, move) {
   const from = MOVE_FROM(move);
