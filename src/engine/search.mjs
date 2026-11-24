@@ -18,7 +18,7 @@
 
 import {
   WHITE, BLACK, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
-  MATERIAL, pieceType, opposite, moveToUci, MOVE_FROM, MOVE_TO, MOVE_FLAGS,
+  MATERIAL, pieceType, moveToUci, MOVE_FROM, MOVE_TO, MOVE_FLAGS,
   MOVE_PROMO, FLAG_CAPTURE, FLAG_PROMO, FLAG_EP, FLAG_CASTLE,
   KNIGHT_DELTAS, BISHOP_DIRS, ROOK_DIRS
 } from './core.mjs';
@@ -172,7 +172,7 @@ export function see(pos, move) {
     const capSq = to + (pos.turn === WHITE ? 16 : -16);
     SEE_OCC[capSq] = 0;
   }
-  let side = opposite(pos.turn);
+  let side = pos.turn ^ 1;
   let depth = 0;
   let cur = attacker;
   while (true) {
@@ -505,7 +505,7 @@ export class Searcher {
   hasLegalMove(pos) {
     pos.refreshPieces();
     const us = pos.turn;
-    const them = opposite(us);
+    const them = us ^ 1;
     for (const m of pos.generateMoves(false)) {
       const victim = pos.board[MOVE_TO(m)];
       if (victim && pieceType(victim) === KING) continue;
@@ -760,7 +760,7 @@ export class Searcher {
     }
 
     const us = pos.turn;
-    const them = opposite(us);
+    const them = us ^ 1;
     const moves = pos.generateMoves(false);
     const orderedCount = this.order.scoreMoves(pos, moves, ply, this.ttMoveFor(pos, depth), 0);
     const buf = this.order.buffers[ply];
@@ -929,7 +929,7 @@ export class Searcher {
    */
   staticCheckEvasion(pos, moves, ply) {
     const us = pos.turn;
-    const them = opposite(us);
+    const them = us ^ 1;
     let best = -INF;
     let legal = 0;
     for (const m of moves) {
@@ -995,7 +995,7 @@ export class Searcher {
     if (qdepth > 8) return inCheck ? this.staticCheckEvasion(pos, moves, ply) : best;
 
     const us = pos.turn;
-    const them = opposite(us);
+    const them = us ^ 1;
     const orderedCount = this.order.scoreMoves(pos, moves, ply, 0, 0);
     const buf = this.order.buffers[ply];
     let legal = 0;
