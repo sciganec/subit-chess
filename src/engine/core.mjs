@@ -828,7 +828,7 @@ export class Position {
     const to = MOVE_TO(m);
     const flags = MOVE_FLAGS(m);
     const promo = MOVE_PROMO(m);
-    const us = opposite(this.turn);
+    const us = this.turn ^ 1;
     const b = this.board;
 
     this.turn = us;
@@ -861,7 +861,7 @@ export class Position {
     const placed = b[to];
     b[to] = EMPTY;
     this.xorPiece(to, placed);
-    const original = makePiece(promo ? PAWN : pieceType(placed), us);
+    const original = (promo ? PAWN : (placed & 7)) | (us << 3);
     b[from] = original;
     this.xorPiece(from, original);
 
