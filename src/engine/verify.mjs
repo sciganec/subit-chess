@@ -17,6 +17,8 @@ import {
   FLAG_CAPTURE, FLAG_EP, MOVE_FLAGS
 } from './core.mjs';
 import { structuralVector, SVF_COMPONENTS } from './evaluate.mjs';
+import { Percept } from './percept.mjs';
+import { buildStructure, REL, REL_KEY_TYPE, REL_KEY_FROM, REL_KEY_TO } from './structure.mjs';
 import { verifyFieldInvariants, FD_INVARIANTS } from './field.mjs';
 
 export const INVARIANT = {
@@ -278,6 +280,26 @@ export function verifyDeterminism(engine, fen, depth) {
   return failures;
 }
 
+/** SM-INV-003: relations stay typed (known REL type, valid 0x88 squares, counts match keys). */
+export function verifyRelationsTyped(pos) {
+  const failures = [];
+  const known = new Set(Object.values(REL));
+  const s = buildStructure(pos, new Percept(pos));
+  const seen = new Int32Array(s.counts.length);
+  for (const k of s.keys) {
+    const type = REL_KEY_TYPE(k);
+    const from = REL_KEY_FROM(k);
+    const to = REL_KEY_TO(k);
+    if (!known.has(type)) { fail(failures, INVARIANT.SM_003, `unknown relation type ${type}`); continue; }
+    if ((from & 0x88) !== 0 || (to & 0x88) !== 0) fail(failures, INVARIANT.SM_003, `offboard endpoint type=${type} from=${from} to=${to}`);
+    if (type < seen.length) seen[type]++;
+  }
+  for (let t = 0; t < s.counts.length; t++) {
+    if (s.counts[t] !== seen[t]) fail(failures, INVARIANT.SM_003, `count mismatch type=${t} count=${s.counts[t]} keys=${seen[t]}`);
+  }
+  return failures;
+}
+
 /** Self-play legality: every move of the line must be legal in sequence. */
 export function verifySelfPlay(fen, plies, engine, depth = 4) {
   const failures = [];
@@ -308,6 +330,7 @@ export function verifyPositionAll(pos) {
     ...verifyLegalMoves(pos),
     ...verifyCaptures(pos),
     ...verifyMakeUnmake(pos),
+    ...verifyRelationsTyped(pos),
     ...verifyFieldInvariants(pos)
   ];
 }
