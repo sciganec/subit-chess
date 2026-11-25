@@ -375,6 +375,8 @@ export class MoveOrder {
     this.killers = [];                       // [ply][2]
     this.history = new Int32Array(2 * 128 * 128);
     this.counter = new Map();
+    this.cm = new Int32Array(128 * 128);   // countermove: reply that refuted the previous move (indexed by its from/to)
+    this.prevMove = 0;                      // previous move on the path, set by the searcher before scoreMoves
     for (let i = 0; i < 128; i++) this.killers.push([0, 0]);
     // reusable per-ply ordering buffers: no per-node allocation, and each ply
     // keeps its own buffer because the recursion re-enters scoreMoves deeper.
@@ -390,6 +392,7 @@ export class MoveOrder {
 
   clear() {
     this.history.fill(0);
+    this.cm.fill(0);
     this.killers = [];
     for (let i = 0; i < 128; i++) this.killers.push([0, 0]);
   }
@@ -427,6 +430,8 @@ export class MoveOrder {
     const w = this.params.search.ordering;
     const killers = this.killers[ply] || EMPTY_KILLER;
     const history = this.history;
+    const cmOn = this.params.search.countermove && this.params.search.countermove.enabled && this.prevMove;
+    const cmMove = cmOn ? this.cm[MOVE_FROM(this.prevMove) * 128 + MOVE_TO(this.prevMove)] : 0;
 
     for (let i = 0; i < n; i++) {
       const m = moves[i];
@@ -448,6 +453,7 @@ export class MoveOrder {
       } else {
         if (m === killers[0]) s += w.history * 0.9;
         else if (m === killers[1]) s += w.history * 0.7;
+        else if (cmMove && m === cmMove) s += w.history * 0.65;
         else s += (history[(us * 128 + MOVE_FROM(m)) * 128 + to] / HISTORY_MAX) * w.history * 0.6;
         // Quiet threat: direct attack on enemy piece. Tactical signal (not Gate 3 structural/context).
         // Keeps b4c5-like quiet refutations visible to shallow search/LMR.
@@ -482,6 +488,10 @@ export class MoveOrder {
     if (k[0] === m) return;
     k[1] = k[0];
     k[0] = m;
+  }
+
+  addCounter(m) {
+    if (this.prevMove) this.cm[MOVE_FROM(this.prevMove) * 128 + MOVE_TO(this.prevMove)] = m;
   }
 
   addHistory(pos, m, depth) {
@@ -521,6 +531,7 @@ export class Searcher {
     this.qStalemate = true;   // horizon stalemate check (audit v3.0.6 §4.1)
     this.useTT = true;
     this.useNull = true;
+    this.moveAt = new Int32Array(130);   // move played at each ply of the current path (0 = none / null move)
     this.useLMR = true;
     {
       const l = this.params.search.lmrLog || { base: 0.75, div: 2.25 };
@@ -741,6 +752,7 @@ export class Searcher {
       const m = this.order.buffers[0][i];
       pos.pushRep();
       const undo = pos.makeMove(m);
+      this.moveAt[0] = m;
       this.nodes++;
       const givesCheck = pos.inCheck();
       const ext = (givesCheck && this.params.search.checkExtension > 0) ? 1 : 0;
@@ -843,6 +855,7 @@ export class Searcher {
       const R = Math.min(this.params.search.nullMove.maxReduction,
         this.params.search.nullMove.reduction + Math.floor(depth / 6));
       const undo = pos.makeNullMove();
+      this.moveAt[ply] = 0;
       const score = -this.negamax(pos, depth - R, -beta, -beta + 1, ply + 1);
       pos.unmakeNullMove(undo);
       if (this.stop) return 0;
@@ -855,6 +868,8 @@ export class Searcher {
     const ttMv = this.ttMoveFor(pos, depth);
     const iir = this.params.search.iir;
     if (iir && iir.enabled && !ttMv && depth >= iir.minDepth && !inCheck) depth -= 1;
+    this.order.prevMove = ply > 0 ? this.moveAt[ply - 1] : 0;
+    const prevMoveHere = this.order.prevMove;
     const orderedCount = this.order.scoreMoves(pos, moves, ply, ttMv, 0, {});
     const buf = this.order.buffers[ply];
 
@@ -884,6 +899,7 @@ export class Searcher {
 
       pos.pushRep();
       const undo = pos.makeMove(m);
+      this.moveAt[ply] = m;
 
       // UCA-INV-003: legality is decided by the rules here, not by the ordering
       if (pos.isAttacked(pos.kingSq[us], them)) {
@@ -991,6 +1007,7 @@ export class Searcher {
       if (alpha >= beta) {
         if (isQuiet) {
           this.order.addKiller(ply, m);
+          if (this.params.search.countermove && this.params.search.countermove.enabled) { this.order.prevMove = prevMoveHere; this.order.addCounter(m); }
           this.order.addHistory(pos, m, depth);
           if (tried) for (const q of tried) this.order.addHistory(pos, q, -depth);
         }
@@ -1131,6 +1148,7 @@ export class Searcher {
 
     const us = pos.turn;
     const them = opposite(us);
+    this.order.prevMove = 0;
     const orderedCount = this.order.scoreMoves(pos, moves, ply, 0, 0, {});
     const buf = this.order.buffers[ply];
     let legal = 0;
@@ -1204,7 +1222,7 @@ export class Searcher {
         if (givesCheck) checks.push(m);
       }
       const checkCount = Math.min(qc.maxChecks,
-        checks.length ? this.order.scoreMoves(pos, checks, ply, 0, 0, {}) : 0);
+        checks.length ? (this.order.prevMove = 0, this.order.scoreMoves(pos, checks, ply, 0, 0, {})) : 0);
       const checkBuf = this.order.buffers[ply];
       for (let i = 0; i < checkCount; i++) {
         const m = checkBuf[i];

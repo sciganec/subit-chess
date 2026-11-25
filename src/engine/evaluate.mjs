@@ -91,6 +91,7 @@ export const DEFAULT_PARAMS = {
     lmrLog: { enabled: false, base: 0.75, div: 2.25 },     // log(depth)*log(move index) reduction table (v3.0.12 experiment)
     lmp: { enabled: false, maxDepth: 3, base: 3 },         // late move pruning of quiet moves (v3.0.12 experiment)
     iir: { enabled: false, minDepth: 4 },                  // internal iterative reduction when there is no TT move
+    countermove: { enabled: false },                       // reply that refuted the previous move is tried early
     historyMalus: { enabled: false },                      // penalise quiet moves tried before a quiet cutoff move                   // SEE-lite capture pruning in quiescence
     structExtension: { enabled: false, maxPly: 8 },   // SEARCH-14: pawn to 7th extends one ply
     extensionBudget: 6,

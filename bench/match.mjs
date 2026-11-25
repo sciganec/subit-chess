@@ -153,6 +153,7 @@ export const CONFIGS = {
   qchk0: { label: 'qsearch quiet checks off', params: { search: { qsearch: { checks: false } } }, opts: {} },
   lmridx2: { label: 'LMR from the 3rd move (minMoveIndex 2)', params: { search: { lmr: { minMoveIndex: 2 } } }, opts: {} },
   lmrdepth2: { label: 'LMR from depth 2', params: { search: { lmr: { minDepth: 2 } } }, opts: {} },
+  cmove: { label: 'countermove ordering', params: { search: { countermove: { enabled: true } } }, opts: {} },
   rfp80: { label: 'RFP margin 80', params: { search: { rfp: { margin: 80 } } }, opts: {} },
   rfp180: { label: 'RFP margin 180', params: { search: { rfp: { margin: 180 } } }, opts: {} },
   seeprune: { label: 'SEE pruning of losing captures (depth<=4, 100cp/ply)', params: { search: { seePrune: { enabled: true } } }, opts: {} },
