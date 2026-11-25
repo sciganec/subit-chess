@@ -149,6 +149,7 @@ export const CONFIGS = {
   rfpd5: { label: 'RFP maxDepth 5', params: { search: { rfp: { maxDepth: 5 } } }, opts: {} },
   asp15: { label: 'aspiration window 15', params: { search: { aspiration: { window: 15 } } }, opts: {} },
   futm160: { label: 'futility margin 160', params: { search: { futility: { margin: 160 } } }, opts: {} },
+  old8bdc: { label: 'params of 8bdc3f4 (futility 1, null move 3/2/3, aspiration 25)', params: { search: { futility: { maxDepth: 1 }, nullMove: { minDepth: 3, reduction: 2, maxReduction: 3 }, aspiration: { window: 25 } } }, opts: {} },
   rfp80: { label: 'RFP margin 80', params: { search: { rfp: { margin: 80 } } }, opts: {} },
   rfp180: { label: 'RFP margin 180', params: { search: { rfp: { margin: 180 } } }, opts: {} },
   seeprune: { label: 'SEE pruning of losing captures (depth<=4, 100cp/ply)', params: { search: { seePrune: { enabled: true } } }, opts: {} },
