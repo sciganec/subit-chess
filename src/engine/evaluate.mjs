@@ -17,7 +17,7 @@
  */
 
 import {
-  WHITE, BLACK, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
+  WHITE, BLACK, EMPTY, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
   MATERIAL, PHASE_TOTAL, pieceType, rankOf, fileOf, opposite, squareName, moveToUci,
   KNIGHT_DELTAS, BISHOP_DIRS, ROOK_DIRS, QUEEN_DIRS
 } from './core.mjs';
@@ -72,6 +72,7 @@ export const DEFAULT_PARAMS = {
     kingOpenFile: 12,                          // open/semi-open file near king; A/B smoke +0.33 SE0.15 n=24 d4 seed1
     kingAttack: 0,                             // penalty per attacker weight on king zone; A/B before enabling
     fdAttackWeight: 0,                         // FD-inspired cheap geometric attacker-weight sum on king zone; default off, A/B before enabling
+    fdPinDiscount: 0,                          // FD-03-inspired off-ray defense discount for absolute pins; default off, A/B before enabling
     fdPressure: 0                              // FD-inspired king-zone weighted pressure from buildFieldDynamics; default off, A/B before enabling
   },
 
@@ -803,6 +804,8 @@ export class Evaluation {
       fd = buildFieldDynamics(pos);
       vec[1] += fdKingPressureDelta(pos, fd, fdP);
     }
+    const fdPinD = this.params.eval?.fdPinDiscount || 0;
+    if (fdPinD) vec[3] += fdPinDefenseDiscount(pos, percept, fdPinD);
     const { E, E0, Ei, Ec } = scalarize(vec, ctx, this.params);
     const uncertainty = estimateUncertainty(pos, percept, structure, vec);
     const result = {
@@ -838,6 +841,76 @@ export class Evaluation {
 
 function buildStructureSafe(pos, percept) {
   return new Structure(pos, percept);
+}
+
+/**
+ * FD-03-inspired discount for off-ray defenses by absolutely pinned pieces.
+ * Geometric attack maps count them, but they cannot legally move off-ray.
+ * Returns delta for structural D axis (stm-relative). Default-off.
+ */
+function fdPinDefenseDiscount(pos, percept, weight) {
+  if (!percept.pins.length) return 0;
+  const us = pos.turn;
+  const b = pos.board;
+  let delta = 0;
+  for (let i = 0; i < percept.pins.length; i++) {
+    const pin = percept.pins[i];
+    const pinnerSq = pin.pinner;
+    const kingSq = pin.king;
+    const pinnedSq = pin.pinned;
+    const pdr = Math.sign((pinnerSq >> 4) - (kingSq >> 4));
+    const pdf = Math.sign((pinnerSq & 7) - (kingSq & 7));
+    const p = b[pinnedSq];
+    if (p === EMPTY) continue;
+    const color = p >> 3;
+    const type = p & 7;
+    let fakeDefs = 0;
+    // scan geometric attacks of pinned piece; count off-ray defenses of own pieces
+    if (type === PAWN) {
+      const dir = color === WHITE ? -16 : 16;
+      for (const df of [-1, 1]) {
+        const to = pinnedSq + dir + df;
+        if (to & 0x88) continue;
+        const tp = b[to];
+        if (tp !== EMPTY && (tp >> 3) === color) {
+          const dr = (to >> 4) - (kingSq >> 4);
+          const dfk = (to & 7) - (kingSq & 7);
+          if (dr * pdf !== dfk * pdr) fakeDefs++;
+        }
+      }
+    } else if (type === KNIGHT) {
+      for (let j = 0; j < KNIGHT_DELTAS.length; j++) {
+        const to = pinnedSq + KNIGHT_DELTAS[j];
+        if (to & 0x88) continue;
+        const tp = b[to];
+        if (tp !== EMPTY && (tp >> 3) === color) fakeDefs++; // knights never on-ray
+      }
+    } else if (type === KING) {
+      // king can't be pinned
+    } else {
+      const dirs = type === BISHOP ? BISHOP_DIRS : type === ROOK ? ROOK_DIRS : QUEEN_DIRS;
+      for (let j = 0; j < dirs.length; j++) {
+        const d = dirs[j];
+        let to = pinnedSq + d;
+        while ((to & 0x88) === 0) {
+          const tp = b[to];
+          if (tp !== EMPTY) {
+            if ((tp >> 3) === color) {
+              const dr = (to >> 4) - (kingSq >> 4);
+              const dfk = (to & 7) - (kingSq & 7);
+              if (dr * pdf !== dfk * pdr) fakeDefs++;
+            }
+            break;
+          }
+          to += d;
+        }
+      }
+    }
+    if (!fakeDefs) continue;
+    const pen = fakeDefs * weight;
+    delta += (color === us ? -pen : pen);
+  }
+  return delta;
 }
 
 /**
