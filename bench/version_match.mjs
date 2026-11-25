@@ -97,6 +97,8 @@ async function oneGame(a, b, startFen, aWhite, depth, maxPlies = 240) {
   const pos = Position.fromFEN(startFen);
   pos.pushRep();
   const moves = [];
+  // a fresh game: clear transposition table and history in both engines (stale state carried between games)
+  a.send('ucinewgame'); b.send('ucinewgame'); await ready(a); await ready(b);
   for (let ply = 0; ply < maxPlies; ply++) {
     const engine = pos.turn === 0 ? (aWhite ? a : b) : (aWhite ? b : a);
     engine.send(`position fen ${startFen}${moves.length ? ` moves ${moves.join(' ')}` : ''}`);
