@@ -18,7 +18,7 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 v3.0.16 is the active development candidate. No Elo gain has been established; no external strength claim.
 
-- **FD experiment hooks (default off).** `eval.fdPressure` (default 0) adds FD-weighted king-zone pressure from `buildFieldDynamics()` to structural eval K axis; `eval.fdAttackWeight` (default 0) adds cheap geometric attacker-weight sum on king zone in fast eval. Both default-off, `bench:engine` baseline identical, tests/gauntlet green. A/Bs (48g, d4, strict no-cycle): `Eval.FDPressure=2` 13W/22D/13L 0.500 CI [-74.21,+74.21]; `Eval.FDAttackWeight=1` 12W/21D/15L 0.469 CI [-98.51,+52.93]. Both CI span 0 — neutral/inconclusive, no Elo gain claim.
+- **FD experiment hooks (default off).** `eval.fdPressure` (default 0, structural FD-weighted king-zone pressure), `eval.fdAttackWeight` (default 0, cheap fast-eval geometric attacker-weight sum on king zone), `eval.fdPinDiscount` (default 0, FD-03 off-ray defense discount for absolute pins in structural D). All default-off, `bench:engine` baseline identical, tests/gauntlet green. A/Bs (48g, d4, strict no-cycle): `FDPressure=2` 13W/22D/13L 0.500 CI [-74.21,+74.21]; `FDAttackWeight=1` 12W/21D/15L 0.469 CI [-98.51,+52.93]; `FDPinDiscount=3` 12W/24D/12L 0.500 CI [-71.22,+71.22]. All CI span 0 — neutral/inconclusive, no Elo gain claim.
 
 v3.0.15 (released 2026-11-24) is a formalized release snapshot. No Elo gain has been established; no external strength claim. The release focuses on measurement/verification hardening and behavior-preserving perf work.
 
