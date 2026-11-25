@@ -348,8 +348,12 @@ export class MoveOrder {
     // but the buffers grow instead of silently truncating the legal set.
     this.capacity = 256;
     this.buffers = [];
-    for (let p = 0; p < 128; p++) this.buffers.push(new Int32Array(this.capacity));
-    this.packed = new Float64Array(this.capacity); // score * 256 + (255 - slot)
+    this.packs = [];
+    for (let p = 0; p < 128; p++) {
+      this.buffers.push(new Int32Array(this.capacity));
+      this.packs.push(new Float64Array(this.capacity)); // score * 256 + (255 - slot)
+    }
+    this.packed = this.packs[0]; // compatibility alias; prefer this.packs[ply]
     this.scratch = new Int32Array(this.capacity);
     this.count = 0;
   }
@@ -360,7 +364,7 @@ export class MoveOrder {
     for (let i = 0; i < 128; i++) this.killers.push([0, 0]);
   }
 
-  /** Grow the shared scratch arrays instead of dropping legal moves. */
+  /** Grow the per-ply scratch arrays instead of dropping legal moves. */
   ensureCapacity(need) {
     if (need <= this.capacity) return;
     let cap = this.capacity;
@@ -370,10 +374,11 @@ export class MoveOrder {
       const grown = new Int32Array(cap);
       grown.set(this.buffers[p]);
       this.buffers[p] = grown;
+      const pack = new Float64Array(cap);
+      pack.set(this.packs[p]);
+      this.packs[p] = pack;
     }
-    const packed = new Float64Array(cap);
-    packed.set(this.packed);
-    this.packed = packed;
+    this.packed = this.packs[0];
     const scratch = new Int32Array(cap);
     scratch.set(this.scratch);
     this.scratch = scratch;
@@ -386,7 +391,7 @@ export class MoveOrder {
   scoreMoves(pos, moves, ply, ttMove, pvMove) {
     this.ensureCapacity(moves.length);
     const n = moves.length;
-    const packed = this.packed;
+    const packed = this.packs[ply];
     const buf = this.buffers[ply];
     const board = pos.board;
     const us = pos.turn;
@@ -431,15 +436,29 @@ export class MoveOrder {
       packed[i] = Math.round(s) * 256 + slot;
     }
 
-    const view = packed.subarray(0, n);
-    view.sort();
-    const scratch = this.scratch;
-    for (let i = 0; i < n; i++) scratch[i] = buf[i];
-    for (let k = n - 1, o = 0; k >= 0; k--, o++) {
-      buf[o] = scratch[n - 1 - (view[k] & 255)];
-    }
     this.count = n;
     return n;
+  }
+
+  /**
+   * Incremental selection: place the best remaining move at `i` in buf/packed.
+   * Behavior-preserving vs full sort because packed keys include a deterministic
+   * tie-break slot; alpha-beta consumes moves in descending order and often cuts
+   * off early, so this avoids sorting the full tail.
+   */
+  pick(ply, i, n) {
+    const packed = this.packs[ply];
+    const buf = this.buffers[ply];
+    let best = i;
+    let bestScore = packed[i];
+    for (let j = i + 1; j < n; j++) {
+      const s = packed[j];
+      if (s > bestScore) { bestScore = s; best = j; }
+    }
+    if (best !== i) {
+      const pm = packed[i]; packed[i] = packed[best]; packed[best] = pm;
+      const bm = buf[i]; buf[i] = buf[best]; buf[best] = bm;
+    }
   }
 
   addKiller(ply, m) {
@@ -491,7 +510,6 @@ export class Searcher {
     this.useNull = true;
     this.useLMR = true;
     this.useFutility = true;
-    this.trace = null;
     this.lastIteration = null;
   }
 
@@ -669,6 +687,7 @@ export class Searcher {
 
     let alphaOrig = alpha;
     for (let i = 0; i < orderedCount; i++) {
+      this.order.pick(0, i, orderedCount);
       const m = this.order.buffers[0][i];
       pos.pushRep();
       const undo = pos.makeMove(m, this.undoBuf[0]);
@@ -788,6 +807,7 @@ export class Searcher {
     const futility = this.params.search.futility;
 
     for (let i = 0; i < orderedCount; i++) {
+      this.order.pick(ply, i, orderedCount);
       const m = buf[i];
       const flags = MOVE_FLAGS(m);
       const isQuiet = !(flags & (FLAG_CAPTURE | FLAG_PROMO)) && pos.board[MOVE_TO(m)] === 0;
@@ -1017,6 +1037,7 @@ export class Searcher {
     let legal = 0;
 
     for (let i = 0; i < orderedCount; i++) {
+      this.order.pick(ply, i, orderedCount);
       const m = buf[i];
       const flags = MOVE_FLAGS(m);
       if (!inCheck) {
@@ -1080,10 +1101,11 @@ export class Searcher {
         pos.unmakeMove(undo);
         if (givesCheck) checks.push(m);
       }
-      const checkCount = Math.min(qc.maxChecks,
-        checks.length ? this.order.scoreMoves(pos, checks, ply, 0, 0) : 0);
+      const scoredN = checks.length ? this.order.scoreMoves(pos, checks, ply, 0, 0) : 0;
+      const checkCount = Math.min(qc.maxChecks, scoredN);
       const checkBuf = this.order.buffers[ply];
       for (let i = 0; i < checkCount; i++) {
+        this.order.pick(ply, i, scoredN);
         const m = checkBuf[i];
         pos.pushRep();
         const undo = pos.makeMove(m, this.undoBuf[ply]);
