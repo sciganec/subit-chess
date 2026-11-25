@@ -95,7 +95,7 @@ export const DEFAULT_PARAMS = {
     structExtension: { enabled: false, maxPly: 8 },   // SEARCH-14: pawn to 7th extends one ply
     extensionBudget: 6,
     quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },
-    aspiration: { window: 25, widen: 40, maxWiden: 8 },
+    aspiration: { window: 15, widen: 40, maxWiden: 8 },
     maxDepth: 64,
     nodeLimit: 0,          // 0 = unlimited
     timeLimitMs: 0,        // 0 = unlimited
