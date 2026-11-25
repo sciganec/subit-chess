@@ -143,6 +143,7 @@ export const CONFIGS = {
   lmr2: { label: 'LMR maxReduction 2', params: { search: { lmr: { maxReduction: 2, extraReduction: 1 } } }, opts: {} },
   fut2: { label: 'futility maxDepth 2', params: { search: { futility: { maxDepth: 2 } } }, opts: {} },
   nmmin2: { label: 'null move minDepth 2, reduction 3', params: { search: { nullMove: { minDepth: 2, reduction: 3, maxReduction: 4 } } }, opts: {} },
+  old3015: { label: 'pre-v3.0.16 futility/null move', params: { search: { futility: { maxDepth: 1 }, nullMove: { minDepth: 3, reduction: 2, maxReduction: 3 } } }, opts: {} },
   rfp80: { label: 'RFP margin 80', params: { search: { rfp: { margin: 80 } } }, opts: {} },
   rfp180: { label: 'RFP margin 180', params: { search: { rfp: { margin: 180 } } }, opts: {} },
   seeprune: { label: 'SEE pruning of losing captures (depth<=4, 100cp/ply)', params: { search: { seePrune: { enabled: true } } }, opts: {} },
