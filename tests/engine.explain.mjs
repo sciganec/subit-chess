@@ -55,6 +55,10 @@ check('confidence: unfinished search -> 0; wider gap -> higher', confidence(100,
   const x = explainDecision(e, { depth: 3 });
   if (!x.claimSources || x.claimSources.length !== x.evidence.length) { check('claimSources',false); }
   check('boundary and claim provenance',true);
+  const m = new Engine(); m.setFEN('6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1');
+  check('termination kind: mate is TARGET_REACHED', m.search({ timeMs: 300 }).boundary.termination === 'TARGET_REACHED');
+  const dd = new Engine(); dd.setFEN('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+  check('termination kind: depth cap is ITERATION_LIMIT', dd.search({ depth: 3 }).boundary.termination === 'ITERATION_LIMIT');
 }
 
 console.log(fails === 0 ? '\nEXPLAIN OK' : `\nEXPLAIN FAILURES: ${fails}`);

@@ -668,7 +668,7 @@ export class Searcher {
         bestScore = result.score;
       }
       if (this.checkStop()) break;
-      if (Math.abs(bestScore) >= MATE_THRESHOLD) break;
+      if (Math.abs(bestScore) >= MATE_THRESHOLD) { this.budgetReason = 'mate found'; break; }
       if (Date.now() - t0 > (opts.softTimeMs || 0) && opts.softTimeMs) break;
       if (budget && result && result.completed && lastCompleted) {
         history.push({ depth, move: lastCompleted.move, score: lastCompleted.score,
@@ -707,7 +707,9 @@ export class Searcher {
       nps: elapsed > 0 ? Math.round((this.nodes * 1000) / elapsed) : 0,
       completed: !!lastCompleted,
       // transactional boundary: what was committed and what was rolled back
-      boundary: { committedDepth: info ? info.depth : 0, abortedDepth, rolledBack: abortedDepth > 0, reason: this.budgetReason || (this.stop ? 'stopped' : 'depth') },
+      boundary: { committedDepth: info ? info.depth : 0, abortedDepth, rolledBack: abortedDepth > 0, reason: this.budgetReason || (this.stop ? 'stopped' : 'depth'),
+        // SUBIT-CPU v0.2 §3.2 termination kinds: a resource limit is not evidence of convergence
+        termination: terminationKind(this.budgetReason, this.stop, !!info) },
       // the bound flag of the iteration that produced score/depth: a published
       // score must be exact (SEARCH-INV-002), never a fail-low/fail-high bound
       flag: info ? info.flag : null,
@@ -1229,6 +1231,15 @@ export class Searcher {
     if (legal === 0 && inCheck) return -MATE + ply;
     return best;
   }
+}
+
+/** SUBIT-CPU v0.2 §3.2: why an iterative computation stopped. Only TARGET_REACHED and STABILITY are claims about the result. */
+export function terminationKind(reason, stopped, hasResult) {
+  if (!hasResult) return 'INCOMPLETE';
+  if (reason === 'mate found') return 'TARGET_REACHED';
+  if (reason && reason.startsWith('low value of more computation')) return 'STABILITY';
+  if (stopped || reason === 'hard cap' || reason === 'next iteration cannot finish') return 'RESOURCE_LIMIT';
+  return 'ITERATION_LIMIT';
 }
 
 /** Search budget from complexity and uncertainty (doc 05 §17.1). */
