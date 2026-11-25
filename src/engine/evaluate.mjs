@@ -76,7 +76,7 @@ export const DEFAULT_PARAMS = {
   // search policy parameters (doc 05 §15, doc 08)
   search: {
     ttMaxAge: 0, // ADR 0022: keep 0 by default; A/B only
-    nullMove: { enabled: true, minDepth: 3, reduction: 2, maxReduction: 3 },
+    nullMove: { enabled: true, minDepth: 2, reduction: 3, maxReduction: 4 },
     lmr: { enabled: true, minDepth: 3, minMoveIndex: 3, reduction: 1, extraMoveIndex: 6, extraReduction: 0, maxReduction: 1, threatExemptMinVictim: 0 },
     // Futility is only sound at the frontier: a pruned quiet move can be a mate
     // in one, so pruning at depth 1..3 hides forced mates (measured on the
