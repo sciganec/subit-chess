@@ -43,13 +43,13 @@ function smallestAttacker(pos, to, side, occ) {
     const p = pos.board[from];
     if (occ[from] && p && (p >> 3) === side && (p & 7) === PAWN) { SEE_ATT.from = from; SEE_ATT.piece = PAWN; return SEE_ATT; }
   }
-  for (let i = 0; i < KNIGHT_DELTAS.length; i++) {
+  for (let i = 0; i < 8; i++) {
     const from = to + KNIGHT_DELTAS[i];
     if (from & 0x88) continue;
     const p = pos.board[from];
     if (occ[from] && p && (p >> 3) === side && (p & 7) === KNIGHT) { SEE_ATT.from = from; SEE_ATT.piece = KNIGHT; return SEE_ATT; }
   }
-  for (let i = 0; i < BISHOP_DIRS.length; i++) {
+  for (let i = 0; i < 4; i++) {
     const d = BISHOP_DIRS[i];
     let from = to + d;
     while ((from & 0x88) === 0) {
@@ -64,7 +64,7 @@ function smallestAttacker(pos, to, side, occ) {
       from += d;
     }
   }
-  for (let i = 0; i < ROOK_DIRS.length; i++) {
+  for (let i = 0; i < 4; i++) {
     const d = ROOK_DIRS[i];
     let from = to + d;
     while ((from & 0x88) === 0) {
@@ -105,7 +105,7 @@ function maxAttackedVictim(pos, to, piece, us) {
     return best;
   }
   if (piece === KNIGHT) {
-    for (let i = 0; i < KNIGHT_DELTAS.length; i++) {
+    for (let i = 0; i < 8; i++) {
       const t = to + KNIGHT_DELTAS[i];
       if (t & 0x88) continue;
       const p = board[t];
@@ -124,7 +124,7 @@ function maxAttackedVictim(pos, to, piece, us) {
     return best;
   }
   if (piece === BISHOP || piece === QUEEN) {
-    for (let i = 0; i < BISHOP_DIRS.length; i++) {
+    for (let i = 0; i < 4; i++) {
       const d = BISHOP_DIRS[i];
       let t = to + d;
       while ((t & 0x88) === 0) {
@@ -138,7 +138,7 @@ function maxAttackedVictim(pos, to, piece, us) {
     }
   }
   if (piece === ROOK || piece === QUEEN) {
-    for (let i = 0; i < ROOK_DIRS.length; i++) {
+    for (let i = 0; i < 4; i++) {
       const d = ROOK_DIRS[i];
       let t = to + d;
       while ((t & 0x88) === 0) {
@@ -209,13 +209,13 @@ function buildCheckTargets() {
   for (let king = 0; king < 128; king++) {
     if (king & 0x88) { table[king] = null; continue; }
     const hit = new Uint8Array(128);
-    for (let i = 0; i < KNIGHT_DELTAS.length; i++) {
+    for (let i = 0; i < 8; i++) {
       const to = king + KNIGHT_DELTAS[i];
       if ((to & 0x88) === 0) hit[to] = 1;
     }
     for (let di = 0; di < 2; di++) {
       const dirs = di === 0 ? BISHOP_DIRS : ROOK_DIRS;
-      for (let i = 0; i < dirs.length; i++) {
+      for (let i = 0; i < 4; i++) {
         const d = dirs[i];
         let to = king + d;
         while ((to & 0x88) === 0) {
@@ -272,6 +272,31 @@ export class TranspositionTable {
     this.flags.fill(0);
     this.moves.fill(0);
     this.generation++;
+  }
+
+  resizeBits(bits) {
+    bits = Math.max(10, Math.min(28, bits | 0));
+    const size = 2 ** bits;
+    if (size === this.size) return;
+    this.size = size;
+    this.mask = size - 1;
+    this.keys = new Float64Array(size);
+    this.scores = new Int32Array(size);
+    this.depths = new Int8Array(size);
+    this.flags = new Int8Array(size);
+    this.moves = new Int32Array(size);
+    this.age = new Int32Array(size);
+    this.generation = 0;
+    this.hits = 0;
+    this.cutoffs = 0;
+  }
+
+  resizeMB(mb) {
+    const bytesPerEntry = 22; // key8+score4+depth1+flag1+move4+age4
+    const entries = Math.max(1024, Math.floor((Math.max(1, mb) * 1024 * 1024) / bytesPerEntry));
+    let bits = 10;
+    while ((2 ** (bits + 1)) <= entries && bits < 28) bits++;
+    this.resizeBits(bits);
   }
 
   newGeneration() { this.generation++; }
@@ -389,55 +414,67 @@ export class MoveOrder {
    * Priority = heuristic score; legality is never decided here.
    */
   scoreMoves(pos, moves, ply, ttMove, pvMove) {
-    this.ensureCapacity(moves.length);
-    const n = moves.length;
+    return this.scoreMovesAt(pos, moves, moves.length, ply, ttMove, pvMove, 0);
+  }
+
+  /**
+   * Score `count` moves from `moves` into ply buffers starting at `offset`.
+   * Used by staged move generation to score tactical and quiet batches separately.
+   */
+  scoreMovesAt(pos, moves, count, ply, ttMove, pvMove, offset) {
+    this.ensureCapacity(offset + count);
     const packed = this.packs[ply];
     const buf = this.buffers[ply];
     const board = pos.board;
     const us = pos.turn;
+    const us128 = us * 128;
     const w = this.params.search.ordering;
+    const wPv = w.pv, wTt = w.tt, wTac = w.tactic, wHis = w.history;
     const killers = this.killers[ply] || EMPTY_KILLER;
+    const k0 = killers[0], k1 = killers[1];
     const history = this.history;
     const seeOn = this.params.search.see ? this.params.search.see.enabled !== false : true;
 
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < count; i++) {
       const m = moves[i];
       let s = 0;
-      if (pvMove && m === pvMove) s += w.pv;
-      if (ttMove && m === ttMove) s += w.tt;
+      if (pvMove && m === pvMove) s += wPv;
+      if (ttMove && m === ttMove) s += wTt;
 
       const flags = MOVE_FLAGS(m);
+      const from = MOVE_FROM(m);
       const to = MOVE_TO(m);
       if (flags & (FLAG_CAPTURE | FLAG_EP)) {
         const victim = (flags & FLAG_EP) ? PAWN : (board[to] & 7);
-        const attacker = board[MOVE_FROM(m)] & 7;
+        const attacker = board[from] & 7;
         const seeScore = seeOn ? see(pos, m) : 0;
-        if (seeOn && seeScore < 0) s += w.tactic * 0.2 + seeScore * 0.01; // bad capture: below quiet killers/history
-        else s += w.tactic + MATERIAL[victim] * 10 - MATERIAL[attacker];
+        if (seeOn && seeScore < 0) s += wTac * 0.2 + seeScore * 0.01; // bad capture: below quiet killers/history
+        else s += wTac + MATERIAL[victim] * 10 - MATERIAL[attacker];
       } else if (flags & FLAG_PROMO) {
-        s += w.tactic + MATERIAL[MOVE_PROMO(m)] * 8;
+        s += wTac + MATERIAL[MOVE_PROMO(m)] * 8;
       } else {
-        if (m === killers[0]) s += w.history * 0.9;
-        else if (m === killers[1]) s += w.history * 0.7;
-        else s += (history[(us * 128 + MOVE_FROM(m)) * 128 + to] / HISTORY_MAX) * w.history * 0.6;
+        if (m === k0) s += wHis * 0.9;
+        else if (m === k1) s += wHis * 0.7;
+        else s += (history[(us128 + from) * 128 + to] / HISTORY_MAX) * wHis * 0.6;
         // Quiet threat: direct attack on enemy piece. Tactical signal (not Gate 3 structural/context).
         // Keeps b4c5-like quiet refutations visible to shallow search/LMR.
-        const movedPiece = board[MOVE_FROM(m)] & 7;
+        const movedPiece = board[from] & 7;
         const threat = maxAttackedVictim(pos, to, movedPiece, us);
-        if (threat >= 500) s += w.history * 0.8 + threat * 30;       // rook/queen
-        else if (threat >= 300) s += w.history * 0.6 + threat * 20;  // minor
+        if (threat >= 500) s += wHis * 0.8 + threat * 30;       // rook/queen
+        else if (threat >= 300) s += wHis * 0.6 + threat * 20;  // minor
       }
 
       // Gate 3 kill: structural/context ordering removed. Ordering is now
       // pv > tt > tactic > history; legality is never decided here.
 
-      const slot = (n - 1 - i) & 255;          // keeps the sort stable on ties
-      buf[i] = m;
-      packed[i] = Math.round(s) * 256 + slot;
+      const idx = offset + i;
+      const slot = (count - 1 - i) & 255;          // keeps the sort stable on ties
+      buf[idx] = m;
+      packed[idx] = Math.round(s) * 256 + slot;
     }
 
-    this.count = n;
-    return n;
+    this.count = offset + count;
+    return this.count;
   }
 
   /**
@@ -503,7 +540,6 @@ export class Searcher {
     this.checkGenBuf = [];
     this.undoBuf = Array.from({ length: 128 }, () => ({}));
     this.probeUndo = {};
-    this.nullUndo = {};
     this.seldepth = 0;
     this.qStalemate = true;   // horizon stalemate check (audit v3.0.6 §4.1)
     this.useTT = true;
@@ -683,12 +719,11 @@ export class Searcher {
 
     const ttEntry = this.useTT ? this.tt.probe(pos.ttKey, depth, alpha, beta, 0) : null;
     const ttMove = ttEntry ? ttEntry.move : 0;
-    const orderedCount = this.order.scoreMoves(pos, rootMoves, 0, ttMove, prevBest || 0);
-
+    const staged = this.params.search.stagedMoveGen === true;
     let alphaOrig = alpha;
-    for (let i = 0; i < orderedCount; i++) {
-      this.order.pick(0, i, orderedCount);
-      const m = this.order.buffers[0][i];
+    let moveIndex = 0;
+
+    const searchRootMove = (m) => {
       pos.pushRep();
       const undo = pos.makeMove(m, this.undoBuf[0]);
       this.nodes++;
@@ -696,7 +731,7 @@ export class Searcher {
       const ext = (givesCheck && this.params.search.checkExtension > 0) ? 1 : 0;
       const nextDepth = Math.max(0, depth - 1 + ext);
       let score;
-      if (i === 0) {
+      if (moveIndex === 0) {
         score = -this.negamax(pos, nextDepth, -beta, -alpha, 1);
       } else {
         score = -this.negamax(pos, nextDepth, -alpha - 1, -alpha, 1);
@@ -706,8 +741,7 @@ export class Searcher {
       }
       pos.unmakeMove(undo);
       pos.popRep();
-
-      if (this.stop) { completed = false; break; }
+      if (this.stop) { completed = false; return true; }
       if (score > bestScore) {
         secondScore = bestScore;
         bestScore = score;
@@ -719,7 +753,41 @@ export class Searcher {
         secondScore = score;
       }
       if (score > alpha) alpha = score;
-      if (alpha >= beta) break;
+      moveIndex++;
+      return alpha >= beta;
+    };
+
+    if (!staged) {
+      const orderedCount = this.order.scoreMoves(pos, rootMoves, 0, ttMove, prevBest || 0);
+      for (let i = 0; i < orderedCount; i++) {
+        this.order.pick(0, i, orderedCount);
+        const m = this.order.buffers[0][i];
+        if (searchRootMove(m)) break;
+      }
+    } else {
+      const tacts = [];
+      const quiets = [];
+      for (let i = 0; i < rootMoves.length; i++) {
+        const m = rootMoves[i];
+        const f = MOVE_FLAGS(m);
+        if ((f & (FLAG_CAPTURE | FLAG_PROMO | FLAG_EP)) !== 0) tacts.push(m);
+        else quiets.push(m);
+      }
+      let orderedCount = this.order.scoreMoves(pos, tacts, 0, ttMove, prevBest || 0);
+      let cut = false;
+      for (let i = 0; i < orderedCount; i++) {
+        this.order.pick(0, i, orderedCount);
+        const m = this.order.buffers[0][i];
+        if (searchRootMove(m)) { cut = true; break; }
+      }
+      if (!cut && !this.stop) {
+        orderedCount = this.order.scoreMoves(pos, quiets, 0, ttMove, prevBest || 0);
+        for (let i = 0; i < orderedCount; i++) {
+          this.order.pick(0, i, orderedCount);
+          const m = this.order.buffers[0][i];
+          if (searchRootMove(m)) break;
+        }
+      }
     }
 
     let flag = TT_EXACT;
@@ -786,7 +854,7 @@ export class Searcher {
     if (this.useNull && this.canNull(pos, depth, inCheck, pvNode)) {
       const R = Math.min(this.params.search.nullMove.maxReduction,
         this.params.search.nullMove.reduction + Math.floor(depth / 6));
-      const undo = pos.makeNullMove();
+      const undo = pos.makeNullMove(this.undoBuf[ply]);
       const score = -this.negamax(pos, depth - R, -beta, -beta + 1, ply + 1);
       pos.unmakeNullMove(undo);
       if (this.stop) return 0;
@@ -795,9 +863,26 @@ export class Searcher {
 
     const us = pos.turn;
     const them = us ^ 1;
-    const moves = pos.generateMoves(false, this.genBuf[ply]);
-    const orderedCount = this.order.scoreMoves(pos, moves, ply, ttMove, 0);
+    const staged = this.params.search.stagedMoveGen === true;
     const buf = this.order.buffers[ply];
+    let orderedCount;
+    if (!staged) {
+      const moves = pos.generateMoves(false, this.genBuf[ply]);
+      orderedCount = this.order.scoreMoves(pos, moves, ply, ttMove, 0);
+    } else {
+      const tactMoves = pos.generateMoves(true, this.genBuf[ply], false, true);
+      orderedCount = this.order.scoreMovesAt(pos, tactMoves, tactMoves.length, ply, ttMove, 0, 0);
+    }
+    let stagedQuietsDone = !staged;
+    if (staged && !stagedQuietsDone && orderedCount === 0) {
+      const quietMoves = pos.generateMoves(false, this.genBuf[ply], true, true);
+      const nQuiet = quietMoves.length;
+      if (nQuiet > 0) {
+        this.order.scoreMovesAt(pos, quietMoves, nQuiet, ply, ttMove, 0, 0);
+        orderedCount = nQuiet;
+      }
+      stagedQuietsDone = true;
+    }
 
     let bestScore = -INF;
     let bestMove = 0;
@@ -908,6 +993,17 @@ export class Searcher {
         }
         if (this.useTT) this.tt.store(pos.ttKey, depth, bestScore, TT_LOWER, m, ply);
         return bestScore;
+      }
+
+      if (staged && !stagedQuietsDone && i + 1 === orderedCount) {
+        const nTact = orderedCount;
+        const quietMoves = pos.generateMoves(false, this.genBuf[ply], true, true);
+        const nQuiet = quietMoves.length;
+        if (nQuiet > 0) {
+          this.order.scoreMovesAt(pos, quietMoves, nQuiet, ply, ttMove, 0, nTact);
+          orderedCount = nTact + nQuiet;
+        }
+        stagedQuietsDone = true;
       }
     }
 
@@ -1034,6 +1130,7 @@ export class Searcher {
     const them = us ^ 1;
     const orderedCount = this.order.scoreMoves(pos, moves, ply, 0, 0);
     const buf = this.order.buffers[ply];
+    const seePrune = this.params.search.see ? this.params.search.see.qsearchPrune !== false : true;
     let legal = 0;
 
     for (let i = 0; i < orderedCount; i++) {
@@ -1043,8 +1140,6 @@ export class Searcher {
       if (!inCheck) {
         if (!(flags & FLAG_CAPTURE) && !(flags & FLAG_PROMO)) continue;
         // bad captures are skipped in qsearch; promos still searched
-        const seeCfg = this.params.search.see;
-        const seePrune = seeCfg ? seeCfg.qsearchPrune !== false : true;
         if (seePrune && (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && see(pos, m) < 0) continue;
         // delta pruning: even winning the victim cannot lift alpha. Skip near
         // mate windows: a capture that delivers mate must not be pruned because

@@ -29,7 +29,6 @@ export const BISHOP = 3;
 export const ROOK = 4;
 export const QUEEN = 5;
 export const KING = 6;
-const PROMO_PIECES = [QUEEN, ROOK, BISHOP, KNIGHT];
 
 export const WHITE = 0;
 export const BLACK = 1;
@@ -492,20 +491,20 @@ export class Position {
     }
     // knights
     const n = base | KNIGHT;
-    for (let i = 0; i < KNIGHT_DELTAS.length; i++) {
+    for (let i = 0; i < 8; i++) {
       const t = sq + KNIGHT_DELTAS[i];
       if ((t & 0x88) === 0 && b[t] === n) w += 3.2;
     }
     // king
     const k = base | KING;
-    for (let i = 0; i < KING_DELTAS.length; i++) {
+    for (let i = 0; i < 8; i++) {
       const t = sq + KING_DELTAS[i];
       if ((t & 0x88) === 0 && b[t] === k) w += 2;
     }
     // bishops / queens
     const bo = base | BISHOP;
     const qu = base | QUEEN;
-    for (let i = 0; i < BISHOP_DIRS.length; i++) {
+    for (let i = 0; i < 4; i++) {
       const d = BISHOP_DIRS[i];
       let t = sq + d;
       while ((t & 0x88) === 0) {
@@ -516,7 +515,7 @@ export class Position {
     }
     // rooks / queens
     const ro = base | ROOK;
-    for (let i = 0; i < ROOK_DIRS.length; i++) {
+    for (let i = 0; i < 4; i++) {
       const d = ROOK_DIRS[i];
       let t = sq + d;
       while ((t & 0x88) === 0) {
@@ -541,20 +540,20 @@ export class Position {
     }
     // knights
     const n = base | KNIGHT;
-    for (let i = 0; i < KNIGHT_DELTAS.length; i++) {
+    for (let i = 0; i < 8; i++) {
       const t = sq + KNIGHT_DELTAS[i];
       if ((t & 0x88) === 0 && b[t] === n) return true;
     }
     // king
     const k = base | KING;
-    for (let i = 0; i < KING_DELTAS.length; i++) {
+    for (let i = 0; i < 8; i++) {
       const t = sq + KING_DELTAS[i];
       if ((t & 0x88) === 0 && b[t] === k) return true;
     }
     // bishops / queens
     const bo = base | BISHOP;
     const qu = base | QUEEN;
-    for (let i = 0; i < BISHOP_DIRS.length; i++) {
+    for (let i = 0; i < 4; i++) {
       const d = BISHOP_DIRS[i];
       let t = sq + d;
       while ((t & 0x88) === 0) {
@@ -565,7 +564,7 @@ export class Position {
     }
     // rooks / queens
     const ro = base | ROOK;
-    for (let i = 0; i < ROOK_DIRS.length; i++) {
+    for (let i = 0; i < 4; i++) {
       const d = ROOK_DIRS[i];
       let t = sq + d;
       while ((t & 0x88) === 0) {
@@ -636,11 +635,11 @@ export class Position {
   /* ---------------- move generation ---------------- */
 
   /** Pseudo-legal moves. `capturesOnly` restricts to captures/promotions (quiescence). */
-  generateMoves(capturesOnly = false, out = null) {
+  generateMoves(capturesOnly = false, out = null, quietsOnly = false, clear = true) {
     this.refreshPieces();
-    if (out) out.length = 0; else out = [];
+    if (out) { if (clear) out.length = 0; } else out = [];
     const us = this.turn;
-    const them = opposite(us);
+    const them = us ^ 1;
     const b = this.board;
     const listCnt = this.listCnt[us];
     const listSq = this.listSq[us];
@@ -657,62 +656,83 @@ export class Position {
         const one = from + dir;
         if ((one & 0x88) === 0 && b[one] === EMPTY) {
           if ((one >> 4) === promoRank) {
-            for (let pi = 0; pi < 4; pi++) {
-              const pt = PROMO_PIECES[pi];
-              out.push(encodeMove(from, one, pt, FLAG_PROMO));
+            if (!quietsOnly) {
+              const base = from | (one << 7) | (FLAG_PROMO << 17);
+              out.push(base | (QUEEN << 14));
+              out.push(base | (ROOK << 14));
+              out.push(base | (BISHOP << 14));
+              out.push(base | (KNIGHT << 14));
             }
           } else if (!capturesOnly) {
-            out.push(encodeMove(from, one));
+            out.push(from | (one << 7));
             const two = from + 2 * dir;
             if ((from >> 4) === startRank && b[two] === EMPTY)
-              out.push(encodeMove(from, two, 0, FLAG_DOUBLE));
+              out.push(from | (two << 7) | (FLAG_DOUBLE << 17));
           }
         }
-        for (let dc = -1; dc <= 1; dc += 2) {
-          const to = one + dc;
-          if ((to & 0x88) !== 0) continue;
-          const target = b[to];
-          if (target !== EMPTY && (target >> 3) === them) {
-            if ((to >> 4) === promoRank) {
-              for (let pi = 0; pi < 4; pi++) {
-                const pt = PROMO_PIECES[pi];
-                out.push(encodeMove(from, to, pt, FLAG_PROMO | FLAG_CAPTURE));
+        if (!quietsOnly) {
+          for (let dc = -1; dc <= 1; dc += 2) {
+            const to = one + dc;
+            if ((to & 0x88) !== 0) continue;
+            const target = b[to];
+            if (target !== EMPTY && (target >> 3) === them) {
+              if ((to >> 4) === promoRank) {
+                const base = from | (to << 7) | ((FLAG_PROMO | FLAG_CAPTURE) << 17);
+                out.push(base | (QUEEN << 14));
+                out.push(base | (ROOK << 14));
+                out.push(base | (BISHOP << 14));
+                out.push(base | (KNIGHT << 14));
+              } else {
+                out.push(from | (to << 7) | (FLAG_CAPTURE << 17));
               }
-            } else {
-              out.push(encodeMove(from, to, 0, FLAG_CAPTURE));
+            } else if (to === this.ep && target === EMPTY) {
+              out.push(from | (to << 7) | ((FLAG_CAPTURE | FLAG_EP) << 17));
             }
-          } else if (to === this.ep && target === EMPTY) {
-            out.push(encodeMove(from, to, 0, FLAG_CAPTURE | FLAG_EP));
           }
         }
         continue;
       }
 
-      if (type === KNIGHT || type === KING) {
-        const deltas = type === KNIGHT ? KNIGHT_DELTAS : KING_DELTAS;
-        for (let j = 0; j < deltas.length; j++) {
-          const to = from + deltas[j];
+      if (type === KNIGHT) {
+        for (let j = 0; j < 8; j++) {
+          const to = from + KNIGHT_DELTAS[j];
           if ((to & 0x88) !== 0) continue;
           const target = b[to];
-          if (target !== EMPTY && (target >> 3) === us) continue;
-          if (capturesOnly && target === EMPTY) continue;
-          out.push(encodeMove(from, to, 0, target !== EMPTY ? FLAG_CAPTURE : 0));
+          if (target === EMPTY) {
+            if (!capturesOnly) out.push(from | (to << 7));
+          } else if ((target >> 3) !== us && !quietsOnly) {
+            out.push(from | (to << 7) | (FLAG_CAPTURE << 17));
+          }
         }
-        if (type === KING && !capturesOnly) this.generateCastles(out, from, us);
+        continue;
+      }
+      if (type === KING) {
+        for (let j = 0; j < 8; j++) {
+          const to = from + KING_DELTAS[j];
+          if ((to & 0x88) !== 0) continue;
+          const target = b[to];
+          if (target === EMPTY) {
+            if (!capturesOnly) out.push(from | (to << 7));
+          } else if ((target >> 3) !== us && !quietsOnly) {
+            out.push(from | (to << 7) | (FLAG_CAPTURE << 17));
+          }
+        }
+        if (!capturesOnly) this.generateCastles(out, from, us);
         continue;
       }
 
       const dirs = type === BISHOP ? BISHOP_DIRS : type === ROOK ? ROOK_DIRS : QUEEN_DIRS;
-      for (let j = 0; j < dirs.length; j++) {
+      const dlen = type === QUEEN ? 8 : 4;
+      for (let j = 0; j < dlen; j++) {
         const d = dirs[j];
         let to = from + d;
         while ((to & 0x88) === 0) {
           const target = b[to];
           if (target === EMPTY) {
-            if (!capturesOnly) out.push(encodeMove(from, to));
+            if (!capturesOnly) out.push(from | (to << 7));
           } else {
-            if ((target >> 3) === them)
-              out.push(encodeMove(from, to, 0, FLAG_CAPTURE));
+            if (!quietsOnly && (target >> 3) === them)
+              out.push(from | (to << 7) | (FLAG_CAPTURE << 17));
             break;
           }
           to += d;
@@ -724,7 +744,7 @@ export class Position {
 
   generateCastles(out, from, us) {
     const b = this.board;
-    const them = opposite(us);
+    const them = us ^ 1;
     if (us === WHITE && from === 116) {
       if ((this.castling & CASTLE_WK) &&
           b[117] === EMPTY && b[118] === EMPTY && b[119] === (ROOK | (WHITE << 3)) &&
@@ -748,16 +768,18 @@ export class Position {
 
   /** Full legal move set. M_legal(P) — the search may only ever use this set at a full node. */
   legalMoves(capturesOnly = false) {
-    this.refreshPieces();
     const pseudo = this.generateMoves(capturesOnly);
     const out = [];
     const us = this.turn;
-    for (const m of pseudo) {
+    const them = us ^ 1;
+    const b = this.board;
+    for (let i = 0, n = pseudo.length; i < n; i++) {
+      const m = pseudo[i];
       const to = MOVE_TO(m);
-      const tp = this.board[to];
+      const tp = b[to];
       if (tp !== EMPTY && pieceType(tp) === KING) continue; // king capture can never be legal
       const undo = this.makeMove(m);
-      if (!this.isAttacked(this.kingSq[us], opposite(us))) out.push(m);
+      if (!this.isAttacked(this.kingSq[us], them)) out.push(m);
       this.unmakeMove(undo);
     }
     return out;
@@ -766,6 +788,7 @@ export class Position {
   /* ---------------- transitions ---------------- */
 
   makeMove(m, outUndo = null) {
+    if (this.dirty) this.refreshPieces();
     const from = MOVE_FROM(m);
     const to = MOVE_TO(m);
     const flags = MOVE_FLAGS(m);
@@ -783,6 +806,11 @@ export class Position {
     undo.kingW = this.kingSq[WHITE]; undo.kingB = this.kingSq[BLACK]; undo.phaseMaterial = this.phaseMaterial;
     undo.repLimit = this.repLimit;
 
+    const listSq = this.listSq;
+    const listCnt = this.listCnt;
+    const listIdx = this.listIdx;
+    const ourIdx = listIdx[from];
+
     // remove captured piece
     let capSq = -1;
     if (flags & FLAG_EP) {
@@ -791,36 +819,58 @@ export class Position {
       capSq = to;
     }
     if (capSq >= 0) {
-      undo.captured = b[capSq];
+      const cap = b[capSq];
+      undo.captured = cap;
       undo.capSq = capSq;
-      this.xorPiece(capSq, undo.captured);
+      { const zi = cap * 128 + capSq; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
       b[capSq] = EMPTY;
+      this.phaseMaterial -= PHASE_WEIGHT[cap & 7];
+      // swap-remove from opponent piece list
+      const ci = listIdx[capSq];
+      undo.capIdx = ci;
+      if (ci >= 0) {
+        const last = --listCnt[them];
+        if (ci !== last) {
+          const lsq = listSq[them][last];
+          listSq[them][ci] = lsq;
+          listIdx[lsq] = ci;
+        }
+      }
+      listIdx[capSq] = -1;
     }
 
     // move piece
-    this.xorPiece(from, piece);
+    { const zi = piece * 128 + from; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
     b[from] = EMPTY;
     const placed = promo ? (promo | (us << 3)) : piece;
     b[to] = placed;
-    this.xorPiece(to, placed);
+    { const zi = placed * 128 + to; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
     if (type === KING) this.kingSq[us] = to;
+    if (promo) this.phaseMaterial += PHASE_WEIGHT[promo] - PHASE_WEIGHT[PAWN];
+    // update our piece list
+    if (ourIdx >= 0) {
+      listSq[us][ourIdx] = to;
+      listIdx[to] = ourIdx;
+    }
+    listIdx[from] = -1;
 
     // castle rook
     if (flags & FLAG_CASTLE) {
       const rank = us === WHITE ? 112 : 0;
-      if (fileOf(to) === 6) {
-        const rf = rank + 7, rt = rank + 5;
-        const rook = b[rf];
-        this.xorPiece(rf, rook); b[rf] = EMPTY;
-        b[rt] = rook;
-        this.xorPiece(rt, rook);
-      } else {
-        const rf = rank + 0, rt = rank + 3;
-        const rook = b[rf];
-        this.xorPiece(rf, rook); b[rf] = EMPTY;
-        b[rt] = rook;
-        this.xorPiece(rt, rook);
+      let rf, rt;
+      if (fileOf(to) === 6) { rf = rank + 7; rt = rank + 5; }
+      else { rf = rank + 0; rt = rank + 3; }
+      const rook = b[rf];
+      { const zi = rook * 128 + rf; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
+      b[rf] = EMPTY;
+      b[rt] = rook;
+      { const zi = rook * 128 + rt; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
+      const ri = listIdx[rf];
+      if (ri >= 0) {
+        listSq[us][ri] = rt;
+        listIdx[rt] = ri;
       }
+      listIdx[rf] = -1;
     }
 
     // castling rights
@@ -857,7 +907,7 @@ export class Position {
     }
 
     // clocks
-    const isCapture = (flags & (FLAG_CAPTURE | FLAG_EP)) !== 0;
+    const isCapture = capSq >= 0;
     this.halfmove = (type === PAWN || isCapture) ? 0 : this.halfmove + 1;
     if (type === PAWN || isCapture) this.repLimit = this.rep.length;
     if (us === BLACK) this.fullmove++;
@@ -867,7 +917,6 @@ export class Position {
     this.hashLo = (this.hashLo ^ ZOBRIST.turn.lo) >>> 0;
     this.hashHi = (this.hashHi ^ ZOBRIST.turn.hi) >>> 0;
 
-    this.dirty = true;
     return undo;
   }
 
@@ -878,13 +927,18 @@ export class Position {
   }
 
   unmakeMove(undo) {
+    if (this.dirty) this.refreshPieces();
     const m = undo.move;
     const from = MOVE_FROM(m);
     const to = MOVE_TO(m);
     const flags = MOVE_FLAGS(m);
     const promo = MOVE_PROMO(m);
     const us = this.turn ^ 1;
+    const them = us ^ 1;
     const b = this.board;
+    const listSq = this.listSq;
+    const listCnt = this.listCnt;
+    const listIdx = this.listIdx;
 
     this.turn = us;
     this.castling = undo.castling;
@@ -897,33 +951,57 @@ export class Position {
     // undo castle rook
     if (flags & FLAG_CASTLE) {
       const rank = us === WHITE ? 112 : 0;
-      if (fileOf(to) === 6) {
-        const rt = rank + 5, rf = rank + 7;
-        const rook = b[rt];
-        this.xorPiece(rt, rook); b[rt] = EMPTY;
-        b[rf] = rook;
-        this.xorPiece(rf, rook);
-      } else {
-        const rt = rank + 3, rf = rank + 0;
-        const rook = b[rt];
-        this.xorPiece(rt, rook); b[rt] = EMPTY;
-        b[rf] = rook;
-        this.xorPiece(rf, rook);
+      let rt, rf;
+      if (fileOf(to) === 6) { rt = rank + 5; rf = rank + 7; }
+      else { rt = rank + 3; rf = rank + 0; }
+      const rook = b[rt];
+      { const zi = rook * 128 + rt; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
+      b[rt] = EMPTY;
+      b[rf] = rook;
+      { const zi = rook * 128 + rf; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
+      const ri = listIdx[rt];
+      if (ri >= 0) {
+        listSq[us][ri] = rf;
+        listIdx[rf] = ri;
       }
+      listIdx[rt] = -1;
     }
 
     // move piece back
     const placed = b[to];
     b[to] = EMPTY;
-    this.xorPiece(to, placed);
+    { const zi = placed * 128 + to; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
     const original = (promo ? PAWN : (placed & 7)) | (us << 3);
     b[from] = original;
-    this.xorPiece(from, original);
+    { const zi = original * 128 + from; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
+    const oi = listIdx[to];
+    if (oi >= 0) {
+      listSq[us][oi] = from;
+      listIdx[from] = oi;
+    }
+    listIdx[to] = -1;
 
     // restore captured piece
     if (undo.capSq >= 0 && undo.captured !== EMPTY) {
-      b[undo.capSq] = undo.captured;
-      this.xorPiece(undo.capSq, undo.captured);
+      const capSq = undo.capSq;
+      b[capSq] = undo.captured;
+      { const zi = undo.captured * 128 + capSq; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
+      const ci = undo.capIdx;
+      const last = listCnt[them];
+      if (ci >= 0) {
+        if (ci !== last) {
+          const lsq = listSq[them][ci];
+          listSq[them][last] = lsq;
+          listIdx[lsq] = last;
+        }
+        listSq[them][ci] = capSq;
+        listIdx[capSq] = ci;
+        listCnt[them] = last + 1;
+      } else {
+        listSq[them][last] = capSq;
+        listIdx[capSq] = last;
+        listCnt[them] = last + 1;
+      }
     }
 
     // hash is restored last: the operations above legitimately mutate it
@@ -931,18 +1009,16 @@ export class Position {
     this.hashHi = undo.hashHi;
     this.phaseMaterial = undo.phaseMaterial;
     this.repLimit = undo.repLimit;
-    this.dirty = true;
   }
 
   /** null-move (search-only, never a legal chess move) */
-  makeNullMove() {
-    const undo = {
-      castling: this.castling, ep: this.ep, halfmove: this.halfmove,
-      fullmove: this.fullmove, hashLo: this.hashLo, hashHi: this.hashHi,
-      kingW: this.kingSq[WHITE], kingB: this.kingSq[BLACK],
-      phaseMaterial: this.phaseMaterial, turn: this.turn,
-      repLimit: this.repLimit
-    };
+  makeNullMove(outUndo = null) {
+    const undo = outUndo || {};
+    undo.castling = this.castling; undo.ep = this.ep; undo.halfmove = this.halfmove;
+    undo.fullmove = this.fullmove; undo.hashLo = this.hashLo; undo.hashHi = this.hashHi;
+    undo.kingW = this.kingSq[WHITE]; undo.kingB = this.kingSq[BLACK];
+    undo.phaseMaterial = this.phaseMaterial; undo.turn = this.turn;
+    undo.repLimit = this.repLimit;
     if (this.ep >= 0) {
       const k = ZOBRIST.ep[fileOf(this.ep)];
       this.hashLo = (this.hashLo ^ k.lo) >>> 0;

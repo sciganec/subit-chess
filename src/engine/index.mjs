@@ -438,11 +438,12 @@ async function runUci() {
     if (t === 'uci') {
       send(`id name SUBIT-CHESS ${VERSION}`);
       send('id author SUBIT');
-      send('option name Hash type spin default 64 min 1 max 1024');
+      send('option name Hash type spin default 6 min 1 max 1024');
       send('option name TT.MaxAge type spin default 0 min 0 max 10');
       send('option name Eval.FDPressure type spin default 0 min 0 max 20');
       send('option name Eval.FDAttackWeight type spin default 0 min 0 max 20');
       send('option name Eval.FDPinDiscount type spin default 0 min 0 max 20');
+      send('option name Search.StagedMoveGen type check default false');
       send('uciok');
       return;
     }
@@ -467,7 +468,8 @@ async function runUci() {
         else if (name === 'eval.fdpressure' || name === 'fdpressure') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdPressure = Math.max(0, Math.min(20, n)); }
         else if (name === 'eval.fdattackweight' || name === 'fdattackweight') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdAttackWeight = Math.max(0, Math.min(20, n)); }
         else if (name === 'eval.fdpindiscount' || name === 'fdpindiscount') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdPinDiscount = Math.max(0, Math.min(20, n)); }
-        else if (name === 'hash') { const mb = Number(value); if (Number.isFinite(mb) && mb>=1) { /* ignore for now, TT fixed */ } }
+        else if (name === 'search.stagedmovegen' || name === 'stagedmovegen') { if (on||off) engine.params.search.stagedMoveGen = on; }
+        else if (name === 'hash') { const mb = Number(value); if (Number.isFinite(mb) && mb >= 1) { engine.searcher.tt.resizeMB(Math.max(1, Math.min(1024, mb))); } }
       }
       return;
     }

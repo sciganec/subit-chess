@@ -335,9 +335,9 @@ and is not comparable. A1 is accepted; the d9-in-6s target itself is still unmet
 
 **Plan, in the order the profile justifies:**
 
-| Step | Attacks | Expected | Gate |
-|---|---|---|---|
-| Staged move generation (captures first, quiets after the cutoff) | `generateMoves` 14.8%, `scoreMoves` 16.8% | 20-40% | `generateMoves` self time < 8% |
+| Step | Attacks | Expected | Gate | Status |
+|---|---|---|---|---|
+| Staged move generation (captures first, quiets after the cutoff) | `generateMoves` 14.8%, `scoreMoves` 16.8% | 20-40% | `generateMoves` self time < 8% | Prototype default-off; strict no-cycle 48g A/B (d4, 220 plies, openingSeed null) 0W/3D/45L, 0.03125, Elo -596.54 CI [-1199.83,-460.74] �?" clear regression, keep default off. |
 | Bitboards (occupancy + attack bitsets) | `generateMoves` 14.8%, `isAttacked` 7.0%, make/unmake 6.5% | 25-40% | `isAttacked` < 3%, make/unmake < 3% |
 | Leaf-tier mobility from precomputed ray tables | mobility = 37% of `evaluateFast` | 5-8% | `evaluateFast` < 25% |
 

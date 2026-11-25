@@ -99,6 +99,7 @@ export const DEFAULT_PARAMS = {
     // with a silent check is invisible to a captures-only horizon (audit A1).
     qsearch: { checks: true, maxChecks: 4 },
     see: { enabled: true, qsearchPrune: true },
+    stagedMoveGen: false, // behavior-changing prototype; default off, strict no-cycle A/B before enabling
     // Gate 3 kill: structural ordering deleted (200-game A/B had no positive CI).
     // The keys stay at 0 so older configs remain loadable, but no bonus is
     // ever supplied to them — search ordering is now pv > tt > tactic > history.
@@ -284,6 +285,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const T = tables(params);
   const cfg = params.eval || {};
   const mob = cfg.mobility || null;
+  const mobN = mob ? mob.N : 0, mobB = mob ? mob.B : 0, mobR = mob ? mob.R : 0, mobQ = mob ? mob.Q : 0;
   const cfgPassed = cfg.passed || null;
   const cfgDoubled = cfg.doubled || 0;
   const cfgIsolated = cfg.isolated || 0;
@@ -304,6 +306,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   let mid = 0;
   let end = 0;
   let mobility = 0;
+  let pawnCount = 0;
   // scratch buffers: the evaluator runs at every leaf, so nothing is allocated
   const bishops = _bishops;
   const pawnMask = _pawnMask;
@@ -321,18 +324,41 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
     const n = pos.listCnt[color];
     const mine = pawnMask[color];
     // the tables are stored white-relative; mirror the square for black
-    const black = color === WHITE ? 0 : 1;
+    const mirror = color === WHITE ? 0 : 0x70;
     for (let i = 0; i < n; i++) {
       const sq = list[i];
       const t = b[sq] & 7;
-      const tsq = black ? (7 - (sq >> 4)) * 16 + (sq & 7) : sq;
+      const tsq = sq ^ mirror;
       mid += sign * flatMid[t * 128 + tsq];
       end += sign * flatEnd[t * 128 + tsq];
-      if (mob && (t === KNIGHT || t === BISHOP || t === ROOK || t === QUEEN)) {
-        const w = t === KNIGHT ? mob.N : t === BISHOP ? mob.B : t === ROOK ? mob.R : mob.Q;
-        mobility += sign * w * (t === KNIGHT ? knightMobility(b, sq, color) : sliderMobility(b, sq, t, color));
+      if (mob && t >= KNIGHT && t <= QUEEN) {
+        const w = t === KNIGHT ? mobN : t === BISHOP ? mobB : t === ROOK ? mobR : mobQ;
+        let mcount = 0;
+        if (t === KNIGHT) {
+          for (let di = 0; di < 8; di++) {
+            const to = sq + KNIGHT_DELTAS[di];
+            if (to & 0x88) continue;
+            const p = b[to];
+            if (p && (p >> 3) === color) continue;
+            mcount++;
+          }
+        } else {
+          const dirs = t === BISHOP ? BISHOP_DIRS : t === ROOK ? ROOK_DIRS : QUEEN_DIRS;
+          const dlen = t === QUEEN ? 8 : 4;
+          for (let di = 0; di < dlen; di++) {
+            const ddir = dirs[di];
+            let to = sq + ddir;
+            while (!(to & 0x88)) {
+              const p = b[to];
+              if (!p) { mcount++; to += ddir; continue; }
+              if ((p >> 3) !== color) mcount++;
+              break;
+            }
+          }
+        }
+        mobility += sign * w * mcount;
       }
-      if (t === PAWN) mine[sq & 7] |= 1 << (7 - (sq >> 4));
+      if (t === PAWN) { pawnCount++; mine[sq & 7] |= 1 << (7 - (sq >> 4)); }
       else if (t === BISHOP) bishops[color]++;
       else if (t === ROOK) { if (rookCnt[color] < 10) rookSq[color][rookCnt[color]++] = sq; }
       else if (t === KING) kingSq[color] = sq;
@@ -342,9 +368,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   // phase from the *non-pawn* material: pos.phaseMaterial counts pawns too
   // (40 at the start) while PHASE_TOTAL is the piece total, so using it
   // directly kept the taper switched off through the whole middlegame
-  let pawns = 0;
-  for (let f = 0; f < 8; f++) pawns += POP8[pawnMask[0][f]] + POP8[pawnMask[1][f]];
-  const nonPawn = pos.phaseMaterial - pawns;
+  const nonPawn = pos.phaseMaterial - pawnCount;
   const phase = 1 - Math.min(1, nonPawn / PHASE_TOTAL);   // 0 opening .. 1 endgame
 
   let score = cfg.taper === false ? (phase < 0.5 ? mid : end) : mid + (end - mid) * phase;
@@ -475,8 +499,9 @@ function knightMobility(b, sq, color) {
 /** Number of squares a slider can reach (stops at the first piece). */
 function sliderMobility(b, sq, type, color) {
   const dirs = type === BISHOP ? BISHOP_DIRS : type === ROOK ? ROOK_DIRS : QUEEN_DIRS;
+  const dlen = type === QUEEN ? 8 : 4;
   let n = 0;
-  for (let d = 0; d < dirs.length; d++) {
+  for (let d = 0; d < dlen; d++) {
     let to = sq + dirs[d];
     while (!(to & 0x88)) {
       const p = b[to];
@@ -879,7 +904,7 @@ function fdPinDefenseDiscount(pos, percept, weight) {
         }
       }
     } else if (type === KNIGHT) {
-      for (let j = 0; j < KNIGHT_DELTAS.length; j++) {
+      for (let j = 0; j < 8; j++) {
         const to = pinnedSq + KNIGHT_DELTAS[j];
         if (to & 0x88) continue;
         const tp = b[to];
@@ -889,7 +914,8 @@ function fdPinDefenseDiscount(pos, percept, weight) {
       // king can't be pinned
     } else {
       const dirs = type === BISHOP ? BISHOP_DIRS : type === ROOK ? ROOK_DIRS : QUEEN_DIRS;
-      for (let j = 0; j < dirs.length; j++) {
+      const dlen = type === QUEEN ? 8 : 4;
+      for (let j = 0; j < dlen; j++) {
         const d = dirs[j];
         let to = pinnedSq + d;
         while ((to & 0x88) === 0) {
