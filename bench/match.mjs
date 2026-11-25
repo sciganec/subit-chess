@@ -144,6 +144,8 @@ export const CONFIGS = {
   fut2: { label: 'futility maxDepth 2', params: { search: { futility: { maxDepth: 2 } } }, opts: {} },
   nmmin2: { label: 'null move minDepth 2, reduction 3', params: { search: { nullMove: { minDepth: 2, reduction: 3, maxReduction: 4 } } }, opts: {} },
   old3015: { label: 'pre-v3.0.16 futility/null move', params: { search: { futility: { maxDepth: 1 }, nullMove: { minDepth: 3, reduction: 2, maxReduction: 3 } } }, opts: {} },
+  basefixed: { label: 'current defaults, fixed time per move (no adaptive budget)', params: {}, opts: { adaptiveTime: false } },
+  old3015fixed: { label: 'pre-v3.0.16 futility/null move, fixed time per move', params: { search: { futility: { maxDepth: 1 }, nullMove: { minDepth: 3, reduction: 2, maxReduction: 3 } } }, opts: { adaptiveTime: false } },
   rfp80: { label: 'RFP margin 80', params: { search: { rfp: { margin: 80 } } }, opts: {} },
   rfp180: { label: 'RFP margin 180', params: { search: { rfp: { margin: 180 } } }, opts: {} },
   seeprune: { label: 'SEE pruning of losing captures (depth<=4, 100cp/ply)', params: { search: { seePrune: { enabled: true } } }, opts: {} },
