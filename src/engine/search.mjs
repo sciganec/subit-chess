@@ -1183,9 +1183,11 @@ export class Searcher {
       // from the enemy king can be a direct check, and only moves that vacate
       // one of those squares can be a discovered check. Everything else is
       // skipped before make/unmake. The full legality test remains below.
-      const targets = CHECK_TARGETS[pos.kingSq[them]];
+      const kingSqThem = pos.kingSq[them];
+      const targets = CHECK_TARGETS[kingSqThem];
       const checkMoves = pos.generateMoves(false, this.checkGenBuf);
-      for (let i = 0; i < checkMoves.length; i++) {
+      const cn = checkMoves.length;
+      for (let i = 0; i < cn; i++) {
         const m = checkMoves[i];
         const flags = MOVE_FLAGS(m);
         if (flags & (FLAG_CAPTURE | FLAG_EP | FLAG_PROMO)) continue;
@@ -1194,7 +1196,7 @@ export class Searcher {
         // even when the king's from/to squares are not in CHECK_TARGETS.
         if (!targets[from] && !targets[to] && !(flags & FLAG_CASTLE)) continue;
         const undo = pos.makeMove(m, this.undoBuf[ply]);
-        const givesCheck = pos.isAttacked(pos.kingSq[them], us);
+        const givesCheck = pos.isAttacked(kingSqThem, us);
         pos.unmakeMove(undo);
         if (givesCheck) checks.push(m);
       }
