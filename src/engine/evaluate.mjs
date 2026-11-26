@@ -86,6 +86,9 @@ export const DEFAULT_PARAMS = {
     // SmallFish game: a mate in 2 was reported as -471 cp at depth 8 with
     // maxDepth 3, and as -99996 with maxDepth <= 1).
     futility: { enabled: true, margin: 120, maxDepth: 1 },
+    // Reverse futility pruning: at shallow depth, if static eval is far above
+    // beta, the node is unlikely to fall below beta. Default off; A/B required.
+    rfp: { enabled: false, margin: 80, maxDepth: 3 },
     checkExtension: 1,
     extensionBudget: 6,
     quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },

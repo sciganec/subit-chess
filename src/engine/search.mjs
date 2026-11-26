@@ -861,6 +861,14 @@ export class Searcher {
       if (score >= beta) return beta;
     }
 
+    // Reverse futility pruning: if static eval is far above beta at shallow
+    // depth, the node is unlikely to fall below beta. Default off; A/B only.
+    const rfp = this.params.search.rfp;
+    if (rfp && rfp.enabled && !pvNode && !inCheck && depth <= (rfp.maxDepth || 3) && Math.abs(beta) < MATE_THRESHOLD) {
+      const staticEval = this.ev.evaluate(pos, depth);
+      if (staticEval - (rfp.margin || 80) * depth >= beta) return staticEval;
+    }
+
     const us = pos.turn;
     const them = us ^ 1;
     const staged = this.params.search.stagedMoveGen === true;
