@@ -94,6 +94,8 @@ export const DEFAULT_PARAMS = {
     lmp: { enabled: false, maxDepth: 3, base: 4, multiplier: 2 },
     // History malus: penalize previously searched quiets on beta cutoff. Default off; A/B required.
     historyMalus: false,
+    // LMR history: adjust reduction based on quiet-move history. Default off; A/B required.
+    lmrHistory: false,
     checkExtension: 1,
     extensionBudget: 6,
     quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },

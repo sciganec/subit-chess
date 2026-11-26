@@ -461,6 +461,7 @@ async function runUci() {
       send('option name LMP.Base type spin default 4 min 1 max 20');
       send('option name LMP.Multiplier type spin default 2 min 1 max 10');
       send('option name Search.HistoryMalus type check default false');
+      send('option name Search.LMRHistory type check default false');
       send('option name SEE.QSearchPruneMargin type spin default 0 min 0 max 500');
       send('option name SEE.QSearchPruneMinDepth type spin default 0 min 0 max 4');
       send('option name Search.StagedMoveGen type check default false');
@@ -499,6 +500,7 @@ async function runUci() {
         else if (name === 'lmp.base') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmp.base = Math.max(1, Math.min(20, n|0)); }
         else if (name === 'lmp.multiplier') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmp.multiplier = Math.max(1, Math.min(10, n|0)); }
         else if (name === 'search.historymalus' || name === 'historymalus') { if (on||off) engine.params.search.historyMalus = on; }
+        else if (name === 'search.lmrhistory' || name === 'lmrhistory') { if (on||off) engine.params.search.lmrHistory = on; }
         else if (name === 'see' || name === 'see.enabled') { if (on||off) engine.params.search.see.enabled = on; }
         else if (name === 'see.qsearchprune') { if (on||off) engine.params.search.see.qsearchPrune = on; }
         else if (name === 'see.qsearchprunemargin') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.see.qsearchPruneMargin = Math.max(0, Math.min(500, n|0)); }

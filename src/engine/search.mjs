@@ -976,6 +976,11 @@ export class Searcher {
         if (!threatExempt) {
           reduction = lmr.reduction || 1;
           if (i >= (lmr.extraMoveIndex || 6)) reduction += (lmr.extraReduction ?? 1);
+          if (this.params.search.lmrHistory) {
+            const h = this.order.history[(us * 128 + MOVE_FROM(m)) * 128 + to];
+            if (h > HISTORY_MAX / 4) reduction = Math.max(0, reduction - 1);
+            else if (h < -HISTORY_MAX / 8) reduction += 1;
+          }
           if (reduction > (lmr.maxReduction || 3)) reduction = lmr.maxReduction || 3;
           if (depth - reduction < 1) reduction = depth - 1;
         }
