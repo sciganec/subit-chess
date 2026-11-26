@@ -509,7 +509,13 @@ export class MoveOrder {
   addHistory(pos, m, depth) {
     const us = pos.turn;
     const idx = (us * 128 + MOVE_FROM(m)) * 128 + MOVE_TO(m);
-    this.history[idx] = Math.min(1 << 20, this.history[idx] + depth * depth);
+    this.history[idx] = Math.min(HISTORY_MAX, this.history[idx] + depth * depth);
+  }
+
+  subHistory(pos, m, depth) {
+    const us = pos.turn;
+    const idx = (us * 128 + MOVE_FROM(m)) * 128 + MOVE_TO(m);
+    this.history[idx] = Math.max(-HISTORY_MAX, this.history[idx] - depth * depth);
   }
 
   ageHistory() {
@@ -539,6 +545,7 @@ export class Searcher {
     this.probeBuf = [];
     this.checkGenBuf = [];
     this.undoBuf = Array.from({ length: 128 }, () => ({}));
+    this.qsBuf = Array.from({ length: 128 }, () => []);
     this.probeUndo = {};
     this.seldepth = 0;
     this.qStalemate = true;   // horizon stalemate check (audit v3.0.6 §4.1)
@@ -809,6 +816,7 @@ export class Searcher {
     if (this.checkStop()) return 0;
     this.pvLength[ply] = 0;
     if (ply > this.seldepth) this.seldepth = ply;
+    const qsBuf = this.qsBuf[ply]; if (qsBuf) qsBuf.length = 0;
 
     const inCheck = pos.inCheck();
 
@@ -950,7 +958,10 @@ export class Searcher {
 
       legal++;
       this.nodes++;
-      if (isQuiet && !givesCheck) quietsSearched++;
+      if (isQuiet && !givesCheck) {
+        quietsSearched++;
+        if (this.params.search.historyMalus) qsBuf.push(m);
+      }
 
       let score;
       let reduction = 0;
@@ -1011,6 +1022,9 @@ export class Searcher {
         if (isQuiet) {
           this.order.addKiller(ply, m);
           this.order.addHistory(pos, m, depth);
+          if (this.params.search.historyMalus) {
+            for (let qi = 0, qn = qsBuf.length - 1; qi < qn; qi++) this.order.subHistory(pos, qsBuf[qi], depth);
+          }
         }
         if (this.useTT) this.tt.store(pos.ttKey, depth, bestScore, TT_LOWER, m, ply);
         return bestScore;

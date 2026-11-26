@@ -92,6 +92,8 @@ export const DEFAULT_PARAMS = {
     // Late move pruning: at shallow depth, skip late quiet moves after enough
     // quiets have been searched. Default off; A/B required.
     lmp: { enabled: false, maxDepth: 3, base: 4, multiplier: 2 },
+    // History malus: penalize previously searched quiets on beta cutoff. Default off; A/B required.
+    historyMalus: false,
     checkExtension: 1,
     extensionBudget: 6,
     quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },
