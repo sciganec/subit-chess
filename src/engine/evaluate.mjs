@@ -101,7 +101,7 @@ export const DEFAULT_PARAMS = {
     // Quiet checking moves at the first qsearch level. A sacrifice that starts
     // with a silent check is invisible to a captures-only horizon (audit A1).
     qsearch: { checks: true, maxChecks: 4 },
-    see: { enabled: true, qsearchPrune: true },
+    see: { enabled: true, qsearchPrune: true, qsearchPruneMargin: 0 },
     stagedMoveGen: false, // behavior-changing prototype; default off, strict no-cycle A/B before enabling
     // Gate 3 kill: structural ordering deleted (200-game A/B had no positive CI).
     // The keys stay at 0 so older configs remain loadable, but no bonus is

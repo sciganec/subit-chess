@@ -1140,6 +1140,7 @@ export class Searcher {
     const orderedCount = this.order.scoreMoves(pos, moves, ply, 0, 0);
     const buf = this.order.buffers[ply];
     const seePrune = this.params.search.see ? this.params.search.see.qsearchPrune !== false : true;
+    const seePruneMargin = (this.params.search.see && this.params.search.see.qsearchPruneMargin) || 0;
     let legal = 0;
 
     for (let i = 0; i < orderedCount; i++) {
@@ -1150,7 +1151,7 @@ export class Searcher {
       if (!inCheck) {
         if (!(flags & FLAG_CAPTURE) && !(flags & FLAG_PROMO)) continue;
         // bad captures are skipped in qsearch; promos still searched
-        if (seePrune && (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && see(pos, m) < 0) continue;
+        if (seePrune && (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && see(pos, m) < -seePruneMargin) continue;
         // delta pruning: even winning the victim cannot lift alpha. Skip near
         // mate windows: a capture that delivers mate must not be pruned because
         // its material delta understates the true score (A.6/qsearch safety).
