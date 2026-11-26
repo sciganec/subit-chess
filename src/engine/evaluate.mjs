@@ -96,6 +96,8 @@ export const DEFAULT_PARAMS = {
     historyMalus: false,
     // LMR history: adjust reduction based on quiet-move history. Default off; A/B required.
     lmrHistory: false,
+    // Improving: track static eval trend for LMR/futility adjustments. Default off; A/B required.
+    improving: false,
     checkExtension: 1,
     extensionBudget: 6,
     quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },

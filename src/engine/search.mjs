@@ -546,6 +546,7 @@ export class Searcher {
     this.checkGenBuf = [];
     this.undoBuf = Array.from({ length: 128 }, () => ({}));
     this.qsBuf = Array.from({ length: 128 }, () => []);
+    this.evalStack = new Int32Array(128);
     this.probeUndo = {};
     this.seldepth = 0;
     this.qStalemate = true;   // horizon stalemate check (audit v3.0.6 §4.1)
@@ -869,12 +870,27 @@ export class Searcher {
       if (score >= beta) return beta;
     }
 
+    // Static eval / improving: used by RFP and optional improving heuristics.
+    const rfp = this.params.search.rfp;
+    const improvingEnabled = this.params.search.improving === true;
+    let staticEval = null;
+    let improving = true;
+    if (!inCheck) {
+      const needStatic = improvingEnabled || (rfp && rfp.enabled && !pvNode && depth <= (rfp.maxDepth || 3) && Math.abs(beta) < MATE_THRESHOLD);
+      if (needStatic) staticEval = this.ev.evaluate(pos, depth);
+      if (improvingEnabled) {
+        this.evalStack[ply] = staticEval != null ? staticEval : this.ev.evaluate(pos, depth);
+        improving = ply >= 2 ? this.evalStack[ply] > this.evalStack[ply - 2] : true;
+      }
+    } else if (improvingEnabled) {
+      this.evalStack[ply] = ply >= 2 ? this.evalStack[ply - 2] : 0;
+      improving = true;
+    }
     // Reverse futility pruning: if static eval is far above beta at shallow
     // depth, the node is unlikely to fall below beta. Default off; A/B only.
-    const rfp = this.params.search.rfp;
     if (rfp && rfp.enabled && !pvNode && !inCheck && depth <= (rfp.maxDepth || 3) && Math.abs(beta) < MATE_THRESHOLD) {
-      const staticEval = this.ev.evaluate(pos, depth);
-      if (staticEval - (rfp.margin || 80) * depth >= beta) return staticEval;
+      const se = staticEval != null ? staticEval : this.ev.evaluate(pos, depth);
+      if (se - (rfp.margin || 80) * depth >= beta) return se;
     }
 
     const us = pos.turn;
@@ -981,6 +997,7 @@ export class Searcher {
             if (h > HISTORY_MAX / 4) reduction = Math.max(0, reduction - 1);
             else if (h < -HISTORY_MAX / 8) reduction += 1;
           }
+          if (improvingEnabled && !improving) reduction += 1;
           if (reduction > (lmr.maxReduction || 3)) reduction = lmr.maxReduction || 3;
           if (depth - reduction < 1) reduction = depth - 1;
         }
