@@ -459,6 +459,7 @@ async function runUci() {
       send('option name LMP.Base type spin default 4 min 1 max 20');
       send('option name LMP.Multiplier type spin default 2 min 1 max 10');
       send('option name SEE.QSearchPruneMargin type spin default 0 min 0 max 500');
+      send('option name SEE.QSearchPruneMinDepth type spin default 0 min 0 max 4');
       send('option name Search.StagedMoveGen type check default false');
       send('uciok');
       return;
@@ -495,6 +496,7 @@ async function runUci() {
         else if (name === 'see' || name === 'see.enabled') { if (on||off) engine.params.search.see.enabled = on; }
         else if (name === 'see.qsearchprune') { if (on||off) engine.params.search.see.qsearchPrune = on; }
         else if (name === 'see.qsearchprunemargin') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.see.qsearchPruneMargin = Math.max(0, Math.min(500, n|0)); }
+        else if (name === 'see.qsearchprunemindepth') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.see.qsearchPruneMinDepth = Math.max(0, Math.min(4, n|0)); }
         else if (name === 'tt.maxage') { const n = Number(value); if (Number.isFinite(n)) { const age = Math.max(0, Math.min(10, n|0)); engine.params.search.ttMaxAge = age; engine.searcher.tt.maxAge = age; } }
         else if (name === 'eval.fdpressure' || name === 'fdpressure') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdPressure = Math.max(0, Math.min(20, n)); }
         else if (name === 'eval.fdattackweight' || name === 'fdattackweight') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdAttackWeight = Math.max(0, Math.min(20, n)); }
