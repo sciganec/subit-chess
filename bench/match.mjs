@@ -130,7 +130,9 @@ export const CONFIGS = {
   },
   structfit: {
     label: 'structural tier with weights fitted to own depth-2 search (bench/fit_svf.mjs)',
-    params: { w: JSON.parse(readFileSync(new URL('../results/svf_weights.json', import.meta.url), 'utf8')).w }, opts: { evalMode: 'structural' }
+    // read lazily: results/*.json is not tracked, and importing this module must not fail on a fresh clone
+    get params() { return { w: JSON.parse(readFileSync(new URL('../results/svf_weights.json', import.meta.url), 'utf8')).w }; },
+    opts: { evalMode: 'structural' }
   },
   rootstruct: {
     label: 'structural SVF re-selection among near-equal root moves (margin 25 cp, lambda 0.25)',
