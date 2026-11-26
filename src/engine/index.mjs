@@ -445,9 +445,11 @@ async function runUci() {
       send('option name Eval.FDPinDiscount type spin default 0 min 0 max 20');
       send('option name NMP.Reduction type spin default 2 min 1 max 6');
       send('option name NMP.MaxReduction type spin default 3 min 1 max 6');
+      send('option name NMP.MinDepth type spin default 3 min 1 max 8');
       send('option name QSearch.MaxChecks type spin default 4 min 0 max 16');
       send('option name Aspiration.Window type spin default 25 min 10 max 200');
       send('option name Futility.Margin type spin default 120 min 0 max 400');
+      send('option name LMR.MaxReduction type spin default 1 min 1 max 4');
       send('option name Search.StagedMoveGen type check default false');
       send('uciok');
       return;
@@ -464,11 +466,12 @@ async function runUci() {
         const on = value === 'true' || value === '1' || value === 'on';
         const off = value === 'false' || value === '0' || value === 'off';
         if (name === 'lmr' || name === 'lmr.enabled') { if (on||off) engine.params.search.lmr.enabled = on; }
-        else if (name === 'lmr.maxreduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmr.maxReduction = n; }
+        else if (name === 'lmr.maxreduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmr.maxReduction = Math.max(1, Math.min(4, n|0)); }
         else if (name === 'lmr.extrareduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmr.extraReduction = n; }
         else if (name === 'nullmove' || name === 'nullmove.enabled' || name === 'nmp') { if (on||off) engine.params.search.nullMove.enabled = on; }
         else if (name === 'nmp.reduction' || name === 'nullmove.reduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.nullMove.reduction = Math.max(1, Math.min(6, n|0)); }
         else if (name === 'nmp.maxreduction' || name === 'nullmove.maxreduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.nullMove.maxReduction = Math.max(1, Math.min(6, n|0)); }
+        else if (name === 'nmp.mindepth' || name === 'nullmove.mindepth') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.nullMove.minDepth = Math.max(1, Math.min(8, n|0)); }
         else if (name === 'qsearch.maxchecks' || name === 'search.qsearch.maxchecks') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.qsearch.maxChecks = Math.max(0, Math.min(16, n|0)); }
         else if (name === 'aspiration.window' || name === 'search.aspiration.window') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.aspiration.window = Math.max(10, Math.min(200, n|0)); }
         else if (name === 'futility.margin' || name === 'search.futility.margin') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.futility.margin = Math.max(0, Math.min(400, n|0)); }
