@@ -65,7 +65,7 @@ export const DEFAULT_PARAMS = {
     isolated: 16,
     passed: [0, 8, 12, 22, 40, 70, 110, 0],   // by rank of the pawn (0..7)
     rookOpen: 14,
-    outpost: 20,
+    outpost: 35,
     rookSemiOpen: 7,
     kingShield: 10,
     kingShieldEndgame: 0.25,                   // shield matters less in the endgame
