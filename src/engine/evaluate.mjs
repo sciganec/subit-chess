@@ -66,6 +66,7 @@ export const DEFAULT_PARAMS = {
     passed: [0, 8, 12, 22, 40, 70, 110, 0],   // by rank of the pawn (0..7)
     rookOpen: 14,
     outpost: 35,
+    outpostBishop: 0,
     rookSemiOpen: 7,
     kingShield: 10,
     kingShieldEndgame: 0.25,                   // shield matters less in the endgame
@@ -307,6 +308,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const cfgShield = cfg.kingShield || 0;
   const cfgConnected = cfg.connected || 0;
   const cfgOutpost = cfg.outpost || 0;
+  const cfgOutpostB = cfg.outpostBishop || 0;
   const cfgRook7 = cfg.rook7 || 0;
   const cfgShieldEndgame = cfg.kingShieldEndgame || 0;
   const cfgKingOpenFile = cfg.kingOpenFile || 0;
@@ -367,7 +369,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   let score = cfg.taper === false ? (phase < 0.5 ? mid : end) : mid + (end - mid) * phase;
 
   // knight outposts: relative ranks 4-6, defended by an own pawn, no enemy pawn can attack the square
-  if (cfgOutpost) {
+  if (cfgOutpost || cfgOutpostB) {
     for (let color = 0; color < 2; color++) {
       const sign = color === WHITE ? 1 : -1;
       const list = pos.listSq[color];
@@ -376,7 +378,9 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
       const theirs = pawnMask[color ^ 1];
       for (let i = 0; i < n; i++) {
         const sq = list[i];
-        if ((b[sq] & 7) !== KNIGHT) continue;
+        const pt = b[sq] & 7;
+        const ow = pt === KNIGHT ? cfgOutpost : pt === BISHOP ? cfgOutpostB : 0;
+        if (!ow) continue;
         const r = 7 - (sq >> 4);              // white-relative rank 0..7
         const rel = color === WHITE ? r : 7 - r;
         if (rel < 3 || rel > 5) continue;
@@ -391,7 +395,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
         let attacked = false;
         if (f > 0 && (theirs[f - 1] & ahead)) attacked = true;
         if (f < 7 && (theirs[f + 1] & ahead)) attacked = true;
-        if (!attacked) score += sign * cfgOutpost * (rel === 3 ? 0.7 : 1);
+        if (!attacked) score += sign * ow * (rel === 3 ? 0.7 : 1);
       }
     }
   }
