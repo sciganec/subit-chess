@@ -1138,6 +1138,7 @@ export class Searcher {
       this.order.pick(ply, i, orderedCount);
       const m = buf[i];
       const flags = MOVE_FLAGS(m);
+      const to = MOVE_TO(m);
       if (!inCheck) {
         if (!(flags & FLAG_CAPTURE) && !(flags & FLAG_PROMO)) continue;
         // bad captures are skipped in qsearch; promos still searched
@@ -1145,7 +1146,7 @@ export class Searcher {
         // delta pruning: even winning the victim cannot lift alpha. Skip near
         // mate windows: a capture that delivers mate must not be pruned because
         // its material delta understates the true score (A.6/qsearch safety).
-        const victim = pos.board[MOVE_TO(m)];
+        const victim = pos.board[to];
         const victimValue = (flags & FLAG_EP) ? MATERIAL[PAWN] : (victim ? MATERIAL[pieceType(victim)] : 0);
         if (alpha < MATE_THRESHOLD && best + victimValue + 200 < alpha && !(flags & FLAG_PROMO)) continue;
       }
