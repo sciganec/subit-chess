@@ -158,6 +158,8 @@ export const CONFIGS = {
   outp35: { label: 'knight outpost 35', params: { eval: { outpost: 35 } }, opts: {} },
   outp50: { label: 'knight outpost 50', params: { eval: { outpost: 50 } }, opts: {} },
   outpb: { label: 'bishop outpost 20', params: { eval: { outpostBishop: 20 } }, opts: {} },
+  pprot: { label: 'protected passer 16', params: { eval: { passedProtected: 16 } }, opts: {} },
+  pking: { label: 'king distance to passers 6', params: { eval: { passedKing: 6 } }, opts: {} },
   rfp80: { label: 'RFP margin 80', params: { search: { rfp: { margin: 80 } } }, opts: {} },
   rfp180: { label: 'RFP margin 180', params: { search: { rfp: { margin: 180 } } }, opts: {} },
   seeprune: { label: 'SEE pruning of losing captures (depth<=4, 100cp/ply)', params: { search: { seePrune: { enabled: true } } }, opts: {} },

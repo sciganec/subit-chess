@@ -67,6 +67,8 @@ export const DEFAULT_PARAMS = {
     rookOpen: 14,
     outpost: 35,
     outpostBishop: 0,
+    passedProtected: 0,
+    passedKing: 0,
     rookSemiOpen: 7,
     kingShield: 10,
     kingShieldEndgame: 0.25,                   // shield matters less in the endgame
@@ -309,6 +311,8 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const cfgConnected = cfg.connected || 0;
   const cfgOutpost = cfg.outpost || 0;
   const cfgOutpostB = cfg.outpostBishop || 0;
+  const cfgPassedProt = cfg.passedProtected || 0;
+  const cfgPassedKing = cfg.passedKing || 0;
   const cfgRook7 = cfg.rook7 || 0;
   const cfgShieldEndgame = cfg.kingShieldEndgame || 0;
   const cfgKingOpenFile = cfg.kingOpenFile || 0;
@@ -446,7 +450,22 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
           const blocked = color === WHITE
             ? (enemy & ~((1 << (r + 1)) - 1))
             : (enemy & ((1 << r) - 1));
-          if (!blocked) score += sign * passed[color === WHITE ? r : 7 - r];
+          if (!blocked) {
+            const rel = color === WHITE ? r : 7 - r;
+            score += sign * passed[rel];
+            if (cfgPassedProt) {
+              const supBit = 1 << (color === WHITE ? r - 1 : r + 1);
+              if ((f > 0 && (mine[f - 1] & supBit)) || (f < 7 && (mine[f + 1] & supBit))) score += sign * cfgPassedProt * (1 + rel) / 4;
+            }
+            if (cfgPassedKing && phase > 0 && rel >= 2) {
+              // kings' distance to the square in front of the passer; the endgame weight grows with the pawn's rank
+              const fr = color === WHITE ? r + 1 : r - 1;
+              const ok = kingSq[color], ek = kingSq[color ^ 1];
+              const dOwn = Math.max(Math.abs((7 - (ok >> 4)) - fr), Math.abs((ok & 7) - f));
+              const dEn = Math.max(Math.abs((7 - (ek >> 4)) - fr), Math.abs((ek & 7) - f));
+              score += sign * cfgPassedKing * phase * (dEn - dOwn) * rel / 7;
+            }
+          }
         }
       }
     }
