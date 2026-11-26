@@ -895,7 +895,8 @@ export class Searcher {
       this.order.pick(ply, i, orderedCount);
       const m = buf[i];
       const flags = MOVE_FLAGS(m);
-      const isQuiet = !(flags & (FLAG_CAPTURE | FLAG_PROMO)) && pos.board[MOVE_TO(m)] === 0;
+      const to = MOVE_TO(m);
+      const isQuiet = !(flags & (FLAG_CAPTURE | FLAG_PROMO)) && pos.board[to] === 0;
 
       pos.pushRep();
       const undo = pos.makeMove(m, this.undoBuf[ply]);
@@ -938,7 +939,7 @@ export class Searcher {
         let threatExempt = false;
         const threatMin = lmr.threatExemptMinVictim || 0;
         if (threatMin > 0) {
-          const threat = maxAttackedVictim(pos, MOVE_TO(m), pos.board[MOVE_TO(m)] & 7, us);
+          const threat = maxAttackedVictim(pos, to, pos.board[to] & 7, us);
           threatExempt = threat >= threatMin;
         }
         if (!threatExempt) {
@@ -953,7 +954,7 @@ export class Searcher {
       if (!ext && isQuiet && !inCheck) {
         const qte = this.params.search.quietThreatExtension;
         if (qte?.enabled && ply <= (qte.maxPly ?? 2)) {
-          const threat = maxAttackedVictim(pos, MOVE_TO(m), pos.board[MOVE_TO(m)] & 7, us);
+          const threat = maxAttackedVictim(pos, to, pos.board[to] & 7, us);
           if (threat >= (qte.minVictim ?? 900)) ext = 1;
         }
       }
