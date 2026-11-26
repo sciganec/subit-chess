@@ -28,7 +28,7 @@ import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RIS
 import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
 import { buildFieldDynamics, verifyFieldInvariants, FD_INVARIANTS } from './field.mjs';
 
-export const VERSION = '3.0.15';
+export const VERSION = '3.0.16';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)

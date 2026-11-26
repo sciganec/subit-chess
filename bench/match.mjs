@@ -149,7 +149,7 @@ export const CONFIGS = {
   rfpd5: { label: 'RFP maxDepth 5', params: { search: { rfp: { maxDepth: 5 } } }, opts: {} },
   asp15: { label: 'aspiration window 15', params: { search: { aspiration: { window: 15 } } }, opts: {} },
   futm160: { label: 'futility margin 160', params: { search: { futility: { margin: 160 } } }, opts: {} },
-  old8bdc: { label: 'params of 8bdc3f4 (futility 1, null move 3/2/3, aspiration 25)', params: { search: { futility: { maxDepth: 1 }, nullMove: { minDepth: 3, reduction: 2, maxReduction: 3 }, aspiration: { window: 25 } } }, opts: {} },
+  old8bdc: { label: 'params of 8bdc3f4 (futility 1, null move 3/2/3, aspiration 25)', params: { search: { futility: { maxDepth: 1 }, nullMove: { minDepth: 3, reduction: 2, maxReduction: 3 }, aspiration: { window: 25 } }, eval: { outpost: 0 } }, opts: {} },
   qchk0: { label: 'qsearch quiet checks off', params: { search: { qsearch: { checks: false } } }, opts: {} },
   lmridx2: { label: 'LMR from the 3rd move (minMoveIndex 2)', params: { search: { lmr: { minMoveIndex: 2 } } }, opts: {} },
   lmrdepth2: { label: 'LMR from depth 2', params: { search: { lmr: { minDepth: 2 } } }, opts: {} },
