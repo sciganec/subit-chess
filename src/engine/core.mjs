@@ -150,14 +150,22 @@ export function moveToSan(pos, m) {
 export const ZOBRIST = buildZobrist();
 
 function buildZobrist() {
-  let s = 0x1a2b3c4d >>> 0;
-  const rnd = () => {
-    s ^= (s << 13) >>> 0; s >>>= 0;
-    s ^= s >>> 17;
-    s ^= (s << 5) >>> 0; s >>>= 0;
-    return s;
+  // lo and hi must come from two independent, NON-linear streams. v3.0.8 took both from consecutive outputs of
+  // one xorshift32: that generator is linear over GF(2), so hi = L(lo) held for every table entry and, because
+  // keys are XOR sums, for every position; the 53-bit key had only ~32 effective bits (distinct positions with
+  // equal keys appeared at ~1 per 60k positions in a depth-7 search, and the TT verifies with this key).
+  const mulberry = (seed) => {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return (t ^ (t >>> 14)) >>> 0;
+    };
   };
-  const pair = () => ({ lo: rnd(), hi: rnd() });
+  const rndLo = mulberry(0x1a2b3c4d), rndHi = mulberry(0x9e3779b9);
+  const pair = () => ({ lo: rndLo(), hi: rndHi() });
 
   const piece = [];
   for (let p = 0; p < 16; p++) {
@@ -187,6 +195,8 @@ function buildZobrist() {
  * Attack geometry tables
  * ------------------------------------------------------------------ */
 
+const PROMO_ORDER = [QUEEN, ROOK, BISHOP, KNIGHT];
+const PAWN_CAP_DC = [-1, 1];
 export const KNIGHT_DELTAS = [33, 31, 18, 14, -14, -18, -31, -33];
 export const KING_DELTAS = [16, -16, 1, -1, 17, 15, -17, -15];
 export const BISHOP_DIRS = [17, 15, -17, -15];
@@ -529,26 +539,26 @@ export class Position {
 
   isAttacked(sq, byColor) {
     const b = this.board;
-    const base = byColor << 3;
+    const base = byColor << 3;           // makePiece(type, colour) = (colour << 3) | type
     // pawns
     if (byColor === WHITE) {
-      let t = sq + 17; if ((t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
-      t = sq + 15;     if ((t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
+      let t = sq + 17; if (t < 128 && (t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
+      t = sq + 15;     if (t < 128 && (t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
     } else {
-      let t = sq - 17; if ((t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
-      t = sq - 15;     if ((t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
+      let t = sq - 17; if (t >= 0 && (t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
+      t = sq - 15;     if (t >= 0 && (t & 0x88) === 0 && b[t] === (base | PAWN)) return true;
     }
     // knights
     const n = base | KNIGHT;
     for (let i = 0; i < 8; i++) {
       const t = sq + KNIGHT_DELTAS[i];
-      if ((t & 0x88) === 0 && b[t] === n) return true;
+      if ((t & 0x88) === 0 && t >= 0 && b[t] === n) return true;
     }
     // king
     const k = base | KING;
     for (let i = 0; i < 8; i++) {
       const t = sq + KING_DELTAS[i];
-      if ((t & 0x88) === 0 && b[t] === k) return true;
+      if ((t & 0x88) === 0 && t >= 0 && b[t] === k) return true;
     }
     // bishops / queens
     const bo = base | BISHOP;
@@ -556,7 +566,7 @@ export class Position {
     for (let i = 0; i < 4; i++) {
       const d = BISHOP_DIRS[i];
       let t = sq + d;
-      while ((t & 0x88) === 0) {
+      while ((t & 0x88) === 0 && t >= 0) {
         const p = b[t];
         if (p !== EMPTY) { if (p === bo || p === qu) return true; break; }
         t += d;
@@ -567,7 +577,7 @@ export class Position {
     for (let i = 0; i < 4; i++) {
       const d = ROOK_DIRS[i];
       let t = sq + d;
-      while ((t & 0x88) === 0) {
+      while ((t & 0x88) === 0 && t >= 0) {
         const p = b[t];
         if (p !== EMPTY) { if (p === ro || p === qu) return true; break; }
         t += d;
@@ -635,104 +645,76 @@ export class Position {
   /* ---------------- move generation ---------------- */
 
   /** Pseudo-legal moves. `capturesOnly` restricts to captures/promotions (quiescence). */
-  generateMoves(capturesOnly = false, out = null, quietsOnly = false, clear = true) {
+  generateMoves(capturesOnly = false) {
     this.refreshPieces();
-    if (out) { if (clear) out.length = 0; } else out = [];
+    const out = [];
     const us = this.turn;
-    const them = us ^ 1;
+    const them = opposite(us);
     const b = this.board;
-    const listCnt = this.listCnt[us];
-    const listSq = this.listSq[us];
 
-    for (let i = 0; i < listCnt; i++) {
-      const from = listSq[i];
+    for (let i = 0; i < this.listCnt[us]; i++) {
+      const from = this.listSq[us][i];
       const piece = b[from];
-      const type = piece & 7;
+      const type = pieceType(piece);
 
       if (type === PAWN) {
         const dir = us === WHITE ? -16 : 16;
         const startRank = us === WHITE ? 6 : 1;
         const promoRank = us === WHITE ? 0 : 7;
         const one = from + dir;
-        if ((one & 0x88) === 0 && b[one] === EMPTY) {
+        if (one >= 0 && one < 128 && (one & 0x88) === 0 && b[one] === EMPTY) {
           if ((one >> 4) === promoRank) {
-            if (!quietsOnly) {
-              const base = from | (one << 7) | (FLAG_PROMO << 17);
-              out.push(base | (QUEEN << 14));
-              out.push(base | (ROOK << 14));
-              out.push(base | (BISHOP << 14));
-              out.push(base | (KNIGHT << 14));
-            }
+            for (const pt of PROMO_ORDER)
+              out.push(encodeMove(from, one, pt, FLAG_PROMO));
           } else if (!capturesOnly) {
-            out.push(from | (one << 7));
+            out.push(encodeMove(from, one));
             const two = from + 2 * dir;
             if ((from >> 4) === startRank && b[two] === EMPTY)
-              out.push(from | (two << 7) | (FLAG_DOUBLE << 17));
+              out.push(encodeMove(from, two, 0, FLAG_DOUBLE));
           }
         }
-        if (!quietsOnly) {
-          for (let dc = -1; dc <= 1; dc += 2) {
-            const to = one + dc;
-            if ((to & 0x88) !== 0) continue;
-            const target = b[to];
-            if (target !== EMPTY && (target >> 3) === them) {
-              if ((to >> 4) === promoRank) {
-                const base = from | (to << 7) | ((FLAG_PROMO | FLAG_CAPTURE) << 17);
-                out.push(base | (QUEEN << 14));
-                out.push(base | (ROOK << 14));
-                out.push(base | (BISHOP << 14));
-                out.push(base | (KNIGHT << 14));
-              } else {
-                out.push(from | (to << 7) | (FLAG_CAPTURE << 17));
-              }
-            } else if (to === this.ep && target === EMPTY) {
-              out.push(from | (to << 7) | ((FLAG_CAPTURE | FLAG_EP) << 17));
+        for (const dc of PAWN_CAP_DC) {
+          const to = one + dc;
+          if (to < 0 || to > 127 || (to & 0x88)) continue;
+          const target = b[to];
+          if (target !== EMPTY && pieceColor(target) === them) {
+            if ((to >> 4) === promoRank) {
+              for (const pt of PROMO_ORDER)
+                out.push(encodeMove(from, to, pt, FLAG_PROMO | FLAG_CAPTURE));
+            } else {
+              out.push(encodeMove(from, to, 0, FLAG_CAPTURE));
             }
+          } else if (to === this.ep && target === EMPTY) {
+            out.push(encodeMove(from, to, 0, FLAG_CAPTURE | FLAG_EP));
           }
         }
         continue;
       }
 
-      if (type === KNIGHT) {
-        for (let j = 0; j < 8; j++) {
-          const to = from + KNIGHT_DELTAS[j];
-          if ((to & 0x88) !== 0) continue;
+      if (type === KNIGHT || type === KING) {
+        const deltas = type === KNIGHT ? KNIGHT_DELTAS : KING_DELTAS;
+        for (const d of deltas) {
+          const to = from + d;
+          if (to < 0 || to > 127 || (to & 0x88)) continue;
           const target = b[to];
-          if (target === EMPTY) {
-            if (!capturesOnly) out.push(from | (to << 7));
-          } else if ((target >> 3) !== us && !quietsOnly) {
-            out.push(from | (to << 7) | (FLAG_CAPTURE << 17));
-          }
+          if (target !== EMPTY && pieceColor(target) === us) continue;
+          if (capturesOnly && target === EMPTY) continue;
+          out.push(encodeMove(from, to, 0, target !== EMPTY ? FLAG_CAPTURE : 0));
         }
-        continue;
-      }
-      if (type === KING) {
-        for (let j = 0; j < 8; j++) {
-          const to = from + KING_DELTAS[j];
-          if ((to & 0x88) !== 0) continue;
-          const target = b[to];
-          if (target === EMPTY) {
-            if (!capturesOnly) out.push(from | (to << 7));
-          } else if ((target >> 3) !== us && !quietsOnly) {
-            out.push(from | (to << 7) | (FLAG_CAPTURE << 17));
-          }
-        }
-        if (!capturesOnly) this.generateCastles(out, from, us);
+        if (type === KING && !capturesOnly) this.generateCastles(out, from, us);
         continue;
       }
 
       const dirs = type === BISHOP ? BISHOP_DIRS : type === ROOK ? ROOK_DIRS : QUEEN_DIRS;
-      const dlen = type === QUEEN ? 8 : 4;
-      for (let j = 0; j < dlen; j++) {
-        const d = dirs[j];
+      for (const d of dirs) {
         let to = from + d;
-        while ((to & 0x88) === 0) {
+        while (to < 128 && (to & 0x88) === 0) {
           const target = b[to];
           if (target === EMPTY) {
-            if (!capturesOnly) out.push(from | (to << 7));
+            if (!capturesOnly) out.push(encodeMove(from, to));
           } else {
-            if (!quietsOnly && (target >> 3) === them)
-              out.push(from | (to << 7) | (FLAG_CAPTURE << 17));
+            if (pieceColor(target) === them)
+              out.push(encodeMove(from, to, 0, FLAG_CAPTURE));
             break;
           }
           to += d;
@@ -744,23 +726,23 @@ export class Position {
 
   generateCastles(out, from, us) {
     const b = this.board;
-    const them = us ^ 1;
+    const them = opposite(us);
     if (us === WHITE && from === 116) {
       if ((this.castling & CASTLE_WK) &&
-          b[117] === EMPTY && b[118] === EMPTY && b[119] === (ROOK | (WHITE << 3)) &&
+          b[117] === EMPTY && b[118] === EMPTY && b[119] === makePiece(ROOK, WHITE) &&
           !this.isAttacked(116, them) && !this.isAttacked(117, them) && !this.isAttacked(118, them))
         out.push(encodeMove(116, 118, 0, FLAG_CASTLE));
       if ((this.castling & CASTLE_WQ) &&
-          b[115] === EMPTY && b[114] === EMPTY && b[113] === EMPTY && b[112] === (ROOK | (WHITE << 3)) &&
+          b[115] === EMPTY && b[114] === EMPTY && b[113] === EMPTY && b[112] === makePiece(ROOK, WHITE) &&
           !this.isAttacked(116, them) && !this.isAttacked(115, them) && !this.isAttacked(114, them))
         out.push(encodeMove(116, 114, 0, FLAG_CASTLE));
     } else if (us === BLACK && from === 4) {
       if ((this.castling & CASTLE_BK) &&
-          b[5] === EMPTY && b[6] === EMPTY && b[7] === (ROOK | (BLACK << 3)) &&
+          b[5] === EMPTY && b[6] === EMPTY && b[7] === makePiece(ROOK, BLACK) &&
           !this.isAttacked(4, them) && !this.isAttacked(5, them) && !this.isAttacked(6, them))
         out.push(encodeMove(4, 6, 0, FLAG_CASTLE));
       if ((this.castling & CASTLE_BQ) &&
-          b[3] === EMPTY && b[2] === EMPTY && b[1] === EMPTY && b[0] === (ROOK | (BLACK << 3)) &&
+          b[3] === EMPTY && b[2] === EMPTY && b[1] === EMPTY && b[0] === makePiece(ROOK, BLACK) &&
           !this.isAttacked(4, them) && !this.isAttacked(3, them) && !this.isAttacked(2, them))
         out.push(encodeMove(4, 2, 0, FLAG_CASTLE));
     }
@@ -768,18 +750,16 @@ export class Position {
 
   /** Full legal move set. M_legal(P) — the search may only ever use this set at a full node. */
   legalMoves(capturesOnly = false) {
+    this.refreshPieces();
     const pseudo = this.generateMoves(capturesOnly);
     const out = [];
     const us = this.turn;
-    const them = us ^ 1;
-    const b = this.board;
-    for (let i = 0, n = pseudo.length; i < n; i++) {
-      const m = pseudo[i];
+    for (const m of pseudo) {
       const to = MOVE_TO(m);
-      const tp = b[to];
+      const tp = this.board[to];
       if (tp !== EMPTY && pieceType(tp) === KING) continue; // king capture can never be legal
       const undo = this.makeMove(m);
-      if (!this.isAttacked(this.kingSq[us], them)) out.push(m);
+      if (!this.isAttacked(this.kingSq[us], opposite(us))) out.push(m);
       this.unmakeMove(undo);
     }
     return out;
@@ -787,29 +767,24 @@ export class Position {
 
   /* ---------------- transitions ---------------- */
 
-  makeMove(m, outUndo = null) {
-    if (this.dirty) this.refreshPieces();
+  makeMove(m) {
     const from = MOVE_FROM(m);
     const to = MOVE_TO(m);
     const flags = MOVE_FLAGS(m);
     const promo = MOVE_PROMO(m);
     const us = this.turn;
-    const them = us ^ 1;
+    const them = opposite(us);
     const b = this.board;
     const piece = b[from];
-    const type = piece & 7;
+    const type = pieceType(piece);
 
-    const undo = outUndo || {};
-    undo.move = m; undo.captured = EMPTY; undo.capSq = -1;
-    undo.castling = this.castling; undo.ep = this.ep; undo.halfmove = this.halfmove;
-    undo.fullmove = this.fullmove; undo.hashLo = this.hashLo; undo.hashHi = this.hashHi;
-    undo.kingW = this.kingSq[WHITE]; undo.kingB = this.kingSq[BLACK]; undo.phaseMaterial = this.phaseMaterial;
-    undo.repLimit = this.repLimit;
-
-    const listSq = this.listSq;
-    const listCnt = this.listCnt;
-    const listIdx = this.listIdx;
-    const ourIdx = listIdx[from];
+    const undo = {
+      move: m, captured: EMPTY, capSq: -1,
+      castling: this.castling, ep: this.ep, halfmove: this.halfmove,
+      fullmove: this.fullmove, hashLo: this.hashLo, hashHi: this.hashHi,
+      kingW: this.kingSq[WHITE], kingB: this.kingSq[BLACK], phaseMaterial: this.phaseMaterial,
+      repLimit: this.repLimit
+    };
 
     // remove captured piece
     let capSq = -1;
@@ -819,58 +794,36 @@ export class Position {
       capSq = to;
     }
     if (capSq >= 0) {
-      const cap = b[capSq];
-      undo.captured = cap;
+      undo.captured = b[capSq];
       undo.capSq = capSq;
-      { const zi = cap * 128 + capSq; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
+      this.xorPiece(capSq, undo.captured);
       b[capSq] = EMPTY;
-      this.phaseMaterial -= PHASE_WEIGHT[cap & 7];
-      // swap-remove from opponent piece list
-      const ci = listIdx[capSq];
-      undo.capIdx = ci;
-      if (ci >= 0) {
-        const last = --listCnt[them];
-        if (ci !== last) {
-          const lsq = listSq[them][last];
-          listSq[them][ci] = lsq;
-          listIdx[lsq] = ci;
-        }
-      }
-      listIdx[capSq] = -1;
     }
 
     // move piece
-    { const zi = piece * 128 + from; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
+    this.xorPiece(from, piece);
     b[from] = EMPTY;
-    const placed = promo ? (promo | (us << 3)) : piece;
+    const placed = promo ? makePiece(promo, us) : piece;
     b[to] = placed;
-    { const zi = placed * 128 + to; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
+    this.xorPiece(to, placed);
     if (type === KING) this.kingSq[us] = to;
-    if (promo) this.phaseMaterial += PHASE_WEIGHT[promo] - PHASE_WEIGHT[PAWN];
-    // update our piece list
-    if (ourIdx >= 0) {
-      listSq[us][ourIdx] = to;
-      listIdx[to] = ourIdx;
-    }
-    listIdx[from] = -1;
 
     // castle rook
     if (flags & FLAG_CASTLE) {
       const rank = us === WHITE ? 112 : 0;
-      let rf, rt;
-      if (fileOf(to) === 6) { rf = rank + 7; rt = rank + 5; }
-      else { rf = rank + 0; rt = rank + 3; }
-      const rook = b[rf];
-      { const zi = rook * 128 + rf; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
-      b[rf] = EMPTY;
-      b[rt] = rook;
-      { const zi = rook * 128 + rt; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
-      const ri = listIdx[rf];
-      if (ri >= 0) {
-        listSq[us][ri] = rt;
-        listIdx[rt] = ri;
+      if (fileOf(to) === 6) {
+        const rf = rank + 7, rt = rank + 5;
+        const rook = b[rf];
+        this.xorPiece(rf, rook); b[rf] = EMPTY;
+        b[rt] = rook;
+        this.xorPiece(rt, rook);
+      } else {
+        const rf = rank + 0, rt = rank + 3;
+        const rook = b[rf];
+        this.xorPiece(rf, rook); b[rf] = EMPTY;
+        b[rt] = rook;
+        this.xorPiece(rt, rook);
       }
-      listIdx[rf] = -1;
     }
 
     // castling rights
@@ -907,7 +860,7 @@ export class Position {
     }
 
     // clocks
-    const isCapture = capSq >= 0;
+    const isCapture = (flags & (FLAG_CAPTURE | FLAG_EP)) !== 0;
     this.halfmove = (type === PAWN || isCapture) ? 0 : this.halfmove + 1;
     if (type === PAWN || isCapture) this.repLimit = this.rep.length;
     if (us === BLACK) this.fullmove++;
@@ -917,6 +870,7 @@ export class Position {
     this.hashLo = (this.hashLo ^ ZOBRIST.turn.lo) >>> 0;
     this.hashHi = (this.hashHi ^ ZOBRIST.turn.hi) >>> 0;
 
+    this.dirty = true;
     return undo;
   }
 
@@ -927,18 +881,13 @@ export class Position {
   }
 
   unmakeMove(undo) {
-    if (this.dirty) this.refreshPieces();
     const m = undo.move;
     const from = MOVE_FROM(m);
     const to = MOVE_TO(m);
     const flags = MOVE_FLAGS(m);
     const promo = MOVE_PROMO(m);
-    const us = this.turn ^ 1;
-    const them = us ^ 1;
+    const us = opposite(this.turn);
     const b = this.board;
-    const listSq = this.listSq;
-    const listCnt = this.listCnt;
-    const listIdx = this.listIdx;
 
     this.turn = us;
     this.castling = undo.castling;
@@ -951,57 +900,33 @@ export class Position {
     // undo castle rook
     if (flags & FLAG_CASTLE) {
       const rank = us === WHITE ? 112 : 0;
-      let rt, rf;
-      if (fileOf(to) === 6) { rt = rank + 5; rf = rank + 7; }
-      else { rt = rank + 3; rf = rank + 0; }
-      const rook = b[rt];
-      { const zi = rook * 128 + rt; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
-      b[rt] = EMPTY;
-      b[rf] = rook;
-      { const zi = rook * 128 + rf; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
-      const ri = listIdx[rt];
-      if (ri >= 0) {
-        listSq[us][ri] = rf;
-        listIdx[rf] = ri;
+      if (fileOf(to) === 6) {
+        const rt = rank + 5, rf = rank + 7;
+        const rook = b[rt];
+        this.xorPiece(rt, rook); b[rt] = EMPTY;
+        b[rf] = rook;
+        this.xorPiece(rf, rook);
+      } else {
+        const rt = rank + 3, rf = rank + 0;
+        const rook = b[rt];
+        this.xorPiece(rt, rook); b[rt] = EMPTY;
+        b[rf] = rook;
+        this.xorPiece(rf, rook);
       }
-      listIdx[rt] = -1;
     }
 
     // move piece back
     const placed = b[to];
     b[to] = EMPTY;
-    { const zi = placed * 128 + to; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
-    const original = (promo ? PAWN : (placed & 7)) | (us << 3);
+    this.xorPiece(to, placed);
+    const original = makePiece(promo ? PAWN : pieceType(placed), us);
     b[from] = original;
-    { const zi = original * 128 + from; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
-    const oi = listIdx[to];
-    if (oi >= 0) {
-      listSq[us][oi] = from;
-      listIdx[from] = oi;
-    }
-    listIdx[to] = -1;
+    this.xorPiece(from, original);
 
     // restore captured piece
     if (undo.capSq >= 0 && undo.captured !== EMPTY) {
-      const capSq = undo.capSq;
-      b[capSq] = undo.captured;
-      { const zi = undo.captured * 128 + capSq; this.hashLo = (this.hashLo ^ ZOBRIST.flatLo[zi]) >>> 0; this.hashHi = (this.hashHi ^ ZOBRIST.flatHi[zi]) >>> 0; }
-      const ci = undo.capIdx;
-      const last = listCnt[them];
-      if (ci >= 0) {
-        if (ci !== last) {
-          const lsq = listSq[them][ci];
-          listSq[them][last] = lsq;
-          listIdx[lsq] = last;
-        }
-        listSq[them][ci] = capSq;
-        listIdx[capSq] = ci;
-        listCnt[them] = last + 1;
-      } else {
-        listSq[them][last] = capSq;
-        listIdx[capSq] = last;
-        listCnt[them] = last + 1;
-      }
+      b[undo.capSq] = undo.captured;
+      this.xorPiece(undo.capSq, undo.captured);
     }
 
     // hash is restored last: the operations above legitimately mutate it
@@ -1009,16 +934,18 @@ export class Position {
     this.hashHi = undo.hashHi;
     this.phaseMaterial = undo.phaseMaterial;
     this.repLimit = undo.repLimit;
+    this.dirty = true;
   }
 
   /** null-move (search-only, never a legal chess move) */
-  makeNullMove(outUndo = null) {
-    const undo = outUndo || {};
-    undo.castling = this.castling; undo.ep = this.ep; undo.halfmove = this.halfmove;
-    undo.fullmove = this.fullmove; undo.hashLo = this.hashLo; undo.hashHi = this.hashHi;
-    undo.kingW = this.kingSq[WHITE]; undo.kingB = this.kingSq[BLACK];
-    undo.phaseMaterial = this.phaseMaterial; undo.turn = this.turn;
-    undo.repLimit = this.repLimit;
+  makeNullMove() {
+    const undo = {
+      castling: this.castling, ep: this.ep, halfmove: this.halfmove,
+      fullmove: this.fullmove, hashLo: this.hashLo, hashHi: this.hashHi,
+      kingW: this.kingSq[WHITE], kingB: this.kingSq[BLACK],
+      phaseMaterial: this.phaseMaterial, turn: this.turn,
+      repLimit: this.repLimit
+    };
     if (this.ep >= 0) {
       const k = ZOBRIST.ep[fileOf(this.ep)];
       this.hashLo = (this.hashLo ^ k.lo) >>> 0;

@@ -299,6 +299,22 @@ const LOPSIDED = [
   upper.store(key, 8, 42, TT_UPPER, mv, 0);
   check('an upper bound is reported as such', upper.probe(key, 4, -INF, INF, 0).flag === TT_UPPER);
 }
+/* ---- 13. Futility is judged from the MOVER's point of view (v3.0.9) ----
+ * The predicate runs after makeMove, when pos.turn is the opponent. v3.0.6-3.0.8
+ * compared the opponent's score with alpha, so it pruned the best quiet moves
+ * (`nofut` beat `base` 51-3-6 at 100 ms/move). */
+{
+  // White queen up; Black to move after White's quiet move -> mover (White) is winning.
+  const up = new Engine(); up.setFEN('4k3/8/8/8/8/8/PPPP4/3QK3 b - - 0 1');
+  const down = new Engine(); down.setFEN('3qk3/pppp4/8/8/8/8/8/4K3 w - - 0 1');   // mover (Black) is a queen up too, mirrored
+  const winning = up.searcher.futile(up.pos, 0, 120, 1);
+  check('futility: never prune a move after which the mover is a queen up', winning === false);
+  // Mover is a queen DOWN: White just moved, position has Black queen, White to... Black to move.
+  const lost = new Engine(); lost.setFEN('3qk3/8/8/8/8/8/PPPP4/4K3 b - - 0 1');   // Black to move => mover was White, who has no queen
+  check('futility: prune a quiet move after which the mover is a queen down', lost.searcher.futile(lost.pos, 0, 120, 1) === true);
+  check('futility: symmetric (mirror of the winning case also not pruned)', down.searcher.futile(down.pos, 0, 120, 1) === false);
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nEVAL OK');
 process.exit(fails ? 1 : 0);
 

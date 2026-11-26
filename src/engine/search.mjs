@@ -16,9 +16,10 @@
  *   UCA-INV-013  reproducible decisions in deterministic mode
  */
 
+import { shouldStop } from './budget.mjs';
 import {
   WHITE, BLACK, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
-  MATERIAL, pieceType, moveToUci, MOVE_FROM, MOVE_TO, MOVE_FLAGS,
+  MATERIAL, pieceType, rankOf, opposite, moveToUci, MOVE_FROM, MOVE_TO, MOVE_FLAGS,
   MOVE_PROMO, FLAG_CAPTURE, FLAG_PROMO, FLAG_EP, FLAG_CASTLE,
   KNIGHT_DELTAS, BISHOP_DIRS, ROOK_DIRS
 } from './core.mjs';
@@ -33,60 +34,78 @@ export const TT_UPPER = 2;
 
 const EMPTY_KILLER = [0, 0];
 const SEE_VAL = [0, 100, 320, 330, 500, 900, 20000];
+const SKIP_SIZE = [1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4];
+const SKIP_PHASE = [0, 1, 0, 1, 2, 3, 0, 1, 2, 3, 4, 5, 0, 1, 2, 3, 4, 5, 6, 7];
 
-function smallestAttacker(pos, to, side, occ) {
-  // pawns
+const SRCH_PAWN_DF = [-1, 1];
+const SRCH_QUEEN_DIRS = [...BISHOP_DIRS, ...ROOK_DIRS];
+const SRCH_KING_STEPS = [-17, -16, -15, -1, 1, 15, 16, 17];
+// scratch for see(): squares already used up in the exchange (indexed 0x88, cleared after each call)
+const SEE_GONE = new Uint8Array(128);
+let SEE_EXACT_LVA = false; // set from params.search.see.exactLva; false = legacy order (measured stronger, see CHANGELOG)
+export function setSeeExactLva(v) { SEE_EXACT_LVA = !!v; }
+const SEE_LIST = new Int32Array(40);
+const SEE_GAIN = new Int32Array(40);
+
+/** Packed result (from << 3 | piece) of the least valuable attacker of `to` for `side`, or -1. No allocation. */
+function smallestAttacker(pos, to, side) {
+  const board = pos.board;
   const pawnFromDir = side === WHITE ? 16 : -16; // attackers are behind target from side's perspective
-  for (let i = 0; i < 2; i++) {
-    const from = to + pawnFromDir + (i === 0 ? -1 : 1);
+  for (let k = 0; k < 2; k++) {
+    const from = to + pawnFromDir + SRCH_PAWN_DF[k];
     if (from & 0x88) continue;
-    const p = pos.board[from];
-    if (occ[from] && p && (p >> 3) === side && (p & 7) === PAWN) { SEE_ATT.from = from; SEE_ATT.piece = PAWN; return SEE_ATT; }
+    const p = board[from];
+    if (p && !SEE_GONE[from] && (p >> 3) === side && (p & 7) === PAWN) return (from << 3) | PAWN;
   }
-  for (let i = 0; i < 8; i++) {
-    const from = to + KNIGHT_DELTAS[i];
+  for (let k = 0; k < KNIGHT_DELTAS.length; k++) {
+    const from = to + KNIGHT_DELTAS[k];
     if (from & 0x88) continue;
-    const p = pos.board[from];
-    if (occ[from] && p && (p >> 3) === side && (p & 7) === KNIGHT) { SEE_ATT.from = from; SEE_ATT.piece = KNIGHT; return SEE_ATT; }
+    const p = board[from];
+    if (p && !SEE_GONE[from] && (p >> 3) === side && (p & 7) === KNIGHT) return (from << 3) | KNIGHT;
   }
-  for (let i = 0; i < 4; i++) {
-    const d = BISHOP_DIRS[i];
+  // sliders: a bishop or a rook is cheaper than a queen, so a queen found on a diagonal must not be returned before
+  // a rook on a file has been looked for (conformance finding, tests/engine.conformance.mjs)
+  let queenSq = -1;
+  for (let k = 0; k < BISHOP_DIRS.length; k++) {
+    const d = BISHOP_DIRS[k];
     let from = to + d;
     while ((from & 0x88) === 0) {
-      if (occ[from]) {
-        const p = pos.board[from];
-        if (p && (p >> 3) === side) {
+      const p = board[from];
+      if (p && !SEE_GONE[from]) {
+        if ((p >> 3) === side) {
           const pt = p & 7;
-          if (pt === BISHOP || pt === QUEEN) { SEE_ATT.from = from; SEE_ATT.piece = pt; return SEE_ATT; }
+          if (pt === BISHOP) return (from << 3) | BISHOP;
+          if (pt === QUEEN) { if (!SEE_EXACT_LVA) return (from << 3) | QUEEN; if (queenSq < 0) queenSq = from; }
         }
         break;
       }
       from += d;
     }
   }
-  for (let i = 0; i < 4; i++) {
-    const d = ROOK_DIRS[i];
+  for (let k = 0; k < ROOK_DIRS.length; k++) {
+    const d = ROOK_DIRS[k];
     let from = to + d;
     while ((from & 0x88) === 0) {
-      if (occ[from]) {
-        const p = pos.board[from];
-        if (p && (p >> 3) === side) {
+      const p = board[from];
+      if (p && !SEE_GONE[from]) {
+        if ((p >> 3) === side) {
           const pt = p & 7;
-          if (pt === ROOK || pt === QUEEN) { SEE_ATT.from = from; SEE_ATT.piece = pt; return SEE_ATT; }
+          if (pt === ROOK) return (from << 3) | ROOK;
+          if (pt === QUEEN) { if (!SEE_EXACT_LVA) return (from << 3) | QUEEN; if (queenSq < 0) queenSq = from; }
         }
         break;
       }
       from += d;
     }
   }
-  for (let dr = -1; dr <= 1; dr++) for (let df = -1; df <= 1; df++) {
-    if (!dr && !df) continue;
-    const from = to + dr * 16 + df;
+  if (queenSq >= 0) return (queenSq << 3) | QUEEN;
+  for (let k = 0; k < 8; k++) {
+    const from = to + SRCH_KING_STEPS[k];
     if (from & 0x88) continue;
-    const p = pos.board[from];
-    if (occ[from] && p && (p >> 3) === side && (p & 7) === KING) { SEE_ATT.from = from; SEE_ATT.piece = KING; return SEE_ATT; }
+    const p = board[from];
+    if (p && !SEE_GONE[from] && (p >> 3) === side && (p & 7) === KING) return (from << 3) | KING;
   }
-  return null;
+  return -1;
 }
 
 /** Max material value of enemy piece attacked by `piece` on `to` (quiet-move threat heuristic). */
@@ -96,8 +115,8 @@ function maxAttackedVictim(pos, to, piece, us) {
   let best = 0;
   if (piece === PAWN) {
     const dir = us === WHITE ? -16 : 16;
-    for (let i = 0; i < 2; i++) {
-      const t = to + dir + (i === 0 ? -1 : 1);
+    for (let k = 0; k < 2; k++) {
+      const t = to + dir + SRCH_PAWN_DF[k];
       if (t & 0x88) continue;
       const p = board[t];
       if (p && (p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
@@ -105,8 +124,8 @@ function maxAttackedVictim(pos, to, piece, us) {
     return best;
   }
   if (piece === KNIGHT) {
-    for (let i = 0; i < 8; i++) {
-      const t = to + KNIGHT_DELTAS[i];
+    for (let k = 0; k < 8; k++) {
+      const t = to + KNIGHT_DELTAS[k];
       if (t & 0x88) continue;
       const p = board[t];
       if (p && (p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
@@ -123,72 +142,70 @@ function maxAttackedVictim(pos, to, piece, us) {
     }
     return best;
   }
-  if (piece === BISHOP || piece === QUEEN) {
-    for (let i = 0; i < 4; i++) {
-      const d = BISHOP_DIRS[i];
-      let t = to + d;
-      while ((t & 0x88) === 0) {
-        const p = board[t];
-        if (p) {
-          if ((p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
-          break;
-        }
-        t += d;
+  const dirs = piece === BISHOP ? BISHOP_DIRS : piece === ROOK ? ROOK_DIRS : SRCH_QUEEN_DIRS;
+  for (let k = 0; k < dirs.length; k++) {
+    const d = dirs[k];
+    let t = to + d;
+    while ((t & 0x88) === 0) {
+      const p = board[t];
+      if (p) {
+        if ((p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
+        break;
       }
-    }
-  }
-  if (piece === ROOK || piece === QUEEN) {
-    for (let i = 0; i < 4; i++) {
-      const d = ROOK_DIRS[i];
-      let t = to + d;
-      while ((t & 0x88) === 0) {
-        const p = board[t];
-        if (p) {
-          if ((p >> 3) === them) { const v = SEE_VAL[p & 7]; if (v > best) best = v; }
-          break;
-        }
-        t += d;
-      }
+      t += d;
     }
   }
   return best;
 }
 
-const SEE_GAIN = new Int32Array(34);
-const SEE_OCC = new Uint8Array(128);
-const SEE_ATT = { from: 0, piece: 0 };
-
 export function see(pos, move) {
   const from = MOVE_FROM(move);
   const to = MOVE_TO(move);
   const flags = MOVE_FLAGS(move);
-  let victimPiece = (flags & FLAG_EP) ? PAWN : (pos.board[to] ? (pos.board[to] & 7) : 0);
+  const victimPiece = (flags & FLAG_EP) ? PAWN : (pos.board[to] ? (pos.board[to] & 7) : 0);
   let gain0 = SEE_VAL[victimPiece];
   if (flags & FLAG_PROMO) gain0 += SEE_VAL[MOVE_PROMO(move)] - SEE_VAL[PAWN];
-  let attacker = (flags & FLAG_PROMO) ? MOVE_PROMO(move) : (pos.board[from] & 7);
-  SEE_GAIN[0] = gain0;
-  for (let i = 0; i < 128; i++) SEE_OCC[i] = pos.board[i] ? 1 : 0;
-  SEE_OCC[from] = 0;
+  const gain = SEE_GAIN;
+  gain[0] = gain0;
+  let nGone = 0;
+  SEE_GONE[from] = 1; SEE_LIST[nGone++] = from;
   if (flags & FLAG_EP) {
     const capSq = to + (pos.turn === WHITE ? 16 : -16);
-    SEE_OCC[capSq] = 0;
+    SEE_GONE[capSq] = 1; SEE_LIST[nGone++] = capSq;
   }
-  let side = pos.turn ^ 1;
+  let side = opposite(pos.turn);
   let depth = 0;
-  let cur = attacker;
+  let cur = (flags & FLAG_PROMO) ? MOVE_PROMO(move) : (pos.board[from] & 7);
   while (true) {
     depth++;
-    SEE_GAIN[depth] = SEE_VAL[cur] - SEE_GAIN[depth - 1];
-    if (Math.max(-SEE_GAIN[depth - 1], SEE_GAIN[depth]) < 0) break;
-    const att = smallestAttacker(pos, to, side, SEE_OCC);
-    if (!att) break;
-    SEE_OCC[att.from] = 0;
-    cur = att.piece;
+    gain[depth] = SEE_VAL[cur] - gain[depth - 1];
+    if (Math.max(-gain[depth - 1], gain[depth]) < 0) break;
+    const att = smallestAttacker(pos, to, side);
+    if (att < 0) break;
+    const af = att >> 3;
+    SEE_GONE[af] = 1; SEE_LIST[nGone++] = af;
+    cur = att & 7;
     side ^= 1;
     if (depth > 31) break;
   }
-  while (--depth > 0) SEE_GAIN[depth - 1] = -Math.max(-SEE_GAIN[depth - 1], SEE_GAIN[depth]);
-  return SEE_GAIN[0];
+  for (let i = 0; i < nGone; i++) SEE_GONE[SEE_LIST[i]] = 0;
+  while (--depth > 0) gain[depth - 1] = -Math.max(-gain[depth - 1], gain[depth]);
+  return gain[0];
+}
+
+/**
+ * Sign-only SEE for callers that ask "does this capture lose material?". A capture whose victim is worth at
+ * least as much as the capturing piece cannot lose (the side may stop after the first exchange), so the
+ * exchange list is skipped and 0 is returned; otherwise the exact value. Not for callers that use the magnitude
+ * of a non-negative result.
+ */
+function seeSign(pos, move) {
+  const flags = MOVE_FLAGS(move);
+  if (!(flags & FLAG_PROMO)) {
+    const victim = (flags & FLAG_EP) ? PAWN : (pos.board[MOVE_TO(move)] & 7);
+    if (SEE_VAL[victim] >= SEE_VAL[pos.board[MOVE_FROM(move)] & 7]) return 0;
+  }
+  return see(pos, move);
 }
 
 /** History counters saturate at this value (see MoveOrder.addHistory). */
@@ -209,19 +226,15 @@ function buildCheckTargets() {
   for (let king = 0; king < 128; king++) {
     if (king & 0x88) { table[king] = null; continue; }
     const hit = new Uint8Array(128);
-    for (let i = 0; i < 8; i++) {
-      const to = king + KNIGHT_DELTAS[i];
+    for (const d of KNIGHT_DELTAS) {
+      const to = king + d;
       if ((to & 0x88) === 0) hit[to] = 1;
     }
-    for (let di = 0; di < 2; di++) {
-      const dirs = di === 0 ? BISHOP_DIRS : ROOK_DIRS;
-      for (let i = 0; i < 4; i++) {
-        const d = dirs[i];
-        let to = king + d;
-        while ((to & 0x88) === 0) {
-          hit[to] = 1;
-          to += d;
-        }
+    for (const d of [...BISHOP_DIRS, ...ROOK_DIRS]) {
+      let to = king + d;
+      while ((to & 0x88) === 0) {
+        hit[to] = 1;
+        to += d;
       }
     }
     table[king] = hit;
@@ -251,19 +264,39 @@ const TT_MAX_AGE_DEFAULT = 0; // ADR 0022
  * ------------------------------------------------------------------ */
 
 export class TranspositionTable {
-  constructor(bits = 18, maxAge = TT_MAX_AGE_DEFAULT) {
+  /**
+   * `shared`: allocate every array on a SharedArrayBuffer so worker threads can search into the same table
+   * (Lazy SMP, see smp.mjs). `attach` is a buffer record produced by `buffers()` on another thread.
+   * Entries are written key-last and read key-twice, so a torn entry is dropped rather than trusted.
+   */
+  constructor(bits = 18, maxAge = TT_MAX_AGE_DEFAULT, shared = false, attach = null) {
     this.size = 1 << bits;
     this.mask = this.size - 1;
     this.maxAge = maxAge;
-    this.keys = new Float64Array(this.size);
-    this.scores = new Int32Array(this.size);
-    this.depths = new Int8Array(this.size);
-    this.flags = new Int8Array(this.size);
-    this.moves = new Int32Array(this.size);
-    this.age = new Int32Array(this.size);
-    this.generation = 0;
+    this.shared = !!(shared || attach);
+    const mk = (Ctor, name) => {
+      if (attach) return new Ctor(attach[name]);
+      if (this.shared) return new Ctor(new SharedArrayBuffer(Ctor.BYTES_PER_ELEMENT * (name === 'gen' ? 1 : this.size)));
+      return new Ctor(name === 'gen' ? 1 : this.size);
+    };
+    this.keys = mk(Float64Array, 'keys');
+    this.scores = mk(Int32Array, 'scores');
+    this.depths = mk(Int8Array, 'depths');
+    this.flags = mk(Int8Array, 'flags');
+    this.moves = mk(Int32Array, 'moves');
+    this.age = mk(Int32Array, 'age');
+    this.gen = mk(Int32Array, 'gen');
     this.hits = 0;
     this.cutoffs = 0;
+  }
+
+  get generation() { return this.gen[0]; }
+  set generation(v) { this.gen[0] = v; }
+
+  /** Buffers to hand to another thread (only meaningful for a shared table). */
+  buffers() {
+    return { keys: this.keys.buffer, scores: this.scores.buffer, depths: this.depths.buffer, flags: this.flags.buffer,
+      moves: this.moves.buffer, age: this.age.buffer, gen: this.gen.buffer };
   }
 
   clear() {
@@ -272,31 +305,6 @@ export class TranspositionTable {
     this.flags.fill(0);
     this.moves.fill(0);
     this.generation++;
-  }
-
-  resizeBits(bits) {
-    bits = Math.max(10, Math.min(28, bits | 0));
-    const size = 2 ** bits;
-    if (size === this.size) return;
-    this.size = size;
-    this.mask = size - 1;
-    this.keys = new Float64Array(size);
-    this.scores = new Int32Array(size);
-    this.depths = new Int8Array(size);
-    this.flags = new Int8Array(size);
-    this.moves = new Int32Array(size);
-    this.age = new Int32Array(size);
-    this.generation = 0;
-    this.hits = 0;
-    this.cutoffs = 0;
-  }
-
-  resizeMB(mb) {
-    const bytesPerEntry = 22; // key8+score4+depth1+flag1+move4+age4
-    const entries = Math.max(1024, Math.floor((Math.max(1, mb) * 1024 * 1024) / bytesPerEntry));
-    let bits = 10;
-    while ((2 ** (bits + 1)) <= entries && bits < 28) bits++;
-    this.resizeBits(bits);
   }
 
   newGeneration() { this.generation++; }
@@ -326,6 +334,7 @@ export class TranspositionTable {
     if (this.depths[idx] < depth) return null;
     const score = TranspositionTable.fromTT(this.scores[idx], ply);
     const flag = this.flags[idx];
+    if (this.shared && this.keys[idx] !== key) return null;   // overwritten while reading
     if (flag === TT_EXACT) return { score, move: this.moves[idx], flag };
     if (flag === TT_LOWER && score >= beta) return { score, move: this.moves[idx], flag };
     if (flag === TT_UPPER && score <= alpha) return { score, move: this.moves[idx], flag };
@@ -336,17 +345,17 @@ export class TranspositionTable {
     const idx = (key % this.size) | 0;
     const stale = this.keys[idx] === key && (this.generation - this.age[idx] > this.maxAge);
     // AUD-311-06: stale same-key entries must not block replacement.
-    // Prefer exact entries at equal depth: do not overwrite an exact bound with a
-    // non-exact one from the same ply/depth generation.
+    // Prefer exact entries at equal depth (upstream 3ae5af7): do not overwrite an exact bound with a non-exact one.
     const replace = this.keys[idx] !== key || stale || this.depths[idx] < depth ||
       (this.depths[idx] === depth && !(this.flags[idx] === TT_EXACT && flag !== TT_EXACT));
     if (replace) {
-      this.keys[idx] = key;
+      if (this.shared) this.keys[idx] = 0;      // readers reject the entry while it is being rewritten
       this.scores[idx] = TranspositionTable.toTT(score, ply);
       this.depths[idx] = depth;
       this.flags[idx] = flag;
       this.moves[idx] = move;
       this.age[idx] = this.generation;
+      this.keys[idx] = key;
     }
   }
 
@@ -366,6 +375,8 @@ export class MoveOrder {
     this.killers = [];                       // [ply][2]
     this.history = new Int32Array(2 * 128 * 128);
     this.counter = new Map();
+    this.cm = new Int32Array(128 * 128);   // countermove: reply that refuted the previous move (indexed by its from/to)
+    this.prevMove = 0;                      // previous move on the path, set by the searcher before scoreMoves
     for (let i = 0; i < 128; i++) this.killers.push([0, 0]);
     // reusable per-ply ordering buffers: no per-node allocation, and each ply
     // keeps its own buffer because the recursion re-enters scoreMoves deeper.
@@ -373,23 +384,20 @@ export class MoveOrder {
     // but the buffers grow instead of silently truncating the legal set.
     this.capacity = 256;
     this.buffers = [];
-    this.packs = [];
-    for (let p = 0; p < 128; p++) {
-      this.buffers.push(new Int32Array(this.capacity));
-      this.packs.push(new Float64Array(this.capacity)); // score * 256 + (255 - slot)
-    }
-    this.packed = this.packs[0]; // compatibility alias; prefer this.packs[ply]
+    for (let p = 0; p < 128; p++) this.buffers.push(new Int32Array(this.capacity));
+    this.packed = new Float64Array(this.capacity); // score * 256 + (255 - slot)
     this.scratch = new Int32Array(this.capacity);
     this.count = 0;
   }
 
   clear() {
     this.history.fill(0);
+    this.cm.fill(0);
     this.killers = [];
     for (let i = 0; i < 128; i++) this.killers.push([0, 0]);
   }
 
-  /** Grow the per-ply scratch arrays instead of dropping legal moves. */
+  /** Grow the shared scratch arrays instead of dropping legal moves. */
   ensureCapacity(need) {
     if (need <= this.capacity) return;
     let cap = this.capacity;
@@ -399,11 +407,10 @@ export class MoveOrder {
       const grown = new Int32Array(cap);
       grown.set(this.buffers[p]);
       this.buffers[p] = grown;
-      const pack = new Float64Array(cap);
-      pack.set(this.packs[p]);
-      this.packs[p] = pack;
     }
-    this.packed = this.packs[0];
+    const packed = new Float64Array(cap);
+    packed.set(this.packed);
+    this.packed = packed;
     const scratch = new Int32Array(cap);
     scratch.set(this.scratch);
     this.scratch = scratch;
@@ -413,89 +420,66 @@ export class MoveOrder {
    * Fill `buf` with the moves in descending priority order and return the count.
    * Priority = heuristic score; legality is never decided here.
    */
-  scoreMoves(pos, moves, ply, ttMove, pvMove) {
-    return this.scoreMovesAt(pos, moves, moves.length, ply, ttMove, pvMove, 0);
-  }
-
-  /**
-   * Score `count` moves from `moves` into ply buffers starting at `offset`.
-   * Used by staged move generation to score tactical and quiet batches separately.
-   */
-  scoreMovesAt(pos, moves, count, ply, ttMove, pvMove, offset) {
-    this.ensureCapacity(offset + count);
-    const packed = this.packs[ply];
+  scoreMoves(pos, moves, ply, ttMove, pvMove, ctx) {
+    this.ensureCapacity(moves.length);
+    const n = moves.length;
+    const packed = this.packed;
     const buf = this.buffers[ply];
     const board = pos.board;
     const us = pos.turn;
-    const us128 = us * 128;
     const w = this.params.search.ordering;
-    const wPv = w.pv, wTt = w.tt, wTac = w.tactic, wHis = w.history;
     const killers = this.killers[ply] || EMPTY_KILLER;
-    const k0 = killers[0], k1 = killers[1];
     const history = this.history;
-    const seeOn = this.params.search.see ? this.params.search.see.enabled !== false : true;
+    const cmOn = this.params.search.countermove && this.params.search.countermove.enabled && this.prevMove;
+    const cmMove = cmOn ? this.cm[MOVE_FROM(this.prevMove) * 128 + MOVE_TO(this.prevMove)] : 0;
 
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < n; i++) {
       const m = moves[i];
       let s = 0;
-      if (pvMove && m === pvMove) s += wPv;
-      if (ttMove && m === ttMove) s += wTt;
+      if (pvMove && m === pvMove) s += w.pv;
+      if (ttMove && m === ttMove) s += w.tt;
 
       const flags = MOVE_FLAGS(m);
-      const from = MOVE_FROM(m);
       const to = MOVE_TO(m);
       if (flags & (FLAG_CAPTURE | FLAG_EP)) {
         const victim = (flags & FLAG_EP) ? PAWN : (board[to] & 7);
-        const attacker = board[from] & 7;
-        const seeScore = seeOn ? see(pos, m) : 0;
-        if (seeOn && seeScore < 0) s += wTac * 0.2 + seeScore * 0.01; // bad capture: below quiet killers/history
-        else s += wTac + MATERIAL[victim] * 10 - MATERIAL[attacker];
+        const attacker = board[MOVE_FROM(m)] & 7;
+        const seeOn = this.params.search.see ? this.params.search.see.enabled !== false : true;
+        const seeScore = seeOn ? seeSign(pos, m) : 0;
+        if (seeOn && seeScore < 0) s += w.tactic * 0.2 + seeScore * 0.01; // bad capture: below quiet killers/history
+        else s += w.tactic + MATERIAL[victim] * 10 - MATERIAL[attacker];
       } else if (flags & FLAG_PROMO) {
-        s += wTac + MATERIAL[MOVE_PROMO(m)] * 8;
+        s += w.tactic + MATERIAL[MOVE_PROMO(m)] * 8;
       } else {
-        if (m === k0) s += wHis * 0.9;
-        else if (m === k1) s += wHis * 0.7;
-        else s += (history[(us128 + from) * 128 + to] / HISTORY_MAX) * wHis * 0.6;
+        if (m === killers[0]) s += w.history * 0.9;
+        else if (m === killers[1]) s += w.history * 0.7;
+        else if (cmMove && m === cmMove) s += w.history * 0.65;
+        else s += (history[(us * 128 + MOVE_FROM(m)) * 128 + to] / HISTORY_MAX) * w.history * 0.6;
         // Quiet threat: direct attack on enemy piece. Tactical signal (not Gate 3 structural/context).
         // Keeps b4c5-like quiet refutations visible to shallow search/LMR.
-        const movedPiece = board[from] & 7;
+        const movedPiece = board[MOVE_FROM(m)] & 7;
         const threat = maxAttackedVictim(pos, to, movedPiece, us);
-        if (threat >= 500) s += wHis * 0.8 + threat * 30;       // rook/queen
-        else if (threat >= 300) s += wHis * 0.6 + threat * 20;  // minor
+        if (threat >= 500) s += w.history * 0.8 + threat * 30;       // rook/queen
+        else if (threat >= 300) s += w.history * 0.6 + threat * 20;  // minor
       }
 
       // Gate 3 kill: structural/context ordering removed. Ordering is now
       // pv > tt > tactic > history; legality is never decided here.
 
-      const idx = offset + i;
-      const slot = (count - 1 - i) & 255;          // keeps the sort stable on ties
-      buf[idx] = m;
-      packed[idx] = Math.round(s) * 256 + slot;
+      const slot = (n - 1 - i) & 255;          // keeps the sort stable on ties
+      buf[i] = m;
+      packed[i] = Math.round(s) * 256 + slot;
     }
 
-    this.count = offset + count;
-    return this.count;
-  }
-
-  /**
-   * Incremental selection: place the best remaining move at `i` in buf/packed.
-   * Behavior-preserving vs full sort because packed keys include a deterministic
-   * tie-break slot; alpha-beta consumes moves in descending order and often cuts
-   * off early, so this avoids sorting the full tail.
-   */
-  pick(ply, i, n) {
-    const packed = this.packs[ply];
-    const buf = this.buffers[ply];
-    let best = i;
-    let bestScore = packed[i];
-    for (let j = i + 1; j < n; j++) {
-      const s = packed[j];
-      if (s > bestScore) { bestScore = s; best = j; }
+    const view = packed.subarray(0, n);
+    view.sort();
+    const scratch = this.scratch;
+    for (let i = 0; i < n; i++) scratch[i] = buf[i];
+    for (let k = n - 1, o = 0; k >= 0; k--, o++) {
+      buf[o] = scratch[n - 1 - (view[k] & 255)];
     }
-    if (best !== i) {
-      const pm = packed[i]; packed[i] = packed[best]; packed[best] = pm;
-      const bm = buf[i]; buf[i] = buf[best]; buf[best] = bm;
-    }
+    this.count = n;
+    return n;
   }
 
   addKiller(ply, m) {
@@ -506,16 +490,15 @@ export class MoveOrder {
     k[0] = m;
   }
 
+  addCounter(m) {
+    if (this.prevMove) this.cm[MOVE_FROM(this.prevMove) * 128 + MOVE_TO(this.prevMove)] = m;
+  }
+
   addHistory(pos, m, depth) {
     const us = pos.turn;
     const idx = (us * 128 + MOVE_FROM(m)) * 128 + MOVE_TO(m);
-    this.history[idx] = Math.min(HISTORY_MAX, this.history[idx] + depth * depth);
-  }
-
-  subHistory(pos, m, depth) {
-    const us = pos.turn;
-    const idx = (us * 128 + MOVE_FROM(m)) * 128 + MOVE_TO(m);
-    this.history[idx] = Math.max(-HISTORY_MAX, this.history[idx] - depth * depth);
+    const d2 = depth >= 0 ? depth * depth : -(depth * depth);
+    this.history[idx] = Math.max(-(1 << 20), Math.min(1 << 20, this.history[idx] + d2));
   }
 
   ageHistory() {
@@ -531,7 +514,10 @@ export class Searcher {
   constructor(evaluator, params, opts = {}) {
     this.ev = evaluator;
     this.params = params;
+    SEE_EXACT_LVA = !!(params.search && params.search.see && params.search.see.exactLva);
     this.tt = opts.tt || new TranspositionTable(18);
+    this.stopFlag = opts.stopFlag || null;   // shared Int32Array(1): a helper thread stops when it reaches its search id
+    this.stopId = 0;
     this.tt.maxAge = this.params.search?.ttMaxAge ?? 0; // ADR 0022
     this.order = opts.order || new MoveOrder(params);
     this.pos = null;
@@ -541,19 +527,22 @@ export class Searcher {
     this.nodeLimit = 0;
     this.pvTable = new Int32Array(128 * 64);   // triangular PV: pvTable[ply*64 + i]
     this.pvLength = new Int32Array(128);
-    this.genBuf = Array.from({ length: 128 }, () => []);
-    this.probeBuf = [];
-    this.checkGenBuf = [];
-    this.undoBuf = Array.from({ length: 128 }, () => ({}));
-    this.qsBuf = Array.from({ length: 128 }, () => []);
-    this.evalStack = new Int32Array(128);
-    this.probeUndo = {};
     this.seldepth = 0;
     this.qStalemate = true;   // horizon stalemate check (audit v3.0.6 §4.1)
     this.useTT = true;
     this.useNull = true;
+    this.moveAt = new Int32Array(130);   // move played at each ply of the current path (0 = none / null move)
     this.useLMR = true;
+    {
+      const l = this.params.search.lmrLog || { base: 0.75, div: 2.25 };
+      this.lmrTable = new Uint8Array(64 * 256);
+      for (let d = 1; d < 64; d++) for (let n = 1; n < 256; n++) {
+        this.lmrTable[d * 256 + n] = Math.min(8, Math.floor(l.base + Math.log(d) * Math.log(n) / l.div));
+      }
+    }
     this.useFutility = true;
+    this.qSee = (params.search.qSee && params.search.qSee.enabled) ? params.search.qSee : null;
+    this.trace = null;
     this.lastIteration = null;
   }
 
@@ -564,6 +553,7 @@ export class Searcher {
 
   checkStop() {
     if (this.stop) return true;
+    if (this.stopFlag && this.stopFlag[0] >= this.stopId) { this.stop = true; return true; }
     if (this.nodeLimit && this.nodes >= this.nodeLimit) { this.stop = true; return true; }
     if (this.deadline && Date.now() >= this.deadline) { this.stop = true; return true; }
     return false;
@@ -578,13 +568,11 @@ export class Searcher {
   hasLegalMove(pos) {
     pos.refreshPieces();
     const us = pos.turn;
-    const them = us ^ 1;
-    const moves = pos.generateMoves(false, this.probeBuf);
-    for (let i = 0; i < moves.length; i++) {
-      const m = moves[i];
+    const them = opposite(us);
+    for (const m of pos.generateMoves(false)) {
       const victim = pos.board[MOVE_TO(m)];
       if (victim && pieceType(victim) === KING) continue;
-      const undo = pos.makeMove(m, this.probeUndo);
+      const undo = pos.makeMove(m);
       const legal = !pos.isAttacked(pos.kingSq[us], them);
       pos.unmakeMove(undo);
       if (legal) return true;
@@ -618,7 +606,7 @@ export class Searcher {
     this.nodeLimit = opts.nodes || 0;
     this.pvLength.fill(0);
     this.order.clear();
-    this.tt.newGeneration();
+    if (!opts.helper) this.tt.newGeneration();
 
     const rootMoves = pos.legalMoves();
     if (rootMoves.length === 0) {
@@ -642,11 +630,22 @@ export class Searcher {
     let best = (opts.prevBest && rootMoves.includes(opts.prevBest)) ? opts.prevBest : rootMoves[0];
     let bestScore = -INF;
     let lastCompleted = null;
+    let abortedDepth = 0;
     // a remembered score from an earlier search of this position seeds the
     // aspiration window and the first move ordering (doc 05 §21, P3.1)
     let prevScore = typeof opts.prevScore === 'number' && Number.isFinite(opts.prevScore) ? opts.prevScore : 0;
 
+    const budget = opts.budget || null;          // { softMs, hardMs } (SEARCH-15), else fixed budget
+    const history = [];
+    let iterStart = t0;
     for (let depth = 1; depth <= this.maxDepth; depth++) {
+      // Lazy SMP helper: skip some iterations (Stockfish-style skip blocks) so the helpers fill the shared table
+      // with depths the main thread has not reached yet instead of repeating its tree.
+      if (opts.helper) {
+        const hx = (this.helperIndex | 0) % 20;
+        if (depth > 1 && Math.floor((depth + SKIP_PHASE[hx]) / SKIP_SIZE[hx]) % 2 === 1) continue;
+      }
+      iterStart = Date.now();
       const window = this.params.search.aspiration;
       let alpha = depth >= 4 ? prevScore - window.window : -INF;
       let beta = depth >= 4 ? prevScore + window.window : INF;
@@ -672,13 +671,28 @@ export class Searcher {
           seldepth: this.seldepth,
           secondScore: result.secondScore
         };
+      } else if (result && !result.completed) {
+        abortedDepth = depth; // an incomplete iteration is rolled back: it never replaces the last committed one
+        if (!lastCompleted && result.move) { best = result.move; bestScore = result.score; }
       } else if (result && !lastCompleted && result.move) {
         best = result.move;
         bestScore = result.score;
       }
       if (this.checkStop()) break;
-      if (Math.abs(bestScore) >= MATE_THRESHOLD) break;
+      if (Math.abs(bestScore) >= MATE_THRESHOLD) { this.budgetReason = 'mate found'; break; }
       if (Date.now() - t0 > (opts.softTimeMs || 0) && opts.softTimeMs) break;
+      if (budget && result && result.completed && lastCompleted) {
+        history.push({ depth, move: lastCompleted.move, score: lastCompleted.score,
+          spread: lastCompleted.secondScore === -INF || lastCompleted.secondScore === undefined
+            ? 0 : Math.abs(lastCompleted.score - lastCompleted.secondScore),
+          flag: lastCompleted.flag });
+        // a single legal move has nothing to decide (but let a mate-in-1 surface first)
+        if (rootMoves.length === 1 && depth >= 3) break;
+        const now = Date.now();
+        const verdict = shouldStop({ elapsedMs: now - t0, softMs: budget.softMs, hardMs: budget.hardMs,
+          lastIterMs: now - iterStart, history }, this.params.search.budgetOpts || undefined);
+        if (verdict.stop) { this.budgetReason = verdict.reason; break; }
+      }
     }
 
     const elapsed = Date.now() - t0;
@@ -703,6 +717,10 @@ export class Searcher {
       timeMs: elapsed,
       nps: elapsed > 0 ? Math.round((this.nodes * 1000) / elapsed) : 0,
       completed: !!lastCompleted,
+      // transactional boundary: what was committed and what was rolled back
+      boundary: { committedDepth: info ? info.depth : 0, abortedDepth, rolledBack: abortedDepth > 0, reason: this.budgetReason || (this.stop ? 'stopped' : 'depth'),
+        // SUBIT-CPU v0.2 §3.2 termination kinds: a resource limit is not evidence of convergence
+        termination: terminationKind(this.budgetReason, this.stop, !!info) },
       // the bound flag of the iteration that produced score/depth: a published
       // score must be exact (SEARCH-INV-002), never a fail-low/fail-high bound
       flag: info ? info.flag : null,
@@ -727,19 +745,20 @@ export class Searcher {
 
     const ttEntry = this.useTT ? this.tt.probe(pos.ttKey, depth, alpha, beta, 0) : null;
     const ttMove = ttEntry ? ttEntry.move : 0;
-    const staged = this.params.search.stagedMoveGen === true;
-    let alphaOrig = alpha;
-    let moveIndex = 0;
+    const orderedCount = this.order.scoreMoves(pos, rootMoves, 0, ttMove, prevBest || 0, {});
 
-    const searchRootMove = (m) => {
+    let alphaOrig = alpha;
+    for (let i = 0; i < orderedCount; i++) {
+      const m = this.order.buffers[0][i];
       pos.pushRep();
-      const undo = pos.makeMove(m, this.undoBuf[0]);
+      const undo = pos.makeMove(m);
+      this.moveAt[0] = m;
       this.nodes++;
       const givesCheck = pos.inCheck();
       const ext = (givesCheck && this.params.search.checkExtension > 0) ? 1 : 0;
       const nextDepth = Math.max(0, depth - 1 + ext);
       let score;
-      if (moveIndex === 0) {
+      if (i === 0) {
         score = -this.negamax(pos, nextDepth, -beta, -alpha, 1);
       } else {
         score = -this.negamax(pos, nextDepth, -alpha - 1, -alpha, 1);
@@ -749,7 +768,8 @@ export class Searcher {
       }
       pos.unmakeMove(undo);
       pos.popRep();
-      if (this.stop) { completed = false; return true; }
+
+      if (this.stop) { completed = false; break; }
       if (score > bestScore) {
         secondScore = bestScore;
         bestScore = score;
@@ -761,41 +781,7 @@ export class Searcher {
         secondScore = score;
       }
       if (score > alpha) alpha = score;
-      moveIndex++;
-      return alpha >= beta;
-    };
-
-    if (!staged) {
-      const orderedCount = this.order.scoreMoves(pos, rootMoves, 0, ttMove, prevBest || 0);
-      for (let i = 0; i < orderedCount; i++) {
-        this.order.pick(0, i, orderedCount);
-        const m = this.order.buffers[0][i];
-        if (searchRootMove(m)) break;
-      }
-    } else {
-      const tacts = [];
-      const quiets = [];
-      for (let i = 0; i < rootMoves.length; i++) {
-        const m = rootMoves[i];
-        const f = MOVE_FLAGS(m);
-        if ((f & (FLAG_CAPTURE | FLAG_PROMO | FLAG_EP)) !== 0) tacts.push(m);
-        else quiets.push(m);
-      }
-      let orderedCount = this.order.scoreMoves(pos, tacts, 0, ttMove, prevBest || 0);
-      let cut = false;
-      for (let i = 0; i < orderedCount; i++) {
-        this.order.pick(0, i, orderedCount);
-        const m = this.order.buffers[0][i];
-        if (searchRootMove(m)) { cut = true; break; }
-      }
-      if (!cut && !this.stop) {
-        orderedCount = this.order.scoreMoves(pos, quiets, 0, ttMove, prevBest || 0);
-        for (let i = 0; i < orderedCount; i++) {
-          this.order.pick(0, i, orderedCount);
-          const m = this.order.buffers[0][i];
-          if (searchRootMove(m)) break;
-        }
-      }
+      if (alpha >= beta) break;
     }
 
     let flag = TT_EXACT;
@@ -817,7 +803,6 @@ export class Searcher {
     if (this.checkStop()) return 0;
     this.pvLength[ply] = 0;
     if (ply > this.seldepth) this.seldepth = ply;
-    const qsBuf = this.qsBuf[ply]; if (qsBuf) qsBuf.length = 0;
 
     const inCheck = pos.inCheck();
 
@@ -845,12 +830,10 @@ export class Searcher {
     const pvNode = beta - alpha > 1;
     const alphaOrig = alpha;
 
-    let ttMove = 0;
     if (this.useTT && ply > 0) {
       const entry = this.tt.probe(pos.ttKey, depth, alpha, beta, ply);
       if (entry) {
         this.tt.hits++;
-        ttMove = entry.move;
         // AUD-311-07: count only actual TT cutoffs as cutoffs; partial entries are hits/hints.
         if (!entry.partial) {
           this.tt.cutoffs++;
@@ -859,95 +842,64 @@ export class Searcher {
       }
     }
 
-    // Internal Iterative Reduction: when no TT move is available at sufficient depth,
-    // reduce depth slightly. Default off; A/B required.
-    const iir = this.params.search.iir;
-    if (iir && iir.enabled && !inCheck && !ttMove && depth >= (iir.minDepth || 4)) {
-      depth -= (iir.reduction || 1);
-      if (depth <= 0) return this.quiescence(pos, alpha, beta, ply, 0);
+    // reverse futility (static null move), non-PV, not in check, shallow: a position that is already
+    // `margin * depth` above beta is not worth searching. Off by default (v3.0.9 experiment).
+    const rfp = this.params.search.rfp;
+    if (rfp && rfp.enabled && !pvNode && !inCheck && depth <= rfp.maxDepth && Math.abs(beta) < MATE_THRESHOLD) {
+      const st = this.ev.evaluate(pos, depth);
+      if (st - rfp.margin * depth >= beta) return st - rfp.margin * depth;
     }
 
     // null move pruning (never a legal chess move — search-only)
     if (this.useNull && this.canNull(pos, depth, inCheck, pvNode)) {
       const R = Math.min(this.params.search.nullMove.maxReduction,
         this.params.search.nullMove.reduction + Math.floor(depth / 6));
-      const undo = pos.makeNullMove(this.undoBuf[ply]);
+      const undo = pos.makeNullMove();
+      this.moveAt[ply] = 0;
       const score = -this.negamax(pos, depth - R, -beta, -beta + 1, ply + 1);
       pos.unmakeNullMove(undo);
       if (this.stop) return 0;
       if (score >= beta) return beta;
     }
 
-    // Static eval / improving / razoring: used by RFP and optional heuristics.
-    const rfp = this.params.search.rfp;
-    const razoring = this.params.search.razoring;
-    const improvingEnabled = this.params.search.improving === true;
-    let staticEval = null;
-    let improving = true;
-    if (!inCheck) {
-      const needRfp = rfp && rfp.enabled && !pvNode && depth <= (rfp.maxDepth || 3) && Math.abs(beta) < MATE_THRESHOLD;
-      const needRazoring = razoring && razoring.enabled && !pvNode && depth <= (razoring.maxDepth || 2) && Math.abs(alpha) < MATE_THRESHOLD;
-      const needStatic = improvingEnabled || needRfp || needRazoring;
-      if (needStatic) staticEval = this.ev.evaluate(pos, depth);
-      if (improvingEnabled) {
-        this.evalStack[ply] = staticEval != null ? staticEval : this.ev.evaluate(pos, depth);
-        improving = ply >= 2 ? this.evalStack[ply] > this.evalStack[ply - 2] : true;
-      }
-      if (needRazoring && staticEval + (razoring.margin || 300) * depth <= alpha) {
-        return this.quiescence(pos, alpha, beta, ply, 0);
-      }
-    } else if (improvingEnabled) {
-      this.evalStack[ply] = ply >= 2 ? this.evalStack[ply - 2] : 0;
-      improving = true;
-    }
-    // Reverse futility pruning: if static eval is far above beta at shallow
-    // depth, the node is unlikely to fall below beta. Default off; A/B only.
-    if (rfp && rfp.enabled && !pvNode && !inCheck && depth <= (rfp.maxDepth || 3) && Math.abs(beta) < MATE_THRESHOLD) {
-      const se = staticEval != null ? staticEval : this.ev.evaluate(pos, depth);
-      if (se - (rfp.margin || 80) * depth >= beta) return se;
-    }
-
     const us = pos.turn;
-    const them = us ^ 1;
-    const staged = this.params.search.stagedMoveGen === true;
+    const them = opposite(us);
+    const moves = pos.generateMoves(false);
+    const ttMv = this.ttMoveFor(pos, depth);
+    const iir = this.params.search.iir;
+    if (iir && iir.enabled && !ttMv && depth >= iir.minDepth && !inCheck) depth -= 1;
+    this.order.prevMove = ply > 0 ? this.moveAt[ply - 1] : 0;
+    const prevMoveHere = this.order.prevMove;
+    const orderedCount = this.order.scoreMoves(pos, moves, ply, ttMv, 0, {});
     const buf = this.order.buffers[ply];
-    let orderedCount;
-    if (!staged) {
-      const moves = pos.generateMoves(false, this.genBuf[ply]);
-      orderedCount = this.order.scoreMoves(pos, moves, ply, ttMove, 0);
-    } else {
-      const tactMoves = pos.generateMoves(true, this.genBuf[ply], false, true);
-      orderedCount = this.order.scoreMovesAt(pos, tactMoves, tactMoves.length, ply, ttMove, 0, 0);
-    }
-    let stagedQuietsDone = !staged;
-    if (staged && !stagedQuietsDone && orderedCount === 0) {
-      const quietMoves = pos.generateMoves(false, this.genBuf[ply], true, true);
-      const nQuiet = quietMoves.length;
-      if (nQuiet > 0) {
-        this.order.scoreMovesAt(pos, quietMoves, nQuiet, ply, ttMove, 0, 0);
-        orderedCount = nQuiet;
-      }
-      stagedQuietsDone = true;
-    }
 
     let bestScore = -INF;
     let bestMove = 0;
     let legal = 0;
     let pruned = 0;
-    let quietsSearched = 0;
     const lmr = this.params.search.lmr;
     const futility = this.params.search.futility;
     const lmp = this.params.search.lmp;
+    const seeP = this.params.search.seePrune;
+    const malus = this.params.search.historyMalus;
+    const tried = malus && malus.enabled ? [] : null;
 
     for (let i = 0; i < orderedCount; i++) {
-      this.order.pick(ply, i, orderedCount);
       const m = buf[i];
       const flags = MOVE_FLAGS(m);
-      const to = MOVE_TO(m);
-      const isQuiet = !(flags & (FLAG_CAPTURE | FLAG_PROMO)) && pos.board[to] === 0;
+      const isQuiet = !(flags & (FLAG_CAPTURE | FLAG_PROMO)) && pos.board[MOVE_TO(m)] === 0;
+
+      // SEE pruning (controlled approximation, off by default): a capture that loses more than margin*depth
+      // by static exchange is skipped at shallow depth in non-PV nodes, after one move has been searched.
+      if (seeP && seeP.enabled && depth <= seeP.maxDepth && !pvNode && !inCheck && legal > 0 &&
+          (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && see(pos, m) < -seeP.margin * depth) {
+        pruned++;
+        continue;
+      }
 
       pos.pushRep();
-      const undo = pos.makeMove(m, this.undoBuf[ply]);
+      const undo = pos.makeMove(m);
+      this.moveAt[ply] = m;
 
       // UCA-INV-003: legality is decided by the rules here, not by the ordering
       if (pos.isAttacked(pos.kingSq[us], them)) {
@@ -958,40 +910,13 @@ export class Searcher {
 
       const givesCheck = pos.inCheck();
 
-      // Late move pruning: at shallow depth, skip late quiet moves.
-      if (lmp && lmp.enabled && !pvNode && !inCheck && !givesCheck && isQuiet &&
-          depth <= (lmp.maxDepth || 3) && quietsSearched >= ((lmp.base || 4) + depth * (lmp.multiplier || 2))) {
-        pruned++;
-        pos.unmakeMove(undo);
-        pos.popRep();
-        continue;
-      }
-
-      // History pruning: skip late quiet moves with very bad history at shallow depth. Default off; A/B required.
-      const hp = this.params.search.historyPruning;
-      if (hp && hp.enabled && !pvNode && !inCheck && !givesCheck && isQuiet &&
-          depth <= (hp.maxDepth || 3) && quietsSearched > 0) {
-        const hIdx = (us * 128 + MOVE_FROM(m)) * 128 + MOVE_TO(m);
-        if (this.order.history[hIdx] < (hp.threshold ?? -2048)) {
-          pruned++;
-          pos.unmakeMove(undo);
-          pos.popRep();
-          continue;
-        }
-      }
-
       // Futility pruning at the frontier (controlled, never at the PV). It runs
       // after the move is made, because a quiet move that gives check must
       // survive the frontier: a quiet mate in one is exactly the move that
       // `isQuiet` cannot rule out (audit v3.0.6 §4.4).
       if (this.useFutility && futility.enabled && depth <= futility.maxDepth &&
           !pvNode && isQuiet && !inCheck && !givesCheck && bestScore > -INF) {
-        // pos is the position *after* the move, i.e. the opponent's turn, so the
-        // static score is from their perspective and must be negated before it
-        // is compared with alpha (which is the mover's window). Without the
-        // negation a good position for the opponent prunes the mover's move.
-        const staticScore = -this.ev.evaluate(pos, depth);
-        if (staticScore + futility.margin <= alpha) {
+        if (this.futile(pos, alpha, futility.margin, depth)) {
           pruned++;
           pos.unmakeMove(undo);
           pos.popRep();
@@ -999,12 +924,17 @@ export class Searcher {
         }
       }
 
+      // Late move pruning: at shallow depth in a non-PV node the late quiet moves are skipped (controlled approximation).
+      if (lmp && lmp.enabled && depth <= lmp.maxDepth && !pvNode && isQuiet && !inCheck && !givesCheck &&
+          bestScore > -INF && legal >= lmp.base + depth * depth) {
+        pruned++;
+        pos.unmakeMove(undo);
+        pos.popRep();
+        continue;
+      }
+
       legal++;
       this.nodes++;
-      if (isQuiet && !givesCheck) {
-        quietsSearched++;
-        if (this.params.search.historyMalus) qsBuf.push(m);
-      }
 
       let score;
       let reduction = 0;
@@ -1013,19 +943,19 @@ export class Searcher {
         let threatExempt = false;
         const threatMin = lmr.threatExemptMinVictim || 0;
         if (threatMin > 0) {
-          const threat = maxAttackedVictim(pos, to, pos.board[to] & 7, us);
+          const threat = maxAttackedVictim(pos, MOVE_TO(m), pos.board[MOVE_TO(m)] & 7, us);
           threatExempt = threat >= threatMin;
         }
         if (!threatExempt) {
-          reduction = lmr.reduction || 1;
-          if (i >= (lmr.extraMoveIndex || 6)) reduction += (lmr.extraReduction ?? 1);
-          if (this.params.search.lmrHistory) {
-            const h = this.order.history[(us * 128 + MOVE_FROM(m)) * 128 + to];
-            if (h > HISTORY_MAX / 4) reduction = Math.max(0, reduction - 1);
-            else if (h < -HISTORY_MAX / 8) reduction += 1;
+          if (this.params.search.lmrLog && this.params.search.lmrLog.enabled) {
+            reduction = this.lmrTable[Math.min(depth, 63) * 256 + Math.min(i + 1, 255)];
+            if (pvNode) reduction -= 1;
+            if (reduction < 1) reduction = 1;
+          } else {
+            reduction = lmr.reduction || 1;
+            if (i >= (lmr.extraMoveIndex || 6)) reduction += (lmr.extraReduction ?? 1);
+            if (reduction > (lmr.maxReduction || 3)) reduction = lmr.maxReduction || 3;
           }
-          if (improvingEnabled && !improving) reduction += 1;
-          if (reduction > (lmr.maxReduction || 3)) reduction = lmr.maxReduction || 3;
           if (depth - reduction < 1) reduction = depth - 1;
         }
       }
@@ -1034,9 +964,15 @@ export class Searcher {
       if (!ext && isQuiet && !inCheck) {
         const qte = this.params.search.quietThreatExtension;
         if (qte?.enabled && ply <= (qte.maxPly ?? 2)) {
-          const threat = maxAttackedVictim(pos, to, pos.board[to] & 7, us);
+          const threat = maxAttackedVictim(pos, MOVE_TO(m), pos.board[MOVE_TO(m)] & 7, us);
           if (threat >= (qte.minVictim ?? 900)) ext = 1;
         }
+      }
+      // SEARCH-14 (doc 05 §16.3): a pawn reaching the 7th rank changes the critical
+      // structure (promotion threat); extended once, bounded by ply, off by default.
+      if (!ext && this.params.search.structExtension.enabled && ply < this.params.search.structExtension.maxPly) {
+        const to = MOVE_TO(m);
+        if (pieceType(pos.board[to]) === PAWN && rankOf(to) === (us === WHITE ? 1 : 6)) ext = 1;
       }
       const nextDepth = Math.max(0, depth - 1 - reduction + ext);
 
@@ -1056,6 +992,7 @@ export class Searcher {
       pos.popRep();
 
       if (this.stop) return 0;
+      if (tried && isQuiet && score < beta) tried.push(m);
 
       if (score > bestScore) {
         bestScore = score;
@@ -1070,24 +1007,12 @@ export class Searcher {
       if (alpha >= beta) {
         if (isQuiet) {
           this.order.addKiller(ply, m);
+          if (this.params.search.countermove && this.params.search.countermove.enabled) { this.order.prevMove = prevMoveHere; this.order.addCounter(m); }
           this.order.addHistory(pos, m, depth);
-          if (this.params.search.historyMalus) {
-            for (let qi = 0, qn = qsBuf.length - 1; qi < qn; qi++) this.order.subHistory(pos, qsBuf[qi], depth);
-          }
+          if (tried) for (const q of tried) this.order.addHistory(pos, q, -depth);
         }
         if (this.useTT) this.tt.store(pos.ttKey, depth, bestScore, TT_LOWER, m, ply);
         return bestScore;
-      }
-
-      if (staged && !stagedQuietsDone && i + 1 === orderedCount) {
-        const nTact = orderedCount;
-        const quietMoves = pos.generateMoves(false, this.genBuf[ply], true, true);
-        const nQuiet = quietMoves.length;
-        if (nQuiet > 0) {
-          this.order.scoreMovesAt(pos, quietMoves, nQuiet, ply, ttMove, 0, nTact);
-          orderedCount = nTact + nQuiet;
-        }
-        stagedQuietsDone = true;
       }
     }
 
@@ -1117,6 +1042,18 @@ export class Searcher {
     return this.tt.depths[idx] >= depth ? this.tt.moves[idx] : 0;
   }
 
+  /**
+   * Frontier futility predicate. Called AFTER the move was made, so `pos.turn` is
+   * the opponent and the static evaluation is from THEIR point of view. The
+   * test compares the mover's score with the mover's alpha, hence the sign:
+   * v3.0.6-3.0.8 compared the opponent's score with alpha and therefore pruned
+   * the best quiet moves (nofut beat base 51-3-6 at 100 ms/move, +338 Elo).
+   */
+  futile(pos, alpha, margin, depth) {
+    const moverScore = -this.ev.evaluate(pos, depth);
+    return moverScore + margin <= alpha;
+  }
+
   canNull(pos, depth, inCheck, pvNode) {
     const cfg = this.params.search.nullMove;
     if (!cfg.enabled) return false;
@@ -1144,13 +1081,12 @@ export class Searcher {
    */
   staticCheckEvasion(pos, moves, ply) {
     const us = pos.turn;
-    const them = us ^ 1;
+    const them = opposite(us);
     let best = -INF;
     let legal = 0;
-    for (let i = 0; i < moves.length; i++) {
-      const m = moves[i];
+    for (const m of moves) {
       pos.pushRep();
-      const undo = pos.makeMove(m, this.undoBuf[ply]);
+      const undo = pos.makeMove(m);
       if (pos.isAttacked(pos.kingSq[us], them)) {
         pos.unmakeMove(undo);
         pos.popRep();
@@ -1184,7 +1120,7 @@ export class Searcher {
     let moves;
 
     if (inCheck) {
-      moves = pos.generateMoves(false, this.genBuf[ply]);
+      moves = pos.generateMoves(false);
       // No stand-pat in check (AUD-01): a static score is not a legal move, so
       // it cannot produce a beta cutoff. -INF lets the first *searched*
       // evasion set the real bound; a node where every evasion is bad cannot
@@ -1195,7 +1131,7 @@ export class Searcher {
       if (stand >= beta) return stand;
       if (stand > alpha) alpha = stand;
       best = stand;
-      moves = pos.generateMoves(true, this.genBuf[ply]);
+      moves = pos.generateMoves(true);
       // Stalemate at the horizon, at any qdepth (AUD-03). A quiet position
       // without captures is not evidence of a legal move, and a static score
       // would report a won game as drawn (or the reverse). The probe runs only
@@ -1211,33 +1147,36 @@ export class Searcher {
     if (qdepth > 8) return inCheck ? this.staticCheckEvasion(pos, moves, ply) : best;
 
     const us = pos.turn;
-    const them = us ^ 1;
-    const orderedCount = this.order.scoreMoves(pos, moves, ply, 0, 0);
+    const them = opposite(us);
+    this.order.prevMove = 0;
+    const orderedCount = this.order.scoreMoves(pos, moves, ply, 0, 0, {});
     const buf = this.order.buffers[ply];
-    const seePrune = this.params.search.see ? this.params.search.see.qsearchPrune !== false : true;
-    const seePruneMargin = (this.params.search.see && this.params.search.see.qsearchPruneMargin) || 0;
-    const seePruneMinDepth = (this.params.search.see && this.params.search.see.qsearchPruneMinDepth) || 0;
-    const deltaMargin = (this.params.search.qsearch && this.params.search.qsearch.deltaMargin) || 200;
     let legal = 0;
 
     for (let i = 0; i < orderedCount; i++) {
-      this.order.pick(ply, i, orderedCount);
       const m = buf[i];
       const flags = MOVE_FLAGS(m);
-      const to = MOVE_TO(m);
       if (!inCheck) {
         if (!(flags & FLAG_CAPTURE) && !(flags & FLAG_PROMO)) continue;
         // bad captures are skipped in qsearch; promos still searched
-        if (seePrune && qdepth >= seePruneMinDepth && (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && see(pos, m) < -seePruneMargin) continue;
-        // delta pruning: even winning the victim cannot lift alpha. Skip near
-        // mate windows: a capture that delivers mate must not be pruned because
-        // its material delta understates the true score (A.6/qsearch safety).
-        const victim = pos.board[to];
+        const seeCfg = this.params.search.see;
+        const seePrune = seeCfg ? seeCfg.qsearchPrune !== false : true;
+        if (seePrune && (flags & (FLAG_CAPTURE | FLAG_EP)) && !(flags & FLAG_PROMO) && seeSign(pos, m) < 0) continue;
+        // delta pruning: even winning the victim cannot lift alpha. Skip near mate windows: a capture that
+        // delivers mate must not be pruned because its material delta understates the true score.
+        const victim = pos.board[MOVE_TO(m)];
         const victimValue = (flags & FLAG_EP) ? MATERIAL[PAWN] : (victim ? MATERIAL[pieceType(victim)] : 0);
-        if (alpha < MATE_THRESHOLD && best + victimValue + deltaMargin < alpha && !(flags & FLAG_PROMO)) continue;
+        if (alpha < MATE_THRESHOLD && best + victimValue + 200 < alpha && !(flags & FLAG_PROMO)) continue;
+        // SEE-lite (v3.0.9 experiment): a capture that gives a more valuable piece for a cheaper one on a
+        // defended square loses material; skip it. Cheap, one attack test, no swap list.
+        if (this.qSee && !(flags & FLAG_PROMO) && !(flags & FLAG_EP) && victim) {
+          const att = MATERIAL[pieceType(pos.board[MOVE_FROM(m)])];
+          if (att > victimValue + this.qSee.slack && pieceType(pos.board[MOVE_FROM(m)]) !== KING &&
+              pos.isAttacked(MOVE_TO(m), them)) continue;
+        }
       }
       pos.pushRep();
-      const undo = pos.makeMove(m, this.undoBuf[ply]);
+      const undo = pos.makeMove(m);
       if (pos.isAttacked(pos.kingSq[us], them)) {
         pos.unmakeMove(undo);
         pos.popRep();
@@ -1269,31 +1208,26 @@ export class Searcher {
       // from the enemy king can be a direct check, and only moves that vacate
       // one of those squares can be a discovered check. Everything else is
       // skipped before make/unmake. The full legality test remains below.
-      const kingSqThem = pos.kingSq[them];
-      const targets = CHECK_TARGETS[kingSqThem];
-      const checkMoves = pos.generateMoves(false, this.checkGenBuf);
-      const cn = checkMoves.length;
-      for (let i = 0; i < cn; i++) {
-        const m = checkMoves[i];
+      const targets = CHECK_TARGETS[pos.kingSq[them]];
+      for (const m of pos.generateMoves(false)) {
         const flags = MOVE_FLAGS(m);
         if (flags & (FLAG_CAPTURE | FLAG_EP | FLAG_PROMO)) continue;
         const from = MOVE_FROM(m), to = MOVE_TO(m);
         // AUD-311-09: castling moves the rook; a discovered rook check can occur
         // even when the king's from/to squares are not in CHECK_TARGETS.
         if (!targets[from] && !targets[to] && !(flags & FLAG_CASTLE)) continue;
-        const undo = pos.makeMove(m, this.undoBuf[ply]);
-        const givesCheck = pos.isAttacked(kingSqThem, us);
+        const undo = pos.makeMove(m);
+        const givesCheck = pos.isAttacked(pos.kingSq[them], us);
         pos.unmakeMove(undo);
         if (givesCheck) checks.push(m);
       }
-      const scoredN = checks.length ? this.order.scoreMoves(pos, checks, ply, 0, 0) : 0;
-      const checkCount = Math.min(qc.maxChecks, scoredN);
+      const checkCount = Math.min(qc.maxChecks,
+        checks.length ? (this.order.prevMove = 0, this.order.scoreMoves(pos, checks, ply, 0, 0, {})) : 0);
       const checkBuf = this.order.buffers[ply];
       for (let i = 0; i < checkCount; i++) {
-        this.order.pick(ply, i, scoredN);
         const m = checkBuf[i];
         pos.pushRep();
-        const undo = pos.makeMove(m, this.undoBuf[ply]);
+        const undo = pos.makeMove(m);
         if (pos.isAttacked(pos.kingSq[us], them)) {
           pos.unmakeMove(undo);
           pos.popRep();
@@ -1315,6 +1249,15 @@ export class Searcher {
     if (legal === 0 && inCheck) return -MATE + ply;
     return best;
   }
+}
+
+/** SUBIT-CPU v0.2 §3.2: why an iterative computation stopped. Only TARGET_REACHED and STABILITY are claims about the result. */
+export function terminationKind(reason, stopped, hasResult) {
+  if (!hasResult) return 'INCOMPLETE';
+  if (reason === 'mate found') return 'TARGET_REACHED';
+  if (reason && reason.startsWith('low value of more computation')) return 'STABILITY';
+  if (stopped || reason === 'hard cap' || reason === 'next iteration cannot finish') return 'RESOURCE_LIMIT';
+  return 'ITERATION_LIMIT';
 }
 
 /** Search budget from complexity and uncertainty (doc 05 §17.1). */

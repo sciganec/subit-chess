@@ -13,6 +13,19 @@ Statuses:
 
 ---
 
+## [3.0.17] — 2026-11-26 (consolidation, candidate)
+
+Consolidation of two lines that diverged at f3029ca: the release line `main` (v3.0.16.0: field dynamics, perf micro-opts, default-off hooks) and the strength line (`v3.0.16` branch, listed below as [3.0.16 strength line]). Engine files `search.mjs`, `core.mjs`, `evaluate.mjs`, `index.mjs` come from the strength line (its measured gain, +49 Elo at 400 ms/move vs 8bdc3f4, applies to them); from `main` were taken `field.mjs` and the FD hooks (`eval.fdAttackWeight`, `fdPinDiscount`, `fdPressure`, `pos.attackWeight`; all default off). See the entry [3.0.17 merge notes] for what was not ported.
+
+---
+
+**[3.0.17 merge notes]** What came from where, and what was deliberately not ported:
+- Taken from the strength line: `search.mjs`, `core.mjs`, `evaluate.mjs`, `index.mjs` (all measured results of [3.0.16 strength line] hold for them), the conformance suite, Lazy SMP, adaptive budget.
+- Ported from `main` (all default off, no behaviour change): `field.mjs` and its tests, `pos.attackWeight`, `eval.fdAttackWeight` / `fdPinDiscount` / `fdPressure`, and the matching UCI options plus the tuning options for NMP, aspiration, futility, LMR, RFP, LMP, QSearch.MaxChecks.
+- Not ported: lazy incremental move selection (`pick`; tried on this line: identical nodes and moves on 5 positions, no speed change, ≈290k nps either way), incremental piece lists in make/unmake (the strength line already carries its own allocation-free attack/SEE code; the two changed the same code), `stagedMoveGen` (negative A/B on `main`), `Hash` resizing (the shared transposition table of Lazy SMP is fixed-size), and `main`'s boolean `historyMalus` / `lmrHistory` flags (the strength line has `historyMalus.enabled` and the LMR log options).
+- `main`'s A/B notes in [3.0.16.0] were measured with its own code and are kept as history; they do not apply to the strength line's defaults.
+- Second sync with `main` (up to 9ff36af): `main` kept adding default-off search experiments (`improving`, `razoring`, `historyPruning`, its own `iir`) and their A/B notes. Not ported: all are off by default and measured only on `main`'s code; the strength line already has `iir` (own implementation, measured no effect) and `rfp` (default on). Their CHANGELOG entries are kept as history. Port them only together with an A/B on this line.
+
 ## [3.0.16.0] - 2026-11-26
 
 Formalized release snapshot. Search/perf/measurement hardening, behavior-preserving micro-opts, and default-off search/pruning hooks with strict no-cycle A/B evidence. **No Elo gain has been established; no external strength claim.** CI spans 0 on all reported A/Bs; defaults unchanged unless explicitly noted.
@@ -94,6 +107,31 @@ Formalized release snapshot. Search/perf/measurement hardening, behavior-preserv
 - **FD fdAttackWeight A/B (neutral/inconclusive, no claim).** `4cd272f` same-code A/B via UCI `Eval.FDAttackWeight`, A=`1`, B=`0`, 48 games, d4, max-plies 220, seed 20261127, `--strict-no-cycle` (48 openings). Result: **12W/21D/15L, 0.469, Elo -21.74, CI [-98.51,+52.93]**. CI spans 0 — **inconclusive/neutral, no Elo gain claim**. Local evidence: `results/v3016-fdattackweight1-vs-default-d4-g48-seed20261127.json` (gitignored).
 - **FD fdPressure A/B (neutral/inconclusive, no claim).** `3f0b9f0` same-code A/B via UCI `Eval.FDPressure`, A=`fdPressure=2`, B=`0`, 48 games, d4, max-plies 220, seed 20261126, `--strict-no-cycle` (48 openings). Result: **13W/22D/13L, 0.500, Elo 0, CI [-74.21,+74.21]**. CI spans 0 — **inconclusive/neutral, no Elo gain claim**. Local evidence: `results/v3016-fdpressure2-vs-default-d4-g48-seed20261126.json` (gitignored).
 
+## [3.0.16 strength line] — 2026-11-26
+
+Strength and measurement increment on top of 3.0.15 (branch `v3.0.16`; the earlier work on `merge/v3.0.11` is included). Numbers are paired-opening matches with colour swap and equal time per move; the harness noise is ±~6 pp per 200 games, so single results below ±40 Elo are noise.
+
+**Measured total, v3.0.16 defaults against the parameters of 8bdc3f4 (futility depth 1, null move 3/2/3, aspiration 25, no outposts), `bench/match.mjs`, 400 ms/move, 200 games: 88W/52D/60L, 57.0%, +49 Elo [+8;+92], z≈2.3.** At 100 ms the individual changes gave +45…+60 each (not additive). Absolute strength by the Stockfish anchor is unchanged within its error (≈2050–2100 UCI_Elo, indicative only).
+
+Defaults changed: `search.futility.maxDepth` 2, `search.nullMove` minDepth 2 / reduction 3 / maxReduction 4, `search.aspiration.window` 15, `eval.outpost` 35. Everything else below is an option that stays off or a measurement/test addition.
+
+- **Passed-pawn terms (options, off):** `eval.passedProtected` 16 (pawn defended by a pawn): −10 [−53;+32], 200 games, no effect. `eval.passedKing` 6 (king distance to the square in front of a passer, endgame-weighted): +38 [−5;+83] and +19 [−24;+63], combined 54.1% ≈ +28 Elo (z≈1.6), not significant, so off.
+- **Knight outposts** (`eval.outpost`, first 20 cp, now 35 cp, scaled 0.7 on the 4th rank): knight on relative ranks 4–6, defended by an own pawn and not attackable by an enemy pawn. 400 paired games at 100 ms, two opening sets: +60 [+18;+103] and +38 [−3;+81], combined 57.0% ≈ +49 Elo (z≈3.1). Engine tests and the mirror-symmetry invariant pass. Not yet checked at 400 ms/move. Value 35 vs 20, 400 games: +30 [−12;+72] and +53 [+10;+96], combined 55.9% ≈ +41 Elo (z≈2.4), so 35 is the default. Further: knight outpost 50 vs 35: −10 [−52;+31] (200 games, no better). Bishop outposts (`eval.outpostBishop` 20, default 0): +31 [−9;+72] and +24 [−19;+69], combined 54.0% ≈ +28 Elo (z≈1.6), not significant, so off.
+- **Anchor vs Stockfish UCI_Elo with v3.0.16, 100 ms/move, 48 games:** SF@2000 7W/9D/8L (47.9%, ≈1986 [1867;2100]); SF@2200 8W/8D/8L (50.0%, ≈2200 [2079;2321]); pooled ≈ 2090 ± ~90. Same range as before the parameter changes (≈2050–2100): 48 games cannot resolve a +30…+50 Elo difference, and UCI_Elo at 100 ms is indicative only.
+- **Time-control check of the v3.0.16 parameter changes at 400 ms/move** (futility 2, null move, aspiration 15 vs the parameters of 8bdc3f4; `match.mjs`, 100 games): 39W/23D/38L, +3 [−57;+64]. At 100 ms the same comparison gave +51. With only 100 games the interval cannot exclude +50, but the gain is not demonstrated at 4× the time; it may shrink as depth grows (more aggressive pruning helps most when search is shallow). Follow-up at 400 ms, 200 more games with other openings: 87W/51D/62L, +44 [+2;+86]. Pooled 300 games at 400 ms: 126W/74D/100L, 54.3%, ≈ +30 Elo (z≈1.5). So the gain does not vanish at 4× the time, but it is smaller and less certain than at 100 ms (+51).
+- **Countermove ordering** (`search.countermove.enabled`, default off): the reply that refuted the previous move is tried right after the killers. 200 games: 81W/42D/77L, +7 [−36;+50], no effect, so it stays off.
+- SUBIT-CPU v0.2 §3.2: the search boundary now names its termination kind (`TARGET_REACHED` mate, `STABILITY`, `RESOURCE_LIMIT`, `ITERATION_LIMIT`, `INCOMPLETE`); a resource limit is never reported as convergence.
+- **qsearch without quiet checks: faster, but not adopted.** 400 games: +49 [+7;+93] and +33 [−10;+78], combined ≈ +41 Elo (z≈2.4). It breaks `tests/gate7.mjs` ("targeted extra budget keeps the mate move", g6f6 → h1h7), also with maxChecks 1 or 2, so the checks stay on (audit A1: a sacrifice that starts with a quiet check). The config `qchk0` stays in `bench/match.mjs`. Also measured, no effect: LMR from the 3rd move (−10), LMR from depth 2 (+5), 200 games each. Compromise tried and rejected: quiet checks only in PV nodes breaks three mate checks in `gate7` (mate no longer proven at base depth), so the mate finding in null-window nodes depends on them.
+- **Harness comparison (open question).** Per-move search is the same in both harnesses (`bench/harness_depth_check.mjs`, 12 openings, 100 ms: in-process depth 6.17 / 31k nodes, UCI depth 6.08 / 27k nodes). The games differ: in the UCI harness 90 of 200 games end by fivefold repetition, in `match.mjs` 9 of 100. Both engines see the repetition history in both (checked in `Engine.play`), so the cause is still unknown. `match.mjs` stays the primary measurement; UCI results are secondary.
+- **Total effect of the three v3.0.16 parameter changes vs the parameters of 8bdc3f4** (futility 2, null move 2/3/4, aspiration 15). In-process harness, 200 games: 95W/39D/66L, +51 [+8;+95]. UCI harness (with `ucinewgame`), 200 games, new openings: 55W/92D/53L, +3 [−35;+41] (halves +24 and −17). The two harnesses still do not agree well; the earlier UCI run of futility+null move alone gave +40. Treat the gain as real but unsettled: roughly +0…+50 Elo.
+- **Aspiration window 25 → 15.** 400 paired games, two opening sets: +49 [+9;+90] and +53 [+10;+96], combined ≈ +51 Elo (z≈3.4). Measured and not adopted: RFP maxDepth 5 (+3, n.s.), futility margin 160 (+38 then +17, not confirmed).
+- **Cumulative check of futility 2 + null move (v3.0.16 vs 8bdc3f4).** `bench/match.mjs` (in-process, 100 ms/move): 98W/51D/51L, +83 [+42;+127] with the adaptive budget and 103W/44D/53L, +89 [+46;+134] with fixed time. `bench/version_match.mjs` (UCI `go movetime 100`) first gave ≈0 (41W/114D/45L, 57% draws) because it never sent `ucinewgame`: both engines carried transposition table and history from game to game. With `ucinewgame` before every game it gives 61W/101D/38L, 55.75%, ≈ +40 Elo (+67 and +14 in the two halves). The harness is fixed; earlier UCI-harness results (including the 300-game match against upstream) were produced without that reset and apply equally to both sides but are less clean. Honest range for this change: +40 (UCI) … +86 (in-process).
+- **More aggressive null move** (`search.nullMove` minDepth 3→2, reduction 2→3, maxReduction 3→4; on top of futility depth 2). 400 paired games, two opening sets: +47 [+5;+91] and +61 [+19;+106], combined ≈ +54 Elo (z≈3.5). Engine tests pass.
+- **Futility pruning now reaches depth 2** (`search.futility.maxDepth` 1 → 2). 400 paired games at 100 ms/move, two independent opening sets: +40 [−3;+84] and +49 [+7;+92], combined 56.4% ≈ +45 Elo (z≈3.2). Engine tests, including the forced-mate checks, pass. Measured and rejected in the same session: LMR maxReduction 2 (−35 Elo, n.s., 200 games).
+- **SEE least-valuable-attacker order (finding).** The conformance suite (`tests/engine.conformance.mjs`, 832k checks) showed that `smallestAttacker` returned a queen on a diagonal before a rook on a file (pre-existing, also upstream). The exact order is available as `search.see.exactLva` (default **off**): in 400 paired games at 100 ms/move the exact order scored 46.5% (≈ −24 Elo, not significant, 2 runs of 200: −40 and −9). The legacy order stays the default until a larger match shows otherwise; the conformance reference uses the exact order.
+- SUBIT-CPU §2: normative Belnap encoding N=0,F=1,T=2,B=3 and FOUR_WORD plane operations in `belnap.mjs` (`tests/engine.cpuspec.mjs`, 12,341 checks).
+
+
 ## [3.0.15] — 2026-11-24
 
 Formalized release snapshot. Measurement/verification hardening and behavior-preserving perf work. No Elo gain has been established; no external strength claim.
@@ -154,6 +192,101 @@ Measured post-v3.0.11 search-safety/plumbing increment. No external Elo-gain cla
 - **Correctness/tests.** Audit311 fixes and `tests/engine.audit311.mjs` (20 checks) added to `npm test`. FEN validation hardened (adjacent digit spans, per-side piece count). `contextAdjust` moved from no-op to minimal bounded deterministic scaling (AUD-311-16). Gauntlet/smoke/tactics regressions green.
 - **External anchor.** SF19 N=20 @200ms (new default): 2000 `8W/4D/8L mean 0.50 SE0.10`; 2200 `5W/6D/9L mean 0.40 SE0.091`; 2400 `3W/9D/8L mean 0.375 SE0.078`. Mixed/noisy, within noise of prior N=10 baseline; not an Elo-gain/regression claim. `UCI_Elo` is Stockfish limited-strength mode, not human Elo.
 - **Notes.** No scalar blend `U(P)` (ADR 0019). No structural/context move ordering (ADR 0023 / Gate 3 kill). `TT_MAX_AGE = 0` preserved (ADR 0022). Theory docs 81-99+ remain research-only/non-binding.
+
+## [Unreleased] — merged onto 3.0.11 (measured at 100-300 ms/move; 60 games each, harness noise ~ ±6.5 pp)
+
+- `search.seePrune` (off): SEE pruning of losing captures, depth<=4, 100cp/ply, 96 games: base 56.2% (new ≈ −44 Elo, z=1.4, not significant). RFP margin 80 / 180: base 46.4% / 43.2% (not significant); margin stays 120.
+- **Speed: allocation-free SEE.** Profiling showed `see()` + `smallestAttacker()` took 54% of search time (a Uint8Array(128) and an object per call). Rewritten with module scratch buffers and packed returns. Identical results on 445,239 random-game moves (0 mismatches); identical node counts and scores at depth 7 on three positions; 6443 ms -> 2852 ms (2.26x). Search depth at 200 ms: ~5 -> ~5.8.
+- v3.0.12 eval hooks, 96 games each, A=base: `kingAttack: 8` base 63.0% (z=2.9; the candidate costs ≈ −93 Elo, keep 0); `kingOpenFile: 0` (off) base 51.0% (≈ no effect, z=0.2; the default 12 is neither helping nor hurting measurably).
+- Controlled evolution (`bench/evolve_run.mjs --steps 30 --screen 24 --confirm 60 --depth 3 --seed 5`, 973 s): 30 hypotheses, 1 accepted (`eval.mobility.Q` 1 -> 0.891, confirmation +0.13 ± 0.086, z=1.5). A 11% change to one weight is below what 60 games can resolve; not applied. At this sample size the loop cannot find real gains.
+- Re-validated on the v3.0.15 candidate: adaptive time budget + RFP vs the same search without them (`base` vs `v311`), 100 ms/move, paired openings, two seed sets of 96 games: 114W/41D/37L = 70.1%, ≈ +148 Elo [+103; +197], z=7.0 (the earlier v3.0.12 figure was +73 on 192 games; both exclude zero).
+- External anchor on the v3.0.15 + speed build (`bench/anchor.py`, 200 ms/move, 48 games per level, seed 4242): vs SF@2000 20W/10D/18L = 52.1% (≈ 2014 [1925; 2106]); vs SF@2200 12W/11D/25L = 36.5% (≈ 2103 [2005; 2189]). Pooled with earlier runs the estimate stays at about 2050-2100 UCI_Elo (indicative; UCI_Elo is Stockfish's limited-strength mode, not human Elo). The 2.4x speed-up is not visible in games at this sample size.
+- `search.budgetOpts.omegaGate` (off): Ω proxy (CYCLIC/CHAOTIC iteration-score trace = decision not settled) in the stop rule, 96 games vs base: base 56.8% (gate ≈ −47 Elo, z=1.5, not significant). Stays off; the existing instability test (move change, drift, runner-up spread) already captures what Ω adds.
+- Budget reserve sweep (96 games each, A=base; `search.budgetOpts` now also feeds `allocateTime`): larger reserve (hardCap 4.5, hardFrac 3, maxBank 10) base 54.7% (z=1.1); smaller (hardCap 2, hardFrac 1.5) base 55.2% (z=1.2). Both directions are slightly worse and not significant: the shipped values (3.0 / 2.0 / 6) stay.
+- Texel tuning on the engine's own self-play (`bench/texel/gen.mjs`, `tune.mjs`; 760 parameters: PST deltas, material, eval weights; labels = game results, no external data). 50k positions: held-out loss 0.1201 -> 0.1188, match vs base 96 games: tuned ≈ +22 Elo [-43; +88] (n.s.). 109k positions, 10 sweeps: held-out loss 0.1106 -> 0.1090 (-1.4%), match 96 games: tuned ≈ +4 Elo [-61; +68] (n.s.). Weights stored in `bench/texel/results/tuned{1,2}.json`; not applied. Conclusion: the hand-set weights are already near what game outcomes at this data size can improve.
+- `eval.kingZone` (off): attack-unit king pressure (N/B 2, R 3, Q 5 per attacker + 1 per extra zone square; penalty w*units²/2 with two attackers or the queen; middlegame-weighted), symmetric under colour mirror. 96 games each, A=base: weight 1 base 54.2% (z=0.9), weight 0.5 base 57.8% (z=1.8). Like `kingAttack`, any extra king pressure term lowers strength in this engine; stays off.
+- **Whole branch vs upstream v3.0.15 candidate (origin/main), 300 games**, `bench/version_match.mjs` with new `MOVETIME_MS=100` mode (UCI `go movetime`), paired openings (seed 77, two offsets of 150 games), no external engine: 119W/154D/27L = 65.3%, ≈ +110 Elo [+83; +138], z=8.5. The branch's differences from upstream are the adaptive time budget, RFP, and the allocation-free SEE / move-generation / isAttacked speed-ups; upstream's own perf commits are of the same kind.
+- **Lazy SMP (opt-in, `Threads` UCI option / `createPool(engine, helpers)`, Node only, default 1 = unchanged).** Helper threads search the same root into a shared transposition table (SharedArrayBuffer; key-last writes and key-twice reads so a torn entry is dropped; shared generation counter for ADR 0022), skip iterations Stockfish-style so they reach depths the main thread has not; the main search alone decides the move (UCA-INV-005). `tests/engine.smp.mjs` (18 checks). Measured on a 2-core machine, 2 threads vs 1, 100 ms/move, paired openings, 100 games: 30W/54D/16L = 57.0%, ≈ +49 Elo [+3; +96]. With more cores the gain should be larger; not measured here.
+- Merged onto v3.0.12. Adaptive time budget + RFP vs v3.0.12 search without them (`base` vs `v311` config), 100 ms/move, paired openings, two seed sets of 96 games: 101W/30D/61L = 60.4%, ≈ +73 Elo [+28; +121], z=3.23. INV-009 test now uses exact search (LMR off): LMR reduces different ties in mirrored positions.
+
+- Experiments (all off by default, 96 games each at 100 ms, paired openings, A=base): eval0 (no fast-tier terms) base 63.5% (+97 Elo for the terms); connected pawns + rook on 7th: base 62.0% (new terms ≈ −85 Elo); rook on 7th alone: base 45.3% (new ≈ +33 Elo, z=1.0, not significant). Options `eval.connected`, `eval.rook7`.
+
+Note: this block was developed on a branch cut from 3.0.8 and merged onto 3.0.11. Three items were fixed independently on main and the main versions are kept: the futility sign, no stand-pat in check (AUD-01), and the self-play seed/opening (AUD-309-04, `makeStartFEN`/`playSeries`). The entries below that mention them describe the branch history.
+
+Measured on the merged tree (v3.0.11 + this block), 100 ms/move, two workers x 28 games on `openings.epd` (the same 28
+openings, so not independent samples), engine `base` against `v311` (no adaptive budget, no reverse futility, everything
+else equal): 32W 10D 14L = 66.1% (about +115 Elo, rough 95% interval +55 to +170); time per move equal (A/B 1.02).
+
+### Added
+- **Controlled autonomous evolution (`src/engine/evolve.mjs`; SCMF §15, INV-015..019).** Replaces `learn.hillClimb` for any
+  change meant to be kept: hypothesis -> screening -> regression suite -> confirmation on a DISJOINT seed set (z >= 1.64) ->
+  acceptance, with bounded per-step and cumulative drift, a reproducible journal with provenance, a final audit against the
+  baseline and automatic rollback. `hillClimb` accepted a change on the very comparison that selected it (winner's curse) and is
+  marked as such. `tests/engine.evolve.mjs` (14 checks, match function injected).
+- **`search.qCheckNoStandPat` (off).** Quiescence without stand-pat in check, as documents 12, 16, 27, 31, 38 require. 60 games at 100 ms with paired openings: 53.3% ± 12.7 for the base, no distinguishable difference; left off. Bench config `qcheck`.
+- **Belnap four-valued evidence and Ω trace classifier (`src/engine/belnap.mjs`; SUBIT-∞ §1.4/§7, SPEC §7–8).** Restores two constructs that vanished with the v3.0.0 rewrite. `explain()` now reports, for the chosen move against the best alternative, the Belnap value of four independent sources (material, static evaluation, depth-2 search, reply search) combined with ⊕ — a conflict is `B` and is listed under `unresolved`, not resolved by force — and the Ω class of the score trace over depths 1..d. Read-only: the move is unchanged. `tests/engine.belnap.mjs`.
+- **Decision structure and counterfactual explanation (`src/engine/explain.mjs`, `Engine.explain()`; SCMF §10, §12-§14).**
+  D(P) = (a*, V, C, Evidence, Alternatives, Confidence): each alternative is searched, with its best reply, CF(a*,b), ΔΩ and a
+  stated reason for rejection; every claim is typed (immediate, structural, tactical, strategic, assumption, counterfactual) and
+  carries an evidence status (EXACT, EXHAUSTIVELY_VERIFIED, HEURISTIC, ESTIMATED, UNKNOWN); Conf is flagged uncalibrated.
+  It never changes the move (SCMF-INV-011). `tests/engine.explain.mjs`. Mapping table: docs/spec/SCMF_MAPPING.md.
+- **Reverse futility pruning (search.mjs, `search.rfp`, default ON).** Non-PV, not in check, depth <= 3, |beta| not a mate
+  score: if static eval - 120*depth >= beta, return that bound. Equal time (100 ms/move) vs the build without it, three
+  independent batches 61-20-39 of 120 games: +64 Elo [+8,+125], z=2.24; batches individually +89, +53 (same sign).
+  Note: several features were tried this release; this is the one that passed, so its p-value is not corrected for that.
+- **SEE-lite capture pruning in quiescence (`search.qSee`, default OFF).** Skip a capture whose attacker is worth more than
+  the victim + 50 cp when the target square is defended. 40 games vs base: -89 Elo [-209,+13]; rejected.
+- **Evaluation cache for the fast tier (evaluate.mjs, `evalCacheBits`, default 17).** Direct-mapped, verified with the full
+  key; evaluateFast is a pure function of the position, so a hit is exact (test: identical move/score/node count with the
+  cache on and off, hit rate ~33%). Benchmark d7: 340k -> 364k nodes/s (+7%). Call `clearEvalCache()` after mutating params.
+- **Adaptive search budget, SEARCH-15 (`src/engine/budget.mjs`; docs/theory 40 §11-13, 05 §17.1).** After each
+  completed iteration the engine checks root-move change, bound type, score drift and the gap to the
+  runner-up; a stable, clear decision stops early and banks the time, an unstable one may spend up to a
+  hard cap (<=3x nominal). Mean time per move stays nominal. Default ON for clock/`timeMs` search; UCI
+  `movetime` and `fixedTime` stay exact. Measured vs base at equal 100 ms/move, 120 games: 63-20-37,
+  +76 Elo [+20,+137], z=2.67, time ratio 1.02. Tests: `tests/engine.budget.mjs` (29 checks).
+
+- **Structural extension, SEARCH-14 (opt-in, `search.structExtension`, default OFF).** A pawn reaching the 7th
+  rank extends one ply (doc 05 §16.3, which requires test confirmation first). Measured vs base at 100 ms/move,
+  60 games: 21-4-35, -83 Elo [-178,+2], z=-1.91: no gain, probable loss, so it stays disabled.
+
+### Fixed
+- **Self-play ignored its seed (learn.mjs).** `playGame` discarded `opts.seed`, so every game started from the initial position
+  and was fully deterministic: a "match of N games" was two distinct games (one per colour) repeated, the standard errors in
+  `compare()`/`hillClimb()` were meaningless and "different seeds" changed nothing. The seed now selects a random 8-ply opening
+  (balanced to +-150 cp); colour-swapped pairs share an opening. Regression tests in `tests/engine.learn.mjs`. Anything
+  accepted by v3.0.x `hillClimb` rests on invalid statistics.
+- **Zobrist key had ~32 effective bits (core.mjs).** `lo` and `hi` were consecutive outputs of one xorshift32; xorshift is
+  linear over GF(2), so `hi = L(lo)` for every table entry and (keys are XOR sums) for every position. The 53-bit key
+  therefore behaved as a 32-bit key (GF(2) rank 32 instead of 64): distinct positions with equal keys appeared
+  at ~4 per 239k positions in a depth-7 search, and the transposition table verifies hits with this key. Two independent
+  non-linear streams (mulberry32) now feed `lo` and `hi`; regression test `tests/core.zobrist.mjs`. Head-to-head
+  vs v3.0.8-fix build at 100 ms, 60 games: 20-18-22, -12 Elo [-88,+63] (no detectable strength change; this is a
+  correctness fix; effect on rare TT false hits is below what 60 games can resolve).
+- **Futility pruning sign (search.mjs).** The frontier test ran after `makeMove` but compared the
+  opponent-relative static score with `alpha`, pruning the best quiet moves (since v3.0.6 §4.4).
+  `nofut` beat `base` 51-3-6 (+338 Elo); with the fix `base` vs Stockfish@1500 rose 60.0% -> 77.5%
+  (paired +17.5 pp, z=2.36). Predicate extracted as `Searcher.futile()`; regression test eval §13.
+- **Hidden depth-8 cap under a clock/node limit (index.mjs).** `search({timeMs})` defaulted to depth 8.
+  Uncapped vs capped at 300 ms: 41-11-8, +215 Elo [+134,+325].
+
+### Changed
+- `planOrdering` option (default **false**): plans are still generated for display, but no longer order
+  moves. Same move at depth 6 with 1.3-6.4x fewer nodes; in play +29 Elo [-51,+113] (not significant).
+- Removed the dead `contextBonus` closure (always 0).
+
+### Added
+- `bench/uci.mjs` (UCI front-end, `Config` option) and `bench/anchor.py` (Stockfish UCI_Elo ladder).
+- `match.mjs`: `nofut`, `planord` configs; `name@N` now also pins a depth cap next to `--time`.
+
+### Notes
+- `noctx` is bit-identical to `base` in search (same moves and nodes): the context layer has no effect on play.
+  A 60-game `base` vs `noctx` match gave 38.3% and `base` vs `base` gave 47.5%: that spread is pure noise.
+- Gate 3 after the futility fix (base score): vs plain 38.3%, noctx 38.3%, noplans 42.5%, nostruct 48.3%.
+  Not evidence that the layers help; the plan-ordering node cost is the only deterministic effect found.
+- Stockfish UCI_Elo is calibrated at ~60 s/game, so absolute Elo at 100 ms is indicative only.
+
+## [Unreleased]
 
 ## [3.0.11] — 2026-11-21
 

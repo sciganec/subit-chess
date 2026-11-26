@@ -1,6 +1,6 @@
 {
   "name": "subit-chess",
-  "version": "3.0.16",
+  "version": "3.0.17",
   "description": "Browser chess engine v3: modular ES-module core, SVF positional vector, structural plans, budgeted alpha-beta search; ships as a single offline HTML file",
   "keywords": [
     "chess",
@@ -25,8 +25,8 @@
   "bugs": {
     "url": "https://github.com/sciganec/subit-chess/issues"
   },
-  "main": "src/subit_chess_v3.0.16.html",
-  "browser": "src/subit_chess_v3.0.16.html",
+  "main": "src/subit_chess_v3.0.17.html",
+  "browser": "src/subit_chess_v3.0.17.html",
   "files": [
     "src/",
     "build/",
@@ -43,8 +43,8 @@
   },
   "scripts": {
     "build": "node build/bundle.mjs",
-    "test": "node tests/core.perft.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.topology.mjs && node tests/engine.differential.mjs && node tests/engine.field.mjs && node tests/engine.audit.mjs && node tests/engine.audit2.mjs && node tests/engine.audit309.mjs && node tests/engine.audit311.mjs && node tests/engine.tactics.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs && node tests/gate7.mjs && node tests/engine.worker.mjs && node tests/app.dom.mjs",
-    "test:engine": "node tests/core.perft.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.topology.mjs && node tests/engine.differential.mjs && node tests/engine.field.mjs && node tests/engine.audit.mjs && node tests/engine.audit2.mjs && node tests/engine.audit309.mjs && node tests/engine.audit311.mjs && node tests/engine.tactics.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs && node tests/gate7.mjs",
+    "test": "node tests/core.perft.mjs && node tests/core.zobrist.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.topology.mjs && node tests/engine.differential.mjs && node tests/engine.audit.mjs && node tests/engine.audit2.mjs && node tests/engine.audit309.mjs && node tests/engine.audit311.mjs && node tests/engine.tactics.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs && node tests/gate7.mjs && node tests/engine.budget.mjs && node tests/scmf.invariants.mjs && node tests/engine.explain.mjs && node tests/engine.belnap.mjs && node tests/engine.smp.mjs && node tests/engine.cpuspec.mjs && node tests/engine.conformance.mjs && node tests/engine.evolve.mjs && node tests/scmf.metric.mjs && node tests/scmf.redundancy.mjs && node tests/engine.field.mjs && node tests/engine.worker.mjs && node tests/app.dom.mjs",
+    "test:engine": "node tests/core.perft.mjs && node tests/core.zobrist.mjs && node tests/engine.smoke.mjs && node tests/engine.plans.mjs && node tests/engine.eval.mjs && node tests/engine.verify.mjs && node tests/engine.topology.mjs && node tests/engine.differential.mjs && node tests/engine.audit.mjs && node tests/engine.audit2.mjs && node tests/engine.audit309.mjs && node tests/engine.audit311.mjs && node tests/engine.tactics.mjs && node tests/engine.driver.mjs && node tests/engine.learn.mjs && node tests/engine.uncertainty.mjs && node tests/gate7.mjs && node tests/engine.budget.mjs && node tests/scmf.invariants.mjs && node tests/engine.explain.mjs && node tests/engine.belnap.mjs && node tests/engine.smp.mjs && node tests/engine.cpuspec.mjs && node tests/engine.conformance.mjs && node tests/engine.evolve.mjs && node tests/scmf.metric.mjs && node tests/scmf.redundancy.mjs && node tests/engine.field.mjs",
     "test:app": "node tests/engine.worker.mjs && node tests/app.dom.mjs",
     "test:worker": "node tests/engine.worker.mjs",
     "test:perft": "node tests/core.perft.mjs",

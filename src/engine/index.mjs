@@ -22,11 +22,13 @@ import { computeContext } from './context.mjs';
 import { Evaluation, DEFAULT_PARAMS, cloneParams, paramsFromJSON, SVF_COMPONENTS } from './evaluate.mjs';
 import { Searcher, TranspositionTable, MoveOrder, MATE, searchBudget } from './search.mjs';
 import { generatePlans, describePlans, pareto, PLAN } from './plans.mjs';
+import { allocateTime, updateBank } from './budget.mjs';
+import { explainDecision } from './explain.mjs';
 import { MetaController, complexityOf, uncertaintyOf, adaptiveDepth, riskOf, RISK_NAME } from './meta.mjs';
 import { computeProfile, buildCertificate, U_SYM, U_TYPES } from './uncertainty.mjs';
 import { buildFieldDynamics, verifyFieldInvariants, FD_INVARIANTS } from './field.mjs';
 
-export const VERSION = '3.0.16';
+export const VERSION = '3.0.17';
 
 /* ------------------------------------------------------------------ *
  * Memory — a small, bounded game/analysis history (doc 05 §21)
@@ -77,6 +79,9 @@ export class Engine {
     this.opts = Object.assign({
       ttBits: 18,
       usePlans: true,
+      rootStruct: null,       // v3.0.9 experiment: { margin, lambda, maxCand } structural re-selection among near-equal root moves
+      adaptiveTime: true,   // v3.0.9 SEARCH-15: stable decisions stop early and bank time (measured +76 Elo, equal mean time)
+      planOrdering: false,   // v3.0.9: plans are generated for display; using them to order moves cost 1.3-6x nodes
       useMeta: true,
       evalMode: params.search ? params.search.evalMode : 'fast'
     }, opts);
@@ -95,6 +100,7 @@ export class Engine {
     this.structure = null;
     this.context = null;
     this.plans = [];
+    this.timeBank = 0;     // ms saved by earlier moves (SEARCH-15), reset with a new Engine
     this.lastAnalysis = null;
     this.lastSearch = null;   // { result, depth, risk } — the last completed search
     this.history = [];      // [{ fen, move, san, score, depth, nodes }]
@@ -120,8 +126,16 @@ export class Engine {
 
   get fen() { return this.pos.fen(); }
 
+  /** Lazy SMP: use the pool's shared table and run its helpers during search (see smp.mjs). */
+  attachPool(pool) {
+    this.pool = pool;
+    this.tt = pool.tt;
+    this.searcher.tt = this.tt;
+  }
+
   reset() {
-    this.tt = new TranspositionTable(this.opts.ttBits);
+    if (this.pool) { this.tt = this.pool.tt; this.tt.clear(); }
+    else this.tt = new TranspositionTable(this.opts.ttBits);
     this.order = new MoveOrder(this.params);
     this.searcher = new Searcher(this.evaluation, this.params, { tt: this.tt, order: this.order });
     this.memory = new Memory();
@@ -135,6 +149,37 @@ export class Engine {
   legalMoves() { return this.pos.legalMoves(); }
 
   /* ---------------- analysis ---------------- */
+
+  /**
+   * Root re-selection (doc 01 SVF, doc 05 §16; experiment). Among root moves whose search value is within
+   * `margin` cp of the best, prefer the one whose resulting position has the higher structural value.
+   * Only near-equal moves compete, so a tactical difference is never overridden.
+   */
+  rootStructReselect(result) {
+    const { margin = 25, lambda = 0.25, maxCand = 4 } = this.opts.rootStruct;
+    const pos = this.pos, d = Math.max(1, result.depth - 2);
+    const scored = [];
+    for (const m of pos.legalMoves()) {
+      pos.pushRep();
+      const u = pos.makeMove(m);
+      const r = this.searcher.search(pos, { depth: d, timeMs: 0, nodes: 0 });
+      const v = -r.score;
+      let E = 0;
+      if (m !== result.move && v >= result.score - margin - 20 || m === result.move) E = -this.evaluation.structural(pos).E;
+      pos.unmakeMove(u); pos.popRep();
+      scored.push({ m, v, E });
+    }
+    const bestV = Math.max(...scored.map((x) => x.v));
+    const cands = scored.filter((x) => x.v >= bestV - margin).sort((a, b) => b.v - a.v).slice(0, maxCand);
+    if (!cands.some((x) => x.m === result.move)) cands.push(scored.find((x) => x.m === result.move));
+    let pick = cands[0], pv = -Infinity;
+    for (const c of cands) { const val = c.v + lambda * c.E; if (val > pv) { pv = val; pick = c; } }
+    this.lastRootStruct = { changed: pick.m !== result.move, cands: cands.length };
+    if (pick.m !== result.move) { result.move = pick.m; result.pv = [pick.m]; }
+  }
+
+  /** D(P) = (a*, V, C, Evidence, Alternatives, Confidence) with typed claims and counterfactuals (SCMF §10, §14). */
+  explain(opts = {}) { return explainDecision(this, opts); }
 
   /** Field Dynamics model: geometric attacks, net control potential, flux, grad/div/curl (FD-01..FD-14). */
   fieldDynamics() {
@@ -225,10 +270,13 @@ export class Engine {
       });
     }
 
-    const depth = opts.depth !== undefined ? opts.depth
-      : plan ? plan.depth : 8;
     const timeMs = opts.timeMs !== undefined ? opts.timeMs
       : plan ? plan.timeMs : 0;
+    // v3.0.9: a clock- or node-limited search is bounded by that limit, not by a
+    // hidden depth-8 default (a 1 s move used to stop at depth 8 and idle)
+    const depth = opts.depth !== undefined ? opts.depth
+      : plan ? plan.depth
+      : (opts.timeMs !== undefined || opts.nodes) ? 64 : 8;
 
     // only the meta-controller picks a tier; an explicit user choice (setEvalMode,
     // or the UI writing evaluation.opts.mode) must survive the next search
@@ -242,22 +290,38 @@ export class Engine {
     }
 
     // Gate 3 kill: structural ordering was deleted after the 200-game A/B
-    // (47.5% ±6.2, CI spans 0.5 — no positive CI). Plans remain a descriptive
-    // layer for the UI/analysis and uncertainty; they no longer touch move
-    // ordering. The old contextBonus was already a no-op and is gone too.
+    // (47.5% ±6.2, CI spans 0.5, no positive CI). Plans remain descriptive.
 
-    this.searcher.setLimits({ depth, timeMs, nodes: opts.nodes || 0 });
+    // SEARCH-15 (doc 40 §11-13): under a clock the budget is an allowance, not a
+    // fixed slice. A stable, clear decision stops early and banks the time; an
+    // unstable one may use up to a hard cap. `fixedTime` (UCI movetime) opts out.
+    let budget = null;
+    let hardMs = timeMs;
+    if (this.opts.adaptiveTime && timeMs > 0 && !opts.fixedTime) {
+      const a = allocateTime({ nominalMs: timeMs, bankMs: this.timeBank }, this.params.search.budgetOpts || undefined);
+      budget = { softMs: a.softMs, hardMs: a.hardMs };
+      hardMs = a.hardMs;
+    }
+    this.searcher.setLimits({ depth, timeMs: hardMs, nodes: opts.nodes || 0 });
     // Memory is not write-only: a remembered move and score for this position
     // seed the root ordering and the aspiration window (audit v3.0.6 P3.1)
     const remembered = this.memory.lookup(this.pos);
     // the searcher re-reads its limits from the options it is given, so the node
     // budget has to travel with them -- setLimits() alone is silently reset
-    const result = this.searcher.search(this.pos, {
-      depth, timeMs, nodes: opts.nodes || 0,
-      prevBest: remembered ? remembered.move : 0,
-      prevScore: remembered ? remembered.score : 0
-    });
+    if (this.pool) this.pool.start(this.pos.fen(), hardMs, depth);
+    let result;
+    try {
+      result = this.searcher.search(this.pos, {
+        depth, timeMs: hardMs, nodes: opts.nodes || 0, budget,
+        prevBest: remembered ? remembered.move : 0,
+        prevScore: remembered ? remembered.score : 0
+      });
+    } finally {
+      if (this.pool) this.pool.stop();
+    }
 
+    if (budget) this.timeBank = updateBank(this.timeBank, timeMs, result.timeMs);
+    if (this.opts.rootStruct && result.move && result.completed && result.depth >= 3) this.rootStructReselect(result);
     const risk = riskOf(result, result.depth);
     this.memory.remember(this.pos, {
       depth: result.depth, score: result.score, move: result.move
@@ -298,7 +362,7 @@ export class Engine {
       pv: result.pv.map(moveToUci),
       pvMoves: result.pv,
       pvSan,
-      completed: result.completed,
+      completed: result.completed, boundary: result.boundary,
       // bound flag of the iteration behind score/depth (SEARCH-INV-002);
       // 0 = exact, 1 = lower bound, 2 = upper bound
       flag: result.flag,
@@ -438,43 +502,27 @@ async function runUci() {
     if (t === 'uci') {
       send(`id name SUBIT-CHESS ${VERSION}`);
       send('id author SUBIT');
-      send('option name Hash type spin default 6 min 1 max 1024');
+      send('option name Hash type spin default 64 min 1 max 1024');
       send('option name TT.MaxAge type spin default 0 min 0 max 10');
+      send('option name Threads type spin default 1 min 1 max 64');
       send('option name Eval.FDPressure type spin default 0 min 0 max 20');
       send('option name Eval.FDAttackWeight type spin default 0 min 0 max 20');
       send('option name Eval.FDPinDiscount type spin default 0 min 0 max 20');
-      send('option name NMP.Reduction type spin default 2 min 1 max 6');
-      send('option name NMP.MaxReduction type spin default 3 min 1 max 6');
-      send('option name NMP.MinDepth type spin default 3 min 1 max 8');
+      send('option name NMP.Reduction type spin default 3 min 1 max 6');
+      send('option name NMP.MaxReduction type spin default 4 min 1 max 6');
+      send('option name NMP.MinDepth type spin default 2 min 1 max 8');
       send('option name QSearch.MaxChecks type spin default 4 min 0 max 16');
-      send('option name QSearch.DeltaMargin type spin default 200 min 0 max 500');
-      send('option name Aspiration.Window type spin default 25 min 10 max 200');
+      send('option name Aspiration.Window type spin default 15 min 10 max 200');
       send('option name Futility.Margin type spin default 120 min 0 max 400');
-      send('option name Futility.MaxDepth type spin default 1 min 1 max 3');
+      send('option name Futility.MaxDepth type spin default 2 min 1 max 3');
       send('option name LMR.Reduction type spin default 1 min 1 max 4');
       send('option name LMR.MaxReduction type spin default 1 min 1 max 4');
-      send('option name RFP.Enabled type check default false');
-      send('option name RFP.Margin type spin default 80 min 20 max 200');
+      send('option name RFP.Enabled type check default true');
+      send('option name RFP.Margin type spin default 120 min 20 max 200');
       send('option name RFP.MaxDepth type spin default 3 min 1 max 6');
       send('option name LMP.Enabled type check default false');
       send('option name LMP.MaxDepth type spin default 3 min 1 max 6');
-      send('option name LMP.Base type spin default 4 min 1 max 20');
-      send('option name LMP.Multiplier type spin default 2 min 1 max 10');
-      send('option name Search.HistoryMalus type check default false');
-      send('option name Search.LMRHistory type check default false');
-      send('option name Search.Improving type check default false');
-      send('option name Search.Razoring type check default false');
-      send('option name Search.RazoringMaxDepth type spin default 2 min 1 max 4');
-      send('option name Search.RazoringMargin type spin default 300 min 0 max 1200');
-      send('option name Search.IIR type check default false');
-      send('option name Search.IIRMinDepth type spin default 4 min 2 max 8');
-      send('option name Search.IIRReduction type spin default 1 min 1 max 3');
-      send('option name Search.HistoryPruning type check default false');
-      send('option name Search.HistoryPruningMaxDepth type spin default 3 min 1 max 6');
-      send('option name Search.HistoryPruningThreshold type spin default -2048 min -16384 max 0');
-      send('option name SEE.QSearchPruneMargin type spin default 0 min 0 max 500');
-      send('option name SEE.QSearchPruneMinDepth type spin default 0 min 0 max 4');
-      send('option name Search.StagedMoveGen type check default false');
+      send('option name LMP.Base type spin default 3 min 1 max 20');
       send('uciok');
       return;
     }
@@ -490,15 +538,17 @@ async function runUci() {
         const on = value === 'true' || value === '1' || value === 'on';
         const off = value === 'false' || value === '0' || value === 'off';
         if (name === 'lmr' || name === 'lmr.enabled') { if (on||off) engine.params.search.lmr.enabled = on; }
-        else if (name === 'lmr.reduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmr.reduction = Math.max(1, Math.min(4, n|0)); }
-        else if (name === 'lmr.maxreduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmr.maxReduction = Math.max(1, Math.min(4, n|0)); }
+        else if (name === 'lmr.maxreduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmr.maxReduction = n; }
         else if (name === 'lmr.extrareduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmr.extraReduction = n; }
         else if (name === 'nullmove' || name === 'nullmove.enabled' || name === 'nmp') { if (on||off) engine.params.search.nullMove.enabled = on; }
+        else if (name === 'see' || name === 'see.enabled') { if (on||off) engine.params.search.see.enabled = on; }
+        else if (name === 'see.qsearchprune') { if (on||off) engine.params.search.see.qsearchPrune = on; }
+        else if (name === 'tt.maxage') { const n = Number(value); if (Number.isFinite(n)) { const age = Math.max(0, Math.min(10, n|0)); engine.params.search.ttMaxAge = age; engine.searcher.tt.maxAge = age; } }
+        else if (name === 'lmr.reduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmr.reduction = Math.max(1, Math.min(4, n|0)); }
         else if (name === 'nmp.reduction' || name === 'nullmove.reduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.nullMove.reduction = Math.max(1, Math.min(6, n|0)); }
         else if (name === 'nmp.maxreduction' || name === 'nullmove.maxreduction') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.nullMove.maxReduction = Math.max(1, Math.min(6, n|0)); }
         else if (name === 'nmp.mindepth' || name === 'nullmove.mindepth') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.nullMove.minDepth = Math.max(1, Math.min(8, n|0)); }
         else if (name === 'qsearch.maxchecks' || name === 'search.qsearch.maxchecks') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.qsearch.maxChecks = Math.max(0, Math.min(16, n|0)); }
-        else if (name === 'qsearch.deltamargin' || name === 'search.qsearch.deltamargin') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.qsearch.deltaMargin = Math.max(0, Math.min(500, n|0)); }
         else if (name === 'aspiration.window' || name === 'search.aspiration.window') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.aspiration.window = Math.max(10, Math.min(200, n|0)); }
         else if (name === 'futility.margin' || name === 'search.futility.margin') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.futility.margin = Math.max(0, Math.min(400, n|0)); }
         else if (name === 'futility.maxdepth' || name === 'search.futility.maxdepth') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.futility.maxDepth = Math.max(1, Math.min(3, n|0)); }
@@ -508,29 +558,15 @@ async function runUci() {
         else if (name === 'lmp' || name === 'lmp.enabled') { if (on||off) engine.params.search.lmp.enabled = on; }
         else if (name === 'lmp.maxdepth') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmp.maxDepth = Math.max(1, Math.min(6, n|0)); }
         else if (name === 'lmp.base') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmp.base = Math.max(1, Math.min(20, n|0)); }
-        else if (name === 'lmp.multiplier') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmp.multiplier = Math.max(1, Math.min(10, n|0)); }
-        else if (name === 'search.historymalus' || name === 'historymalus') { if (on||off) engine.params.search.historyMalus = on; }
-        else if (name === 'search.lmrhistory' || name === 'lmrhistory') { if (on||off) engine.params.search.lmrHistory = on; }
-        else if (name === 'search.improving' || name === 'improving') { if (on||off) engine.params.search.improving = on; }
-        else if (name === 'search.razoring' || name === 'razoring.enabled' || name === 'razoring') { if (on||off) engine.params.search.razoring.enabled = on; }
-        else if (name === 'search.razoringmaxdepth' || name === 'razoring.maxdepth') { if (Number.isFinite(num)) engine.params.search.razoring.maxDepth = Math.max(1, Math.min(4, num|0)); }
-        else if (name === 'search.razoringmargin' || name === 'razoring.margin') { if (Number.isFinite(num)) engine.params.search.razoring.margin = Math.max(0, Math.min(1200, num|0)); }
-        else if (name === 'search.iir' || name === 'iir.enabled' || name === 'iir') { if (on||off) engine.params.search.iir.enabled = on; }
-        else if (name === 'search.iirmindepth' || name === 'iir.mindepth') { if (Number.isFinite(num)) engine.params.search.iir.minDepth = Math.max(2, Math.min(8, num|0)); }
-        else if (name === 'search.iirreduction' || name === 'iir.reduction') { if (Number.isFinite(num)) engine.params.search.iir.reduction = Math.max(1, Math.min(3, num|0)); }
-        else if (name === 'search.historypruning' || name === 'historypruning.enabled' || name === 'historypruning') { if (on||off) engine.params.search.historyPruning.enabled = on; }
-        else if (name === 'search.historypruningmaxdepth' || name === 'historypruning.maxdepth') { if (Number.isFinite(num)) engine.params.search.historyPruning.maxDepth = Math.max(1, Math.min(6, num|0)); }
-        else if (name === 'search.historypruningthreshold' || name === 'historypruning.threshold') { if (Number.isFinite(num)) engine.params.search.historyPruning.threshold = Math.max(-16384, Math.min(0, num|0)); }
-        else if (name === 'see' || name === 'see.enabled') { if (on||off) engine.params.search.see.enabled = on; }
-        else if (name === 'see.qsearchprune') { if (on||off) engine.params.search.see.qsearchPrune = on; }
-        else if (name === 'see.qsearchprunemargin') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.see.qsearchPruneMargin = Math.max(0, Math.min(500, n|0)); }
-        else if (name === 'see.qsearchprunemindepth') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.see.qsearchPruneMinDepth = Math.max(0, Math.min(4, n|0)); }
-        else if (name === 'tt.maxage') { const n = Number(value); if (Number.isFinite(n)) { const age = Math.max(0, Math.min(10, n|0)); engine.params.search.ttMaxAge = age; engine.searcher.tt.maxAge = age; } }
         else if (name === 'eval.fdpressure' || name === 'fdpressure') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdPressure = Math.max(0, Math.min(20, n)); }
         else if (name === 'eval.fdattackweight' || name === 'fdattackweight') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdAttackWeight = Math.max(0, Math.min(20, n)); }
         else if (name === 'eval.fdpindiscount' || name === 'fdpindiscount') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdPinDiscount = Math.max(0, Math.min(20, n)); }
-        else if (name === 'search.stagedmovegen' || name === 'stagedmovegen') { if (on||off) engine.params.search.stagedMoveGen = on; }
-        else if (name === 'hash') { const mb = Number(value); if (Number.isFinite(mb) && mb >= 1) { engine.searcher.tt.resizeMB(Math.max(1, Math.min(1024, mb))); } }
+        else if (name === 'threads') {
+          const n = Math.max(1, Math.min(64, Number(value) | 0 || 1));
+          if (engine.pool) { engine.pool.close(); engine.pool = null; engine.reset(); }
+          if (n > 1) import('./smp.mjs').then((m) => m.createPool(engine, n - 1));
+        }
+        else if (name === 'hash') { const mb = Number(value); if (Number.isFinite(mb) && mb>=1) { /* ignore for now, TT fixed */ } }
       }
       return;
     }

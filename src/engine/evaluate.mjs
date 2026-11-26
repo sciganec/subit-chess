@@ -17,7 +17,7 @@
  */
 
 import {
-  WHITE, BLACK, EMPTY, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
+  WHITE, BLACK, PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING,
   MATERIAL, PHASE_TOTAL, pieceType, rankOf, fileOf, opposite, squareName, moveToUci,
   KNIGHT_DELTAS, BISHOP_DIRS, ROOK_DIRS, QUEEN_DIRS
 } from './core.mjs';
@@ -66,48 +66,45 @@ export const DEFAULT_PARAMS = {
     isolated: 16,
     passed: [0, 8, 12, 22, 40, 70, 110, 0],   // by rank of the pawn (0..7)
     rookOpen: 14,
+    outpost: 35,
+    outpostBishop: 0,
+    fdAttackWeight: 0,                         // FD-inspired geometric attacker-weight sum on the king zone; default off
+    fdPinDiscount: 0,                          // FD-03-inspired off-ray defense discount for absolute pins (structural tier); default off
+    fdPressure: 0,                             // FD-inspired king-zone pressure from buildFieldDynamics (structural tier); default off
+    passedProtected: 0,
+    passedKing: 0,
     rookSemiOpen: 7,
     kingShield: 10,
     kingShieldEndgame: 0.25,                   // shield matters less in the endgame
     kingOpenFile: 12,                          // open/semi-open file near king; A/B smoke +0.33 SE0.15 n=24 d4 seed1
-    kingAttack: 0,                             // penalty per attacker weight on king zone; A/B before enabling
-    fdAttackWeight: 0,                         // FD-inspired cheap geometric attacker-weight sum on king zone; default off, A/B before enabling
-    fdPinDiscount: 0,                          // FD-03-inspired off-ray defense discount for absolute pins; default off, A/B before enabling
-    fdPressure: 0                              // FD-inspired king-zone weighted pressure from buildFieldDynamics; default off, A/B before enabling
+    kingZone: 0,                               // attack-unit king pressure weight (0 = off)
+    kingAttack: 0                              // penalty per attacker weight on king zone; A/B before enabling
   },
 
   // search policy parameters (doc 05 §15, doc 08)
   search: {
     ttMaxAge: 0, // ADR 0022: keep 0 by default; A/B only
-    nullMove: { enabled: true, minDepth: 3, reduction: 2, maxReduction: 3 },
+    nullMove: { enabled: true, minDepth: 2, reduction: 3, maxReduction: 4 },
     lmr: { enabled: true, minDepth: 3, minMoveIndex: 3, reduction: 1, extraMoveIndex: 6, extraReduction: 0, maxReduction: 1, threatExemptMinVictim: 0 },
     // Futility is only sound at the frontier: a pruned quiet move can be a mate
     // in one, so pruning at depth 1..3 hides forced mates (measured on the
     // SmallFish game: a mate in 2 was reported as -471 cp at depth 8 with
     // maxDepth 3, and as -99996 with maxDepth <= 1).
-    futility: { enabled: true, margin: 120, maxDepth: 1 },
-    // Reverse futility pruning: at shallow depth, if static eval is far above
-    // beta, the node is unlikely to fall below beta. Default off; A/B required.
-    rfp: { enabled: false, margin: 80, maxDepth: 3 },
-    // Late move pruning: at shallow depth, skip late quiet moves after enough
-    // quiets have been searched. Default off; A/B required.
-    lmp: { enabled: false, maxDepth: 3, base: 4, multiplier: 2 },
-    // History malus: penalize previously searched quiets on beta cutoff. Default off; A/B required.
-    historyMalus: false,
-    // LMR history: adjust reduction based on quiet-move history. Default off; A/B required.
-    lmrHistory: false,
-    // Improving: track static eval trend for LMR/futility adjustments. Default off; A/B required.
-    improving: false,
-    // Razoring: at shallow depth, if static eval is far below alpha, drop to qsearch. Default off; A/B required.
-    razoring: { enabled: false, maxDepth: 2, margin: 300 },
-    // IIR (Internal Iterative Reduction): reduce depth when no TT move at sufficient depth. Default off; A/B required.
-    iir: { enabled: false, minDepth: 4, reduction: 1 },
-    // History pruning: skip late quiet moves with very bad history at shallow depth. Default off; A/B required.
-    historyPruning: { enabled: false, maxDepth: 3, threshold: -2048 },
+    futility: { enabled: true, margin: 120, maxDepth: 2 },
     checkExtension: 1,
+    rfp: { enabled: true, margin: 120, maxDepth: 3 },      // reverse futility (v3.0.9: +64 Elo [+8,+125], 120 games)
+    qSee: { enabled: false, slack: 50 },
+    seePrune: { enabled: false, maxDepth: 4, margin: 100 },
+    budgetOpts: null,   // overrides of BUDGET_DEFAULTS for the stop rule (e.g. { omegaGate: true })
+    lmrLog: { enabled: false, base: 0.75, div: 2.25 },     // log(depth)*log(move index) reduction table (v3.0.12 experiment)
+    lmp: { enabled: false, maxDepth: 3, base: 3 },         // late move pruning of quiet moves (v3.0.12 experiment)
+    iir: { enabled: false, minDepth: 4 },                  // internal iterative reduction when there is no TT move
+    countermove: { enabled: false },                       // reply that refuted the previous move is tried early
+    historyMalus: { enabled: false },                      // penalise quiet moves tried before a quiet cutoff move                   // SEE-lite capture pruning in quiescence
+    structExtension: { enabled: false, maxPly: 8 },   // SEARCH-14: pawn to 7th extends one ply
     extensionBudget: 6,
     quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },
-    aspiration: { window: 25, widen: 40, maxWiden: 8 },
+    aspiration: { window: 15, widen: 40, maxWiden: 8 },
     maxDepth: 64,
     nodeLimit: 0,          // 0 = unlimited
     timeLimitMs: 0,        // 0 = unlimited
@@ -115,9 +112,8 @@ export const DEFAULT_PARAMS = {
     evalMode: 'fast',      // 'fast' | 'structural' | 'hybrid' — search hot path
     // Quiet checking moves at the first qsearch level. A sacrifice that starts
     // with a silent check is invisible to a captures-only horizon (audit A1).
-    qsearch: { checks: true, maxChecks: 4, deltaMargin: 200 },
-    see: { enabled: true, qsearchPrune: true, qsearchPruneMargin: 0, qsearchPruneMinDepth: 0 },
-    stagedMoveGen: false, // behavior-changing prototype; default off, strict no-cycle A/B before enabling
+    qsearch: { checks: true, maxChecks: 4 },
+    see: { enabled: true, qsearchPrune: true, exactLva: false },
     // Gate 3 kill: structural ordering deleted (200-game A/B had no positive CI).
     // The keys stay at 0 so older configs remain loadable, but no bonus is
     // ever supplied to them — search ordering is now pv > tt > tactic > history.
@@ -240,6 +236,7 @@ const PST_CHARS = ' PNBRQK';
 
 function buildPieceSquareTables(params) {
   const tables = [null];   // index 0 unused
+  const pd = params.pstDelta || null;
   // flat copies: `mid[t * 128 + sq]` avoids the double indirection of
   // `tables[t].mid[sq]` in the leaf loop (measured: 42% of search time there)
   const mid = new Int32Array(7 * 128);
@@ -255,8 +252,12 @@ function buildPieceSquareTables(params) {
       const r = sq >> 4, f = sq & 7;
       const idx = r * 8 + f;
       const v = t === KING ? 0 : mat;
-      m[sq] = v + pst[idx];
-      e[sq] = v + (t === KING ? KING_ENDGAME[idx] : pst[idx]);
+      // pstDelta: optional learned correction (bench/texel); { mid: {P:[64],...}, end: {...} } in the same
+      // rank-major order as PST. Absent in the shipped defaults, so nothing changes unless it is set.
+      const dm = pd && pd.mid && pd.mid[ch] ? pd.mid[ch][idx] || 0 : 0;
+      const de = pd && pd.end && pd.end[ch] ? pd.end[ch][idx] || 0 : 0;
+      m[sq] = v + pst[idx] + dm;
+      e[sq] = v + (t === KING ? KING_ENDGAME[idx] : pst[idx]) + de;
       mid[t * 128 + sq] = m[sq];
       end[t * 128 + sq] = e[sq];
     }
@@ -269,19 +270,20 @@ function buildPieceSquareTables(params) {
 
 let TABLES = null;
 let TABLES_PARAMS = null;
-let TABLES_M = null;
+let TABLES_SIG = '';
 
-function sameMaterial(a, b) {
-  return a.P === b.P && a.N === b.N && a.B === b.B && a.R === b.R && a.Q === b.Q;
+function tablesSig(params) {
+  const m = params && params.material ? params.material : DEFAULT_PARAMS.material;
+  return `${m.P}|${m.N}|${m.B}|${m.R}|${m.Q}|${params && params.pstRev ? params.pstRev : 0}`;
 }
 
 function tables(params) {
-  const m = params && params.material ? params.material : DEFAULT_PARAMS.material;
+  const sig = tablesSig(params);
   // AUD-311-11: invalidate on content change, not only object identity.
-  if (!TABLES || TABLES_PARAMS !== params || !TABLES_M || !sameMaterial(TABLES_M, m)) {
+  if (!TABLES || TABLES_PARAMS !== params || TABLES_SIG !== sig) {
     TABLES = buildPieceSquareTables(params);
     TABLES_PARAMS = params;
-    TABLES_M = { P: m.P, N: m.N, B: m.B, R: m.R, Q: m.Q };
+    TABLES_SIG = sig;
   }
   return TABLES;
 }
@@ -303,7 +305,6 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const T = tables(params);
   const cfg = params.eval || {};
   const mob = cfg.mobility || null;
-  const mobN = mob ? mob.N : 0, mobB = mob ? mob.B : 0, mobR = mob ? mob.R : 0, mobQ = mob ? mob.Q : 0;
   const cfgPassed = cfg.passed || null;
   const cfgDoubled = cfg.doubled || 0;
   const cfgIsolated = cfg.isolated || 0;
@@ -311,10 +312,17 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const cfgRookOpen = cfg.rookOpen || 0;
   const cfgRookSemiOpen = cfg.rookSemiOpen || 0;
   const cfgShield = cfg.kingShield || 0;
+  const cfgConnected = cfg.connected || 0;
+  const cfgOutpost = cfg.outpost || 0;
+  const cfgOutpostB = cfg.outpostBishop || 0;
+  const cfgPassedProt = cfg.passedProtected || 0;
+  const cfgPassedKing = cfg.passedKing || 0;
+  const cfgRook7 = cfg.rook7 || 0;
   const cfgShieldEndgame = cfg.kingShieldEndgame || 0;
   const cfgKingOpenFile = cfg.kingOpenFile || 0;
   const cfgKingAttack = cfg.kingAttack || 0;
   const cfgFdAttackWeight = cfg.fdAttackWeight || 0;
+  const cfgKingZone = cfg.kingZone || 0;
   const flatMid = T.flatMid;
   const flatEnd = T.flatEnd;
   pos.refreshPieces();
@@ -324,7 +332,6 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   let mid = 0;
   let end = 0;
   let mobility = 0;
-  let pawnCount = 0;
   // scratch buffers: the evaluator runs at every leaf, so nothing is allocated
   const bishops = _bishops;
   const pawnMask = _pawnMask;
@@ -342,41 +349,18 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
     const n = pos.listCnt[color];
     const mine = pawnMask[color];
     // the tables are stored white-relative; mirror the square for black
-    const mirror = color === WHITE ? 0 : 0x70;
+    const black = color === WHITE ? 0 : 1;
     for (let i = 0; i < n; i++) {
       const sq = list[i];
       const t = b[sq] & 7;
-      const tsq = sq ^ mirror;
+      const tsq = black ? (7 - (sq >> 4)) * 16 + (sq & 7) : sq;
       mid += sign * flatMid[t * 128 + tsq];
       end += sign * flatEnd[t * 128 + tsq];
-      if (mob && t >= KNIGHT && t <= QUEEN) {
-        const w = t === KNIGHT ? mobN : t === BISHOP ? mobB : t === ROOK ? mobR : mobQ;
-        let mcount = 0;
-        if (t === KNIGHT) {
-          for (let di = 0; di < 8; di++) {
-            const to = sq + KNIGHT_DELTAS[di];
-            if (to & 0x88) continue;
-            const p = b[to];
-            if (p && (p >> 3) === color) continue;
-            mcount++;
-          }
-        } else {
-          const dirs = t === BISHOP ? BISHOP_DIRS : t === ROOK ? ROOK_DIRS : QUEEN_DIRS;
-          const dlen = t === QUEEN ? 8 : 4;
-          for (let di = 0; di < dlen; di++) {
-            const ddir = dirs[di];
-            let to = sq + ddir;
-            while (!(to & 0x88)) {
-              const p = b[to];
-              if (!p) { mcount++; to += ddir; continue; }
-              if ((p >> 3) !== color) mcount++;
-              break;
-            }
-          }
-        }
-        mobility += sign * w * mcount;
+      if (mob && (t === KNIGHT || t === BISHOP || t === ROOK || t === QUEEN)) {
+        const w = t === KNIGHT ? mob.N : t === BISHOP ? mob.B : t === ROOK ? mob.R : mob.Q;
+        mobility += sign * w * (t === KNIGHT ? knightMobility(b, sq, color) : sliderMobility(b, sq, t, color));
       }
-      if (t === PAWN) { pawnCount++; mine[sq & 7] |= 1 << (7 - (sq >> 4)); }
+      if (t === PAWN) mine[sq & 7] |= 1 << (7 - (sq >> 4));
       else if (t === BISHOP) bishops[color]++;
       else if (t === ROOK) { if (rookCnt[color] < 10) rookSq[color][rookCnt[color]++] = sq; }
       else if (t === KING) kingSq[color] = sq;
@@ -386,10 +370,44 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   // phase from the *non-pawn* material: pos.phaseMaterial counts pawns too
   // (40 at the start) while PHASE_TOTAL is the piece total, so using it
   // directly kept the taper switched off through the whole middlegame
-  const nonPawn = pos.phaseMaterial - pawnCount;
+  let pawns = 0;
+  for (let f = 0; f < 8; f++) pawns += POP8[pawnMask[0][f]] + POP8[pawnMask[1][f]];
+  const nonPawn = pos.phaseMaterial - pawns;
   const phase = 1 - Math.min(1, nonPawn / PHASE_TOTAL);   // 0 opening .. 1 endgame
 
   let score = cfg.taper === false ? (phase < 0.5 ? mid : end) : mid + (end - mid) * phase;
+
+  // knight outposts: relative ranks 4-6, defended by an own pawn, no enemy pawn can attack the square
+  if (cfgOutpost || cfgOutpostB) {
+    for (let color = 0; color < 2; color++) {
+      const sign = color === WHITE ? 1 : -1;
+      const list = pos.listSq[color];
+      const n = pos.listCnt[color];
+      const mine = pawnMask[color];
+      const theirs = pawnMask[color ^ 1];
+      for (let i = 0; i < n; i++) {
+        const sq = list[i];
+        const pt = b[sq] & 7;
+        const ow = pt === KNIGHT ? cfgOutpost : pt === BISHOP ? cfgOutpostB : 0;
+        if (!ow) continue;
+        const r = 7 - (sq >> 4);              // white-relative rank 0..7
+        const rel = color === WHITE ? r : 7 - r;
+        if (rel < 3 || rel > 5) continue;
+        const f = sq & 7;
+        const nf = (f > 0 ? 1 << (f - 1) : 0) | (f < 7 ? 1 << (f + 1) : 0);
+        const supBit = 1 << (color === WHITE ? r - 1 : r + 1);
+        let supported = false;
+        if (f > 0 && (mine[f - 1] & supBit)) supported = true;
+        if (f < 7 && (mine[f + 1] & supBit)) supported = true;
+        if (!supported) continue;
+        const ahead = color === WHITE ? ~((1 << (r + 1)) - 1) & 255 : ((1 << r) - 1);
+        let attacked = false;
+        if (f > 0 && (theirs[f - 1] & ahead)) attacked = true;
+        if (f < 7 && (theirs[f + 1] & ahead)) attacked = true;
+        if (!attacked) score += sign * ow * (rel === 3 ? 0.7 : 1);
+      }
+    }
+  }
 
   // ---- structural terms, white-positive ----
   const passed = cfgPassed;
@@ -411,6 +429,20 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
       const left = f > 0 ? mine[f - 1] : 0;
       const right = f < 7 ? mine[f + 1] : 0;
       if (cfgIsolated && !left && !right) score -= sign * cfgIsolated * n;
+      if (cfgConnected) {
+        // phalanx (neighbour on the same rank) or chain (neighbour one rank behind)
+        let m2 = mask;
+        while (m2) {
+          const r = CTZ8[m2 & 255];
+          m2 &= m2 - 1;
+          const behind = color === WHITE ? r - 1 : r + 1;
+          const nb = left | right;
+          if ((nb & (1 << r)) || (behind >= 0 && behind <= 7 && (nb & (1 << behind)))) {
+            const rel = color === WHITE ? r : 7 - r;
+            score += sign * cfgConnected * (1 + rel) / 4;
+          }
+        }
+      }
       if (passed) {
         // a pawn is passed when no enemy pawn stands on its file or the adjacent
         // files *in front of it*. Ranks are white-relative, so white looks at
@@ -423,7 +455,22 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
           const blocked = color === WHITE
             ? (enemy & ~((1 << (r + 1)) - 1))
             : (enemy & ((1 << r) - 1));
-          if (!blocked) score += sign * passed[color === WHITE ? r : 7 - r];
+          if (!blocked) {
+            const rel = color === WHITE ? r : 7 - r;
+            score += sign * passed[rel];
+            if (cfgPassedProt) {
+              const supBit = 1 << (color === WHITE ? r - 1 : r + 1);
+              if ((f > 0 && (mine[f - 1] & supBit)) || (f < 7 && (mine[f + 1] & supBit))) score += sign * cfgPassedProt * (1 + rel) / 4;
+            }
+            if (cfgPassedKing && phase > 0 && rel >= 2) {
+              // kings' distance to the square in front of the passer; the endgame weight grows with the pawn's rank
+              const fr = color === WHITE ? r + 1 : r - 1;
+              const ok = kingSq[color], ek = kingSq[color ^ 1];
+              const dOwn = Math.max(Math.abs((7 - (ok >> 4)) - fr), Math.abs((ok & 7) - f));
+              const dEn = Math.max(Math.abs((7 - (ek >> 4)) - fr), Math.abs((ek & 7) - f));
+              score += sign * cfgPassedKing * phase * (dEn - dOwn) * rel / 7;
+            }
+          }
         }
       }
     }
@@ -435,6 +482,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
         // semi-open = enemy pawn still on the file, open = no pawn at all
         score += sign * (theirs[f] ? cfgRookSemiOpen : cfgRookOpen);
       }
+      if (cfgRook7 && (sq >> 4) === (color === WHITE ? 1 : 6)) score += sign * cfgRook7;
     }
 
     // king shield: own pawns on the three files around the king, on the two
@@ -468,22 +516,47 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
       const ksq = kingSq[color];
       const kr = ksq >> 4, kf = ksq & 7;
       const enemy = color ^ 1;
-      let atk = 0;
-      let wAtk = 0;
+      let atk = 0, wAtk = 0;
       for (let dr = -1; dr <= 1; dr++) for (let df = -1; df <= 1; df++) {
         if (dr === 0 && df === 0) continue;
         const r = kr + dr, f = kf + df;
         if (r < 0 || r > 7 || f < 0 || f > 7) continue;
-        const sq = (r << 4) | f;
+        const qsq = (r << 4) | f;
         if (cfgFdAttackWeight) {
-          const aw = pos.attackWeight(sq, enemy);
+          const aw = pos.attackWeight(qsq, enemy);
           if (aw > 0) { atk++; wAtk += aw; }
-        } else if (pos.isAttacked(sq, enemy)) {
+        } else if (pos.isAttacked(qsq, enemy)) {
           atk++;
         }
       }
       if (atk && cfgKingAttack) score -= sign * cfgKingAttack * atk * (1 - 0.4 * phase);
       if (wAtk && cfgFdAttackWeight) score -= sign * cfgFdAttackWeight * wAtk * (1 - 0.4 * phase);
+    }
+  }
+
+  // King-zone pressure (attack units, quadratic, middlegame only). Each attacking N/B/R/Q whose attack set
+  // reaches the squares around the enemy king and the three in front of them adds a weight (2/2/3/5) plus one per
+  // extra zone square; with two or more attackers (or the queen) the penalty grows with the square of the units.
+  if (cfgKingZone && phase < 0.85) {
+    for (let color = 0; color < 2; color++) {
+      const sign = color === WHITE ? 1 : -1;       // the attacker's colour, white-positive
+      const eks = pos.kingSq[color ^ 1];
+      zoneMark(b, eks, color, 1);
+      let units = 0, attackers = 0, queen = false;
+      const list = pos.listSq[color];
+      const n = pos.listCnt[color];
+      for (let i = 0; i < n; i++) {
+        const sq = list[i];
+        const t = b[sq] & 7;
+        if (t < KNIGHT || t > QUEEN) continue;
+        const hits = zoneHits(b, sq, t);
+        if (hits) { attackers++; units += ZONE_W[t] + hits - 1; if (t === QUEEN) queen = true; }
+      }
+      zoneMark(b, eks, color, 0);
+      if (attackers >= 2 || (attackers === 1 && queen)) {
+        const pen = Math.min(400, cfgKingZone * units * units / 2);
+        score += sign * pen * (1 - phase);
+      }
     }
   }
 
@@ -514,12 +587,48 @@ function knightMobility(b, sq, color) {
   return n;
 }
 
+
+/* ---------------- king-zone helpers (scratch-marked 0x88 board) ---------------- */
+const _zone = new Uint8Array(128);
+const ZONE_W = [0, 0, 2, 2, 3, 5, 0];     // by piece type: N, B, R, Q
+/** Mark (or clear) the king ring plus the three squares in front of it (towards the attacker). */
+function zoneMark(b, ksq, attackerColor, v) {
+  const fwd = attackerColor === WHITE ? 16 : -16;   // from the defending king towards the board centre (0x88 rows: rank 8 is row 0)
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let df = -1; df <= 1; df++) {
+      const t = ksq + dr * 16 + df;
+      if (!(t & 0x88)) _zone[t] = v;
+    }
+  }
+  for (let df = -1; df <= 1; df++) {
+    const t = ksq + 2 * fwd + df;
+    if (!(t & 0x88)) _zone[t] = v;
+  }
+}
+/** Number of zone squares a piece attacks (sliders stop at the first piece, which is counted). */
+function zoneHits(b, sq, type) {
+  let n = 0;
+  if (type === KNIGHT) {
+    for (let i = 0; i < 8; i++) { const to = sq + KNIGHT_DELTAS[i]; if (!(to & 0x88) && _zone[to]) n++; }
+    return n;
+  }
+  const dirs = type === BISHOP ? BISHOP_DIRS : type === ROOK ? ROOK_DIRS : QUEEN_DIRS;
+  for (let d = 0; d < dirs.length; d++) {
+    let to = sq + dirs[d];
+    while (!(to & 0x88)) {
+      if (_zone[to]) n++;
+      if (b[to]) break;
+      to += dirs[d];
+    }
+  }
+  return n;
+}
+
 /** Number of squares a slider can reach (stops at the first piece). */
 function sliderMobility(b, sq, type, color) {
   const dirs = type === BISHOP ? BISHOP_DIRS : type === ROOK ? ROOK_DIRS : QUEEN_DIRS;
-  const dlen = type === QUEEN ? 8 : 4;
   let n = 0;
-  for (let d = 0; d < dlen; d++) {
+  for (let d = 0; d < dirs.length; d++) {
     let to = sq + dirs[d];
     while (!(to & 0x88)) {
       const p = b[to];
@@ -817,7 +926,16 @@ export class Evaluation {
       cache: false
     }, opts);
     this.cache = this.opts.cache ? new Map() : null;
+    // fast-tier evaluation cache (v3.0.9, ROADMAP Gate 6): speed only. evaluateFast is a pure function of
+    // the position (placement, turn, castling, ep; not the clocks) and of `params`, so a hit is exact.
+    // Direct-mapped, verified against the full 53-bit key. Call clearEvalCache() after mutating params.
+    this.evalBits = this.opts.evalCacheBits === undefined ? 17 : this.opts.evalCacheBits;
+    this.evalKeys = this.evalBits ? new Float64Array(1 << this.evalBits).fill(-1) : null;
+    this.evalVals = this.evalBits ? new Float64Array(1 << this.evalBits) : null;
+    this.evalHits = 0; this.evalProbes = 0;
   }
+
+  clearEvalCache() { if (this.evalKeys) this.evalKeys.fill(-1); }
 
   /** Fast tier. Side-to-move perspective, centipawns. */
   fast(pos) {
@@ -875,15 +993,23 @@ export class Evaluation {
 
   /** Hybrid tier used by the search. */
   evaluate(pos, remainingDepth) {
-    if (this.opts.mode === 'fast') return evaluateFast(pos, this.params);
+    if (this.opts.mode === 'fast') return this.fastCached(pos);
     if (this.opts.mode === 'structural') return this.structural(pos).E;
     if (remainingDepth <= this.opts.structuralDepth) return this.structural(pos).E;
-    return evaluateFast(pos, this.params);
+    return this.fastCached(pos);
   }
-}
 
-function buildStructureSafe(pos, percept) {
-  return new Structure(pos, percept);
+  fastCached(pos) {
+    const keys = this.evalKeys;
+    if (!keys) return evaluateFast(pos, this.params);
+    const k = pos.key;
+    const i = pos.hashLo & ((1 << this.evalBits) - 1);
+    this.evalProbes++;
+    if (keys[i] === k) { this.evalHits++; return this.evalVals[i]; }
+    const v = evaluateFast(pos, this.params);
+    keys[i] = k; this.evalVals[i] = v;
+    return v;
+  }
 }
 
 /**
@@ -986,6 +1112,10 @@ function kingZoneFdPressure(ksq, weightMap) {
     }
   }
   return sum;
+}
+
+function buildStructureSafe(pos, percept) {
+  return new Structure(pos, percept);
 }
 
 function confidenceVector(percept, structure) {

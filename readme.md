@@ -6,12 +6,12 @@ UI that shows what the engine is actually thinking.
 
 Single-file HTML — no build step for the end user, no server, no CDN, no network access.
 
-**Release: v3.0.16.0** (2026-11-26) — formalized snapshot after v3.0.15. Search/perf/measurement hardening and default-off search/pruning hooks with strict no-cycle A/B evidence. **No Elo gain has been established; no external strength claim.**
-Release notes: [`CHANGELOG.md`](CHANGELOG.md) — [3.0.16.0].
+**Development candidate: v3.0.17** — consolidation of the v3.0.16.0 release line (field dynamics, search micro-optimisations, default-off hooks) with the strength branch (+49 Elo at 400 ms/move against 8bdc3f4: futility depth 2, null move 2/3/4, aspiration 15, knight outposts; conformance suite; optional Lazy SMP).
+Release notes: [`CHANGELOG.md`](CHANGELOG.md) — [3.0.17] and [3.0.16].
 
 ## Quick start
 
-Open `src/subit_chess_v3.0.16.html` in any modern browser (double-click works; the file is
+Open `src/subit_chess_v3.0.17.html` in any modern browser (double-click works; the file is
 fully self-contained).
 
 ```
@@ -116,7 +116,7 @@ node bench/gate7.mjs --depth 4 --mates --out results/gate7-targeted-vs-uniform-f
 ```
 src/engine/     ES-module engine core (16 modules)
 build/          shell.html (UI) + bundle.mjs (inlines src/engine into one HTML)
-src/            subit_chess_v3.0.16.html  — shipped single-file engine (built)
+src/            subit_chess_v3.0.17.html  — shipped single-file engine (built)
                 subit_chess_v2.2.0.html ← legacy v2 engine (diffusion/ρ_s, kept for reference)
 index.html      copy of the shipped v3 file (convenience)
 tests/          core.perft, engine.smoke/plans/eval/verify/topology/differential/field/audit/

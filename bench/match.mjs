@@ -120,6 +120,86 @@ export const CONFIGS = {
     params: { search: { lmr: { enabled: false } } },
     opts: {}
   },
+  structext: {
+    label: 'structural extension (SEARCH-14): pawn to 7th extends one ply',
+    params: { search: { structExtension: { enabled: true } } }, opts: {}
+  },
+  structeval: {
+    label: 'structural SVF-9 evaluation tier at every leaf (OPEN-001 test: do the nine components beat the fast tier?)',
+    params: {}, opts: { evalMode: 'structural' }
+  },
+  structfit: {
+    label: 'structural tier with weights fitted to own depth-2 search (bench/fit_svf.mjs)',
+    // read lazily: results/*.json is not tracked, and importing this module must not fail on a fresh clone
+    get params() { return { w: JSON.parse(readFileSync(new URL('../results/svf_weights.json', import.meta.url), 'utf8')).w }; },
+    opts: { evalMode: 'structural' }
+  },
+  rootstruct: {
+    label: 'structural SVF re-selection among near-equal root moves (margin 25 cp, lambda 0.25)',
+    params: {}, opts: { rootStruct: { margin: 25, lambda: 0.25, maxCand: 4 } }
+  },
+  rfp: { label: 'reverse futility (depth<=3, 120cp/ply)', params: { search: { rfp: { enabled: true } } }, opts: {} },
+  qsee: { label: 'SEE-lite capture pruning in quiescence', params: { search: { qSee: { enabled: true } } }, opts: {} },
+  evterms: { label: 'connected pawns + rook on 7th', params: { eval: { connected: 12, rook7: 20 } }, opts: {} },
+  rook7: { label: 'rook on 7th only (20cp)', params: { eval: { rook7: 20 } }, opts: {} },
+  lmr2: { label: 'LMR maxReduction 2', params: { search: { lmr: { maxReduction: 2, extraReduction: 1 } } }, opts: {} },
+  fut2: { label: 'futility maxDepth 2', params: { search: { futility: { maxDepth: 2 } } }, opts: {} },
+  nmmin2: { label: 'null move minDepth 2, reduction 3', params: { search: { nullMove: { minDepth: 2, reduction: 3, maxReduction: 4 } } }, opts: {} },
+  old3015: { label: 'pre-v3.0.16 futility/null move', params: { search: { futility: { maxDepth: 1 }, nullMove: { minDepth: 3, reduction: 2, maxReduction: 3 } } }, opts: {} },
+  basefixed: { label: 'current defaults, fixed time per move (no adaptive budget)', params: {}, opts: { adaptiveTime: false } },
+  old3015fixed: { label: 'pre-v3.0.16 futility/null move, fixed time per move', params: { search: { futility: { maxDepth: 1 }, nullMove: { minDepth: 3, reduction: 2, maxReduction: 3 } } }, opts: { adaptiveTime: false } },
+  rfpd5: { label: 'RFP maxDepth 5', params: { search: { rfp: { maxDepth: 5 } } }, opts: {} },
+  asp15: { label: 'aspiration window 15', params: { search: { aspiration: { window: 15 } } }, opts: {} },
+  futm160: { label: 'futility margin 160', params: { search: { futility: { margin: 160 } } }, opts: {} },
+  old8bdc: { label: 'params of 8bdc3f4 (futility 1, null move 3/2/3, aspiration 25)', params: { search: { futility: { maxDepth: 1 }, nullMove: { minDepth: 3, reduction: 2, maxReduction: 3 }, aspiration: { window: 25 } }, eval: { outpost: 0 } }, opts: {} },
+  qchk0: { label: 'qsearch quiet checks off', params: { search: { qsearch: { checks: false } } }, opts: {} },
+  lmridx2: { label: 'LMR from the 3rd move (minMoveIndex 2)', params: { search: { lmr: { minMoveIndex: 2 } } }, opts: {} },
+  lmrdepth2: { label: 'LMR from depth 2', params: { search: { lmr: { minDepth: 2 } } }, opts: {} },
+  cmove: { label: 'countermove ordering', params: { search: { countermove: { enabled: true } } }, opts: {} },
+  outp: { label: 'knight outpost 20', params: { eval: { outpost: 20 } }, opts: {} },
+  outp35: { label: 'knight outpost 35', params: { eval: { outpost: 35 } }, opts: {} },
+  outp50: { label: 'knight outpost 50', params: { eval: { outpost: 50 } }, opts: {} },
+  outpb: { label: 'bishop outpost 20', params: { eval: { outpostBishop: 20 } }, opts: {} },
+  pprot: { label: 'protected passer 16', params: { eval: { passedProtected: 16 } }, opts: {} },
+  pking: { label: 'king distance to passers 6', params: { eval: { passedKing: 6 } }, opts: {} },
+  rfp80: { label: 'RFP margin 80', params: { search: { rfp: { margin: 80 } } }, opts: {} },
+  rfp180: { label: 'RFP margin 180', params: { search: { rfp: { margin: 180 } } }, opts: {} },
+  seeprune: { label: 'SEE pruning of losing captures (depth<=4, 100cp/ply)', params: { search: { seePrune: { enabled: true } } }, opts: {} },
+  kingatk: { label: 'kingAttack 8 (main hook)', params: { eval: { kingAttack: 8 } }, opts: {} },
+  nokof: { label: 'kingOpenFile off (main default is 12)', params: { eval: { kingOpenFile: 0 } }, opts: {} },
+  omega: { label: 'Ω gate on the stop rule (cyclic/chaotic score trace is not stable)', params: { search: { budgetOpts: { omegaGate: true } } }, opts: {} },
+  reserve: { label: 'larger tactical reserve: hard cap 4.5x nominal, 3x allowance, bank ceiling 10', params: { search: { budgetOpts: { hardCap: 4.5, hardFrac: 3.0, maxBank: 10 } } }, opts: {} },
+  smallres: { label: 'smaller reserve: hard cap 2x nominal, 1.5x allowance', params: { search: { budgetOpts: { hardCap: 2.0, hardFrac: 1.5 } } }, opts: {} },
+  texel: { label: 'Texel-tuned weights from self-play (file in TEXEL_FILE)', params: process.env.TEXEL_FILE ? JSON.parse(readFileSync(process.env.TEXEL_FILE, 'utf8')) : {}, opts: {} },
+  kzone1: { label: 'king-zone attack units, weight 1', params: { eval: { kingZone: 1 } }, opts: {} },
+  kzone05: { label: 'king-zone attack units, weight 0.5', params: { eval: { kingZone: 0.5 } }, opts: {} },
+  lmrlog: { label: 'log-table late move reductions', params: { search: { lmrLog: { enabled: true } } }, opts: {} },
+  lmp: { label: 'late move pruning (depth<=3, 3+d^2)', params: { search: { lmp: { enabled: true } } }, opts: {} },
+  iir: { label: 'internal iterative reduction (no TT move, depth>=4)', params: { search: { iir: { enabled: true } } }, opts: {} },
+  malus: { label: 'history malus for quiet moves tried before a quiet cutoff', params: { search: { historyMalus: { enabled: true } } }, opts: {} },
+  v311: {
+    label: 'v3.0.11 search: no adaptive budget, no reverse futility (everything else equal)',
+    params: { search: { rfp: { enabled: false } } },
+    opts: { adaptiveTime: false }
+  },
+  adaptive: {
+    label: 'adaptive time budget (SEARCH-15): stable decisions stop early and bank time',
+    params: {},
+    opts: { adaptiveTime: true }
+  },
+
+  planord: {
+    label: 'plan-based move ordering ON (pre-3.0.9 default)',
+    params: {},
+    opts: { planOrdering: true }
+  },
+
+  nofut: {
+    label: 'no futility pruning (null-move and LMR kept)',
+    params: { search: { futility: { enabled: false } } },
+    opts: {}
+  },
+
   noasp: {
     label: 'no aspiration windows (full window every iteration)',
     params: { search: { aspiration: { window: 1000000, widen: 1000000, maxWiden: 8 } } },
@@ -242,7 +322,7 @@ function mergeInto(target, patch) {
 }
 
 /** Play one game; `aWhite` decides which config has the white pieces. */
-function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite, timeMs = 0 }) {
+function playGame(cfgA, cfgB, fen, { depthA, depthB, pinA = false, pinB = false, maxPlies, aWhite, timeMs = 0 }) {
   const engines = {
     white: newEngine(aWhite ? cfgA : cfgB),
     black: newEngine(aWhite ? cfgB : cfgA)
@@ -254,6 +334,7 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite, timeMs = 
   let maxDepth = 0;
   const plies = [];
   const depthSeen = { white: 0, black: 0 };
+  const ms = { white: 0, black: 0 }, mv = { white: 0, black: 0 };
 
   for (let ply = 0; ply < maxPlies; ply++) {
     const side = engines.white.pos.turn === WHITE ? 'white' : 'black';
@@ -266,7 +347,9 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite, timeMs = 
     const wantDepth = sideIsA ? depthA : depthB;
     // time-limited play: the engine gets a clock instead of a depth, which is how
     // the UI plays and the only fair way to compare two pruning settings
-    const want = timeMs ? { timeMs } : { depth: wantDepth };
+    // "name@N" under --time pins a depth cap next to the clock (measures the cap itself)
+    const pinned = ((side === 'white') === aWhite) ? pinA : pinB;
+    const want = timeMs ? (pinned ? { timeMs, depth: wantDepth } : { timeMs }) : { depth: wantDepth };
 
     let res;
     try {
@@ -276,6 +359,7 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite, timeMs = 
     }
     if (res.depth > depthSeen[side]) depthSeen[side] = res.depth;
     nodes += res.nodes || 0;
+    ms[side] += res.timeMs || 0; mv[side]++;
     if (res.depth > maxDepth) maxDepth = res.depth;
 
     if (!res.move) {
@@ -298,9 +382,9 @@ function playGame(cfgA, cfgB, fen, { depthA, depthB, maxPlies, aWhite, timeMs = 
     adoptGamePosition(engines.black, now, rep);
 
     const st = engines.white.pos.status();
-    if (st && st.over) return { over: st, plies, nodes, maxDepth, depthSeen };
+    if (st && st.over) return { over: st, plies, nodes, maxDepth, depthSeen, ms, mv };
   }
-  return { over: { over: true, result: 'draw', reason: 'max plies' }, plies, nodes, maxDepth, depthSeen };
+  return { over: { over: true, result: 'draw', reason: 'max plies' }, plies, nodes, maxDepth, depthSeen, ms, mv };
 }
 
 
@@ -422,7 +506,7 @@ export function runMatch(opts) {
     const fen = suite[i % suite.length];
     const aWhite = i % 2 === 0;                 // colour balance
     const r = playGame(cfgA, cfgB, fen, {
-      depthA, depthB, maxPlies: opts.maxPlies, aWhite, timeMs: opts.time
+      depthA, depthB, pinA: a.depth !== null, pinB: b.depth !== null, maxPlies: opts.maxPlies, aWhite, timeMs: opts.time
     });
     const over = r.over || { result: 'draw' };
     // `over.result` is the winner by name; convert to A's score
@@ -433,6 +517,16 @@ export function runMatch(opts) {
   }
 
   const summaryA = summarize(games, 'A');
+  // mean thinking time per move of each side: a time policy is only fairly compared
+  // against a fixed budget if both spend the same on average (SEARCH-15)
+  let msA = 0, mvA = 0, msB = 0, mvB = 0;
+  for (const g of games) {
+    if (!g.ms) continue;
+    const a = g.aWhite ? 'white' : 'black', b = g.aWhite ? 'black' : 'white';
+    msA += g.ms[a]; mvA += g.mv[a]; msB += g.ms[b]; mvB += g.mv[b];
+  }
+  summaryA.msPerMoveA = mvA ? msA / mvA : 0;
+  summaryA.msPerMoveB = mvB ? msB / mvB : 0;
   return { configs: { a: opts.a, b: opts.b }, opts, games, summary: { a: summaryA } };
 }
 
@@ -460,6 +554,7 @@ function main() {
   console.log(`  score   ${(s.score * 100).toFixed(1)}%  ±${(s.ci95 * 100).toFixed(1)}  (±${Math.round(s.eloCi95)} Elo)  (${s.wins}W ${s.draws}D ${s.losses}L)`);
   console.log(`  errors  ${s.errors}`);
   console.log(`  nodes   ${Math.round(s.avgNodes)} per game`);
+  if (s.msPerMoveA) console.log(`  time    A ${s.msPerMoveA.toFixed(1)} ms/move  B ${s.msPerMoveB.toFixed(1)} ms/move  (A/B ${(s.msPerMoveA / s.msPerMoveB).toFixed(3)})`);
   console.log(`  length  mean ${s.avgPlies.toFixed(0)}  median ${s.medianPlies}  max ${s.maxPlies}  capped ${s.capped}/${s.n}  (${Object.entries(s.reasons).map(([k, v]) => `${k}: ${v}`).join(", ")})`);
   if (s.byOpening.length > 1) {
     console.log('  by opening:');
