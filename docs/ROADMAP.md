@@ -14,11 +14,21 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state - v3.0.14 (development, 2026-11-22)
+## Current state - v3.0.16.0 (released 2026-11-26)
 
-v3.0.14 is the active development candidate. No Elo gain has been established; release only after a measured gain under an accepted external protocol.
+v3.0.16.0 is a formalized release snapshot after v3.0.15. **No Elo gain has been established; no external strength claim.** No accepted external anchor.
 
-v3.0.13 candidate (pushed: `514930e`, `0cd4b60`, `191014d`) added analytical Field Dynamics (`src/engine/field.mjs`, FD-01..FD-14, FD-INV-001..010) exposed via `engine.fieldDynamics()`/`analyze().fields` without changing move generation, eval, ordering, or search. It also added `search.ttMaxAge` diagnostic (default 0, ADR 0022; ttMaxAge=1 rejected by A/B), g9 gauntlet guard, and version-match/docs updates.
+- **Behavior-preserving perf & infra.** Lazy incremental move selection/piece-list/phaseMaterial micro-opts; UCI/infra exposures (NMP/LMR/RFP/LMP/SEE qsearch/aspiration/futility/qsearch/history-malus/lmr-history, default-off or default-preserving). Bench baseline `d6=20922/8/b1c3, d7=47396/28/b1c3, d8=139252/19/b1c3, total 207570`; perft CORE OK; `npm run test:engine` PASS; gauntlet 12/12.
+- **Strict no-cycle A/Bs (all CI span 0, no claim).** FD hooks, staged movegen (negative, kept off), SEE/qsearch/NMP/LMR/futility/aspiration/TT/RFP/LMP/history-malus/lmr-history sweeps reported in CHANGELOG. Strongest signal: `see.qsearchPruneMinDepth=1` (48g +65.92 CI [-1.04,+138.19], 96g +32.67 CI [-15.88,+82.54]) and combined minDepth1+margin100 (96g +21.74 CI [-25.43,+69.73]) - **inconclusive, default unchanged**.
+
+v3.0.15 (released 2026-11-24) is a formalized release snapshot. No Elo gain has been established; no external strength claim. The release focuses on measurement/verification hardening and behavior-preserving perf work.
+
+- **Behavior-preserving perf micro-opts.** Hot-path cleanups in `core.mjs`/`search.mjs` (isAttacked/generateMoves/makeMove/unmakeMove/SEE/ordering loops, optional generateMoves out buffer, per-ply/probe/check move buffers, optional makeMove outUndo with per-ply/probe undo reuse, TT probe move-hint reuse). Verification: identical `bench:engine` baseline (`d6=20969/8/b1c3, d7=46933/28/b1c3, d8=139085/19/b1c3, total 206987`), `test:perft` CORE OK, `npm test` PASS, gauntlet 12/12 PASS. No strength/Elo claim.
+- **TT exact-preference A/B (neutral/inconclusive).** `TranspositionTable.store` keeps exact over non-exact at equal depth/same key/non-stale. A/B vs `72eb3b8` (48g, d4, seed 20261124, no-cycle): 15W/18D/15L, 0.500, CI [-79.9,+79.9]. No Elo gain claim.
+- **67dfd2c vs 09706a9 measurement (neutral/inconclusive).** Four paired UCI batches, 234g combined ~0.524, CI spans 0. Clean no-cycle batch4: 15W/19D/14L 0.510 CI [-70.9,+86.1]. No Elo gain claim.
+- **Measurement/verification hardening.** `bench/version_match.mjs` strict no-cycle/opening IDs/git HEAD/abort capture; openings expanded to 48; audit/FD no-search-effect guards; Gate 4 traceability snapshot (`docs/INVARIANT-COVERAGE.md`); executable `SM-INV-003`/`SPG-INV-005` checks.
+
+v3.0.14 (2026-11-22) formalized correctness/measurement/search-safety increment (quiet-threat/LMR candidates parked default off, adjudication/repetition fixes, root check extension + qsearch mate-delta guard). v3.0.13 added analytical Field Dynamics (`src/engine/field.mjs`, FD-01..FD-14, FD-INV-001..010) exposed via `engine.fieldDynamics()`/`analyze().fields` without changing move generation, eval, ordering, or search; `search.ttMaxAge` diagnostic (default 0, ADR 0022; ttMaxAge=1 rejected by A/B).
 
 The measurements and release history below describe v3.0.11 unless a section says otherwise.
 
@@ -326,9 +336,9 @@ and is not comparable. A1 is accepted; the d9-in-6s target itself is still unmet
 
 **Plan, in the order the profile justifies:**
 
-| Step | Attacks | Expected | Gate |
-|---|---|---|---|
-| Staged move generation (captures first, quiets after the cutoff) | `generateMoves` 14.8%, `scoreMoves` 16.8% | 20-40% | `generateMoves` self time < 8% |
+| Step | Attacks | Expected | Gate | Status |
+|---|---|---|---|---|
+| Staged move generation (captures first, quiets after the cutoff) | `generateMoves` 14.8%, `scoreMoves` 16.8% | 20-40% | `generateMoves` self time < 8% | Prototype default-off; strict no-cycle 48g A/B (d4, 220 plies, openingSeed null) 0W/3D/45L, 0.03125, Elo -596.54 CI [-1199.83,-460.74] �?" clear regression, keep default off. |
 | Bitboards (occupancy + attack bitsets) | `generateMoves` 14.8%, `isAttacked` 7.0%, make/unmake 6.5% | 25-40% | `isAttacked` < 3%, make/unmake < 3% |
 | Leaf-tier mobility from precomputed ray tables | mobility = 37% of `evaluateFast` | 5-8% | `evaluateFast` < 25% |
 

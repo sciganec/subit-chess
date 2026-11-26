@@ -22,6 +22,21 @@ function argsOf(argv) {
   return out;
 }
 
+function collectOptions(argv, key) {
+  const flag = `--${key}`;
+  const out = [];
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] !== flag) continue;
+    const next = argv[i + 1];
+    if (next === undefined || next.startsWith('--')) throw new Error(`${flag} requires name=value`);
+    const m = String(next).match(/^([^=]+)=(.*)$/);
+    if (!m) throw new Error(`${flag} expects name=value, got ${next}`);
+    out.push({ name: m[1].trim(), value: m[2].trim() });
+    i++;
+  }
+  return out;
+}
+
 function startEngine(name, entry) {
   const child = spawn(process.execPath, [path.resolve(entry), 'uci'], {
     stdio: ['pipe', 'pipe', 'inherit'], windowsHide: true
@@ -163,7 +178,9 @@ async function main() {
   const opts = argsOf(process.argv.slice(2));
   const aEntry = opts.a;
   const bEntry = opts.b;
-  if (!aEntry || !bEntry) throw new Error('usage: node bench/version_match.mjs --a <engine-index.mjs> --b <engine-index.mjs> [--games 100] [--depth 4] [--max-plies 240] [--openings file] [--opening-seed N] [--opening-offset N] [--strict-no-cycle] [--out results/file.json]');
+  const aOptions = collectOptions(process.argv.slice(2), 'a-option');
+  const bOptions = collectOptions(process.argv.slice(2), 'b-option');
+  if (!aEntry || !bEntry) throw new Error('usage: node bench/version_match.mjs --a <engine-index.mjs> --b <engine-index.mjs> [--games 100] [--depth 4] [--max-plies 240] [--openings file] [--opening-seed N] [--opening-offset N] [--strict-no-cycle] [--a-option name=value] [--b-option name=value] [--out results/file.json]');
   const games = Number(opts.games || 100);
   if (!Number.isInteger(games) || games < 2 || games % 2 !== 0) throw new Error('--games must be an even integer >= 2 to balance colours');
   const depth = Number(opts.depth || 4);
@@ -191,6 +208,9 @@ async function main() {
   let aborted = null;
   try {
     await Promise.all([init(a), init(b)]);
+    for (const opt of aOptions) a.send(`setoption name ${opt.name} value ${opt.value}`);
+    for (const opt of bOptions) b.send(`setoption name ${opt.name} value ${opt.value}`);
+    if (aOptions.length || bOptions.length) await Promise.all([ready(a), ready(b)]);
     for (let i = 0; i < games; i++) {
       try {
         await Promise.all([ready(a), ready(b)]);
@@ -229,7 +249,8 @@ async function main() {
     engines: {
       a: aPath, b: bPath,
       aHead: gitHead(path.dirname(aPath)),
-      bHead: gitHead(path.dirname(bPath))
+      bHead: gitHead(path.dirname(bPath)),
+      aOptions, bOptions
     },
     settings: {
       games, depth, maxPlies, openings: openingsPath,

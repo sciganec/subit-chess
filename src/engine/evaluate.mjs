@@ -24,6 +24,7 @@ import {
 import { Percept } from './percept.mjs';
 import { Structure } from './structure.mjs';
 import { computeContext } from './context.mjs';
+import { buildFieldDynamics } from './field.mjs';
 
 /* ------------------------------------------------------------------ *
  * Parameter set θ  (all values are centipawn-scaled and tunable)
@@ -67,6 +68,9 @@ export const DEFAULT_PARAMS = {
     rookOpen: 14,
     outpost: 35,
     outpostBishop: 0,
+    fdAttackWeight: 0,                         // FD-inspired geometric attacker-weight sum on the king zone; default off
+    fdPinDiscount: 0,                          // FD-03-inspired off-ray defense discount for absolute pins (structural tier); default off
+    fdPressure: 0,                             // FD-inspired king-zone pressure from buildFieldDynamics (structural tier); default off
     passedProtected: 0,
     passedKing: 0,
     rookSemiOpen: 7,
@@ -317,6 +321,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const cfgShieldEndgame = cfg.kingShieldEndgame || 0;
   const cfgKingOpenFile = cfg.kingOpenFile || 0;
   const cfgKingAttack = cfg.kingAttack || 0;
+  const cfgFdAttackWeight = cfg.fdAttackWeight || 0;
   const cfgKingZone = cfg.kingZone || 0;
   const flatMid = T.flatMid;
   const flatEnd = T.flatEnd;
@@ -507,18 +512,25 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
       if (openFiles) score -= sign * openWeight * openFiles;
     }
 
-    if (cfgKingAttack) {
+    if (cfgKingAttack || cfgFdAttackWeight) {
       const ksq = kingSq[color];
       const kr = ksq >> 4, kf = ksq & 7;
       const enemy = color ^ 1;
-      let atk = 0;
+      let atk = 0, wAtk = 0;
       for (let dr = -1; dr <= 1; dr++) for (let df = -1; df <= 1; df++) {
         if (dr === 0 && df === 0) continue;
         const r = kr + dr, f = kf + df;
         if (r < 0 || r > 7 || f < 0 || f > 7) continue;
-        if (pos.isAttacked((r << 4) | f, enemy)) atk++;
+        const qsq = (r << 4) | f;
+        if (cfgFdAttackWeight) {
+          const aw = pos.attackWeight(qsq, enemy);
+          if (aw > 0) { atk++; wAtk += aw; }
+        } else if (pos.isAttacked(qsq, enemy)) {
+          atk++;
+        }
       }
-      if (atk) score -= sign * cfgKingAttack * atk * (1 - 0.4 * phase);
+      if (atk && cfgKingAttack) score -= sign * cfgKingAttack * atk * (1 - 0.4 * phase);
+      if (wAtk && cfgFdAttackWeight) score -= sign * cfgFdAttackWeight * wAtk * (1 - 0.4 * phase);
     }
   }
 
@@ -947,6 +959,14 @@ export class Evaluation {
     // (audit v3.0.6 §6.1)
     const ctx = computeContext(pos, percept, structure);
     const vec = structuralVector(pos, percept, structure, ctx, this.params);
+    const fdP = this.params.eval?.fdPressure || 0;
+    let fd = null;
+    if (fdP) {
+      fd = buildFieldDynamics(pos);
+      vec[1] += fdKingPressureDelta(pos, fd, fdP);
+    }
+    const fdPinD = this.params.eval?.fdPinDiscount || 0;
+    if (fdPinD) vec[3] += fdPinDefenseDiscount(pos, percept, fdPinD);
     const { E, E0, Ei, Ec } = scalarize(vec, ctx, this.params);
     const uncertainty = estimateUncertainty(pos, percept, structure, vec);
     const result = {
@@ -961,7 +981,8 @@ export class Evaluation {
       confidence: confidenceVector(percept, structure),
       uncertainty,
       structure,
-      percept
+      percept,
+      fd
     };
     if (this.cache) {
       if (this.cache.size > 4096) this.cache.clear();
@@ -989,6 +1010,108 @@ export class Evaluation {
     keys[i] = k; this.evalVals[i] = v;
     return v;
   }
+}
+
+/**
+ * FD-03-inspired discount for off-ray defenses by absolutely pinned pieces.
+ * Geometric attack maps count them, but they cannot legally move off-ray.
+ * Returns delta for structural D axis (stm-relative). Default-off.
+ */
+function fdPinDefenseDiscount(pos, percept, weight) {
+  if (!percept.pins.length) return 0;
+  const us = pos.turn;
+  const b = pos.board;
+  let delta = 0;
+  for (let i = 0; i < percept.pins.length; i++) {
+    const pin = percept.pins[i];
+    const pinnerSq = pin.pinner;
+    const kingSq = pin.king;
+    const pinnedSq = pin.pinned;
+    const pdr = Math.sign((pinnerSq >> 4) - (kingSq >> 4));
+    const pdf = Math.sign((pinnerSq & 7) - (kingSq & 7));
+    const p = b[pinnedSq];
+    if (p === EMPTY) continue;
+    const color = p >> 3;
+    const type = p & 7;
+    let fakeDefs = 0;
+    // scan geometric attacks of pinned piece; count off-ray defenses of own pieces
+    if (type === PAWN) {
+      const dir = color === WHITE ? -16 : 16;
+      for (const df of [-1, 1]) {
+        const to = pinnedSq + dir + df;
+        if (to & 0x88) continue;
+        const tp = b[to];
+        if (tp !== EMPTY && (tp >> 3) === color) {
+          const dr = (to >> 4) - (kingSq >> 4);
+          const dfk = (to & 7) - (kingSq & 7);
+          if (dr * pdf !== dfk * pdr) fakeDefs++;
+        }
+      }
+    } else if (type === KNIGHT) {
+      for (let j = 0; j < 8; j++) {
+        const to = pinnedSq + KNIGHT_DELTAS[j];
+        if (to & 0x88) continue;
+        const tp = b[to];
+        if (tp !== EMPTY && (tp >> 3) === color) fakeDefs++; // knights never on-ray
+      }
+    } else if (type === KING) {
+      // king can't be pinned
+    } else {
+      const dirs = type === BISHOP ? BISHOP_DIRS : type === ROOK ? ROOK_DIRS : QUEEN_DIRS;
+      const dlen = type === QUEEN ? 8 : 4;
+      for (let j = 0; j < dlen; j++) {
+        const d = dirs[j];
+        let to = pinnedSq + d;
+        while ((to & 0x88) === 0) {
+          const tp = b[to];
+          if (tp !== EMPTY) {
+            if ((tp >> 3) === color) {
+              const dr = (to >> 4) - (kingSq >> 4);
+              const dfk = (to & 7) - (kingSq & 7);
+              if (dr * pdf !== dfk * pdr) fakeDefs++;
+            }
+            break;
+          }
+          to += d;
+        }
+      }
+    }
+    if (!fakeDefs) continue;
+    const pen = fakeDefs * weight;
+    delta += (color === us ? -pen : pen);
+  }
+  return delta;
+}
+
+/**
+ * FD-inspired king-zone pressure delta (stm-relative).
+ * Uses Field Dynamics weighted geometric influence (FD-03/FD-08) on squares
+ * around both kings. Default-off via params.eval.fdPressure.
+ */
+function fdKingPressureDelta(pos, fd, weight) {
+  const us = pos.turn;
+  const them = opposite(us);
+  const myPressure = kingZoneFdPressure(pos.kingSq[us], fd.channels[them === WHITE ? 'white' : 'black'].weight);
+  const theirPressure = kingZoneFdPressure(pos.kingSq[them], fd.channels[us === WHITE ? 'white' : 'black'].weight);
+  // Positive = more pressure on enemy king than our king, same direction as K.
+  return (theirPressure - myPressure) * weight;
+}
+
+function kingZoneFdPressure(ksq, weightMap) {
+  const kf = fileOf(ksq), kr = 7 - rankOf(ksq); // rankOf is 0x88 row; convert to chess rank 0=rank1
+  let sum = 0;
+  for (let dr = -1; dr <= 1; dr++) {
+    const r = kr + dr;
+    if (r < 0 || r > 7) continue;
+    for (let df = -1; df <= 1; df++) {
+      if (dr === 0 && df === 0) continue;
+      const f = kf + df;
+      if (f < 0 || f > 7) continue;
+      const idx = (7 - r) * 8 + f; // linear idx: y = 7-rank, x = file
+      sum += weightMap[idx];
+    }
+  }
+  return sum;
 }
 
 function buildStructureSafe(pos, percept) {

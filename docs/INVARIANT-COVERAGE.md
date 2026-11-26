@@ -1,4 +1,4 @@
-# Invariant Coverage Snapshot (v3.0.16 dev)
+# Invariant Coverage Snapshot (v3.0.17 dev)
 
 **Status:** evidence-first traceability snapshot. **Not a claim of full theory-corpus coverage.**  
 **Date:** 2026-11-23
