@@ -6,8 +6,8 @@ UI that shows what the engine is actually thinking.
 
 Single-file HTML — no build step for the end user, no server, no CDN, no network access.
 
-**Development candidate: v3.0.16** — in progress after v3.0.15 release; no Elo gain claim until measured under an accepted external protocol.
-Candidate notes: [`CHANGELOG.md`](CHANGELOG.md) — [3.0.16 candidate].
+**Release: v3.0.16.0** (2026-11-26) — formalized snapshot after v3.0.15. Search/perf/measurement hardening and default-off search/pruning hooks with strict no-cycle A/B evidence. **No Elo gain has been established; no external strength claim.**
+Release notes: [`CHANGELOG.md`](CHANGELOG.md) — [3.0.16.0].
 
 ## Quick start
 

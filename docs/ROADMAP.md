@@ -14,11 +14,12 @@ teacher pipeline and the diffusion generator were removed in v3 — see
 
 ---
 
-## Current state - v3.0.16 (development candidate, post v3.0.15)
+## Current state - v3.0.16.0 (released 2026-11-26)
 
-v3.0.16 is the active development candidate. No Elo gain has been established; no external strength claim.
+v3.0.16.0 is a formalized release snapshot after v3.0.15. **No Elo gain has been established; no external strength claim.** No accepted external anchor.
 
-- **FD experiment hooks (default off).** `eval.fdPressure` (default 0, structural FD-weighted king-zone pressure), `eval.fdAttackWeight` (default 0, cheap fast-eval geometric attacker-weight sum on king zone), `eval.fdPinDiscount` (default 0, FD-03 off-ray defense discount for absolute pins in structural D). All default-off, `bench:engine` baseline identical, tests/gauntlet green. A/Bs (48g, d4, strict no-cycle): `FDPressure=2` 13W/22D/13L 0.500 CI [-74.21,+74.21]; `FDAttackWeight=1` 12W/21D/15L 0.469 CI [-98.51,+52.93]; `FDPinDiscount=3` 12W/24D/12L 0.500 CI [-71.22,+71.22]. All CI span 0 — neutral/inconclusive, no Elo gain claim.
+- **Behavior-preserving perf & infra.** Lazy incremental move selection/piece-list/phaseMaterial micro-opts; UCI/infra exposures (NMP/LMR/RFP/LMP/SEE qsearch/aspiration/futility/qsearch/history-malus/lmr-history, default-off or default-preserving). Bench baseline `d6=20922/8/b1c3, d7=47396/28/b1c3, d8=139252/19/b1c3, total 207570`; perft CORE OK; `npm run test:engine` PASS; gauntlet 12/12.
+- **Strict no-cycle A/Bs (all CI span 0, no claim).** FD hooks, staged movegen (negative, kept off), SEE/qsearch/NMP/LMR/futility/aspiration/TT/RFP/LMP/history-malus/lmr-history sweeps reported in CHANGELOG. Strongest signal: `see.qsearchPruneMinDepth=1` (48g +65.92 CI [-1.04,+138.19], 96g +32.67 CI [-15.88,+82.54]) and combined minDepth1+margin100 (96g +21.74 CI [-25.43,+69.73]) - **inconclusive, default unchanged**.
 
 v3.0.15 (released 2026-11-24) is a formalized release snapshot. No Elo gain has been established; no external strength claim. The release focuses on measurement/verification hardening and behavior-preserving perf work.
 

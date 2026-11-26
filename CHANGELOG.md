@@ -13,9 +13,9 @@ Statuses:
 
 ---
 
-## [3.0.16 candidate] — 2026-11-24
+## [3.0.16.0] - 2026-11-26
 
-Development candidate in progress. No Elo gain has been established; do not claim release strength.
+Formalized release snapshot. Search/perf/measurement hardening, behavior-preserving micro-opts, and default-off search/pruning hooks with strict no-cycle A/B evidence. **No Elo gain has been established; no external strength claim.** CI spans 0 on all reported A/Bs; defaults unchanged unless explicitly noted.
 
 - **Perf: lazy incremental move selection (behavior-preserving, bench-identical).** `src/engine/search.mjs` `MoveOrder` now uses per-ply packed buffers and incremental `pick()` selection instead of full sort+reorder on every `scoreMoves()` call. Call sites updated in negamaxRoot/negamax/qsearch. Fixed a pick-bound bug in the quiet-check qsearch branch: when `qc.maxChecks` caps checks, selection must consider all scored checks (`scoredN`), not only `checkCount`. Verification: `bench:engine` baseline identical (`d6=20969/8/b1c3, d7=46933/28/b1c3, d8=139085/19/b1c3, total 206987`), `node tests/core.perft.mjs` CORE OK, `npm run test:engine` PASS, gauntlet 12/12 PASS. **No Elo/strength claim.**
 - **Perf/correctness: incremental piece lists and phaseMaterial in make/unmake (bench node counts changed, same best moves/scores).** `src/engine/core.mjs` now maintains `listSq`/`listCnt`/`listIdx` and `phaseMaterial` incrementally in `makeMove`/`unmakeMove` (swap-remove with exact restore for captures, rook list update for castling), removing the per-eval 128-square `refreshPieces()` rebuild on dirty state. A defensive `refreshPieces()` guard remains for unexpected dirty state. This also fixes stale `phaseMaterial` reads between move and refresh; search insufficient-material checks (`pos.phaseMaterial <= 2`) now see correct values, so bench node counts differ from the previous baseline while best moves/scores remain the same (`d6=20922/8/b1c3, d7=47396/28/b1c3, d8=139252/19/b1c3, total 207570`). Verification: `node tests/core.perft.mjs` CORE OK, `npm run test:engine` PASS, gauntlet 12/12 PASS. **No Elo/strength claim.**
