@@ -967,6 +967,19 @@ export class Searcher {
         continue;
       }
 
+      // History pruning: skip late quiet moves with very bad history at shallow depth. Default off; A/B required.
+      const hp = this.params.search.historyPruning;
+      if (hp && hp.enabled && !pvNode && !inCheck && !givesCheck && isQuiet &&
+          depth <= (hp.maxDepth || 3) && quietsSearched > 0) {
+        const hIdx = (us * 128 + MOVE_FROM(m)) * 128 + MOVE_TO(m);
+        if (this.order.history[hIdx] < (hp.threshold ?? -2048)) {
+          pruned++;
+          pos.unmakeMove(undo);
+          pos.popRep();
+          continue;
+        }
+      }
+
       // Futility pruning at the frontier (controlled, never at the PV). It runs
       // after the move is made, because a quiet move that gives check must
       // survive the frontier: a quiet mate in one is exactly the move that

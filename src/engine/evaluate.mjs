@@ -102,6 +102,8 @@ export const DEFAULT_PARAMS = {
     razoring: { enabled: false, maxDepth: 2, margin: 300 },
     // IIR (Internal Iterative Reduction): reduce depth when no TT move at sufficient depth. Default off; A/B required.
     iir: { enabled: false, minDepth: 4, reduction: 1 },
+    // History pruning: skip late quiet moves with very bad history at shallow depth. Default off; A/B required.
+    historyPruning: { enabled: false, maxDepth: 3, threshold: -2048 },
     checkExtension: 1,
     extensionBudget: 6,
     quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },
