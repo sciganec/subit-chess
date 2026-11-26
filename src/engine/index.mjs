@@ -454,6 +454,10 @@ async function runUci() {
       send('option name RFP.Enabled type check default false');
       send('option name RFP.Margin type spin default 80 min 20 max 200');
       send('option name RFP.MaxDepth type spin default 3 min 1 max 6');
+      send('option name LMP.Enabled type check default false');
+      send('option name LMP.MaxDepth type spin default 3 min 1 max 6');
+      send('option name LMP.Base type spin default 4 min 1 max 20');
+      send('option name LMP.Multiplier type spin default 2 min 1 max 10');
       send('option name SEE.QSearchPruneMargin type spin default 0 min 0 max 500');
       send('option name Search.StagedMoveGen type check default false');
       send('uciok');
@@ -484,6 +488,10 @@ async function runUci() {
         else if (name === 'rfp' || name === 'rfp.enabled') { if (on||off) engine.params.search.rfp.enabled = on; }
         else if (name === 'rfp.margin') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.rfp.margin = Math.max(20, Math.min(200, n|0)); }
         else if (name === 'rfp.maxdepth') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.rfp.maxDepth = Math.max(1, Math.min(6, n|0)); }
+        else if (name === 'lmp' || name === 'lmp.enabled') { if (on||off) engine.params.search.lmp.enabled = on; }
+        else if (name === 'lmp.maxdepth') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmp.maxDepth = Math.max(1, Math.min(6, n|0)); }
+        else if (name === 'lmp.base') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmp.base = Math.max(1, Math.min(20, n|0)); }
+        else if (name === 'lmp.multiplier') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmp.multiplier = Math.max(1, Math.min(10, n|0)); }
         else if (name === 'see' || name === 'see.enabled') { if (on||off) engine.params.search.see.enabled = on; }
         else if (name === 'see.qsearchprune') { if (on||off) engine.params.search.see.qsearchPrune = on; }
         else if (name === 'see.qsearchprunemargin') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.see.qsearchPruneMargin = Math.max(0, Math.min(500, n|0)); }

@@ -89,6 +89,9 @@ export const DEFAULT_PARAMS = {
     // Reverse futility pruning: at shallow depth, if static eval is far above
     // beta, the node is unlikely to fall below beta. Default off; A/B required.
     rfp: { enabled: false, margin: 80, maxDepth: 3 },
+    // Late move pruning: at shallow depth, skip late quiet moves after enough
+    // quiets have been searched. Default off; A/B required.
+    lmp: { enabled: false, maxDepth: 3, base: 4, multiplier: 2 },
     checkExtension: 1,
     extensionBudget: 6,
     quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },

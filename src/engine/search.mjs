@@ -896,8 +896,10 @@ export class Searcher {
     let bestMove = 0;
     let legal = 0;
     let pruned = 0;
+    let quietsSearched = 0;
     const lmr = this.params.search.lmr;
     const futility = this.params.search.futility;
+    const lmp = this.params.search.lmp;
 
     for (let i = 0; i < orderedCount; i++) {
       this.order.pick(ply, i, orderedCount);
@@ -917,6 +919,15 @@ export class Searcher {
       }
 
       const givesCheck = pos.inCheck();
+
+      // Late move pruning: at shallow depth, skip late quiet moves.
+      if (lmp && lmp.enabled && !pvNode && !inCheck && !givesCheck && isQuiet &&
+          depth <= (lmp.maxDepth || 3) && quietsSearched >= ((lmp.base || 4) + depth * (lmp.multiplier || 2))) {
+        pruned++;
+        pos.unmakeMove(undo);
+        pos.popRep();
+        continue;
+      }
 
       // Futility pruning at the frontier (controlled, never at the PV). It runs
       // after the move is made, because a quiet move that gives check must
@@ -939,6 +950,7 @@ export class Searcher {
 
       legal++;
       this.nodes++;
+      if (isQuiet && !givesCheck) quietsSearched++;
 
       let score;
       let reduction = 0;
