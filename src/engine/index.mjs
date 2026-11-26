@@ -466,6 +466,9 @@ async function runUci() {
       send('option name Search.Razoring type check default false');
       send('option name Search.RazoringMaxDepth type spin default 2 min 1 max 4');
       send('option name Search.RazoringMargin type spin default 300 min 0 max 1200');
+      send('option name Search.IIR type check default false');
+      send('option name Search.IIRMinDepth type spin default 4 min 2 max 8');
+      send('option name Search.IIRReduction type spin default 1 min 1 max 3');
       send('option name SEE.QSearchPruneMargin type spin default 0 min 0 max 500');
       send('option name SEE.QSearchPruneMinDepth type spin default 0 min 0 max 4');
       send('option name Search.StagedMoveGen type check default false');
@@ -509,6 +512,9 @@ async function runUci() {
         else if (name === 'search.razoring' || name === 'razoring.enabled' || name === 'razoring') { if (on||off) engine.params.search.razoring.enabled = on; }
         else if (name === 'search.razoringmaxdepth' || name === 'razoring.maxdepth') { if (Number.isFinite(num)) engine.params.search.razoring.maxDepth = Math.max(1, Math.min(4, num|0)); }
         else if (name === 'search.razoringmargin' || name === 'razoring.margin') { if (Number.isFinite(num)) engine.params.search.razoring.margin = Math.max(0, Math.min(1200, num|0)); }
+        else if (name === 'search.iir' || name === 'iir.enabled' || name === 'iir') { if (on||off) engine.params.search.iir.enabled = on; }
+        else if (name === 'search.iirmindepth' || name === 'iir.mindepth') { if (Number.isFinite(num)) engine.params.search.iir.minDepth = Math.max(2, Math.min(8, num|0)); }
+        else if (name === 'search.iirreduction' || name === 'iir.reduction') { if (Number.isFinite(num)) engine.params.search.iir.reduction = Math.max(1, Math.min(3, num|0)); }
         else if (name === 'see' || name === 'see.enabled') { if (on||off) engine.params.search.see.enabled = on; }
         else if (name === 'see.qsearchprune') { if (on||off) engine.params.search.see.qsearchPrune = on; }
         else if (name === 'see.qsearchprunemargin') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.see.qsearchPruneMargin = Math.max(0, Math.min(500, n|0)); }

@@ -100,6 +100,8 @@ export const DEFAULT_PARAMS = {
     improving: false,
     // Razoring: at shallow depth, if static eval is far below alpha, drop to qsearch. Default off; A/B required.
     razoring: { enabled: false, maxDepth: 2, margin: 300 },
+    // IIR (Internal Iterative Reduction): reduce depth when no TT move at sufficient depth. Default off; A/B required.
+    iir: { enabled: false, minDepth: 4, reduction: 1 },
     checkExtension: 1,
     extensionBudget: 6,
     quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },

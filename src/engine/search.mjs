@@ -859,6 +859,14 @@ export class Searcher {
       }
     }
 
+    // Internal Iterative Reduction: when no TT move is available at sufficient depth,
+    // reduce depth slightly. Default off; A/B required.
+    const iir = this.params.search.iir;
+    if (iir && iir.enabled && !inCheck && !ttMove && depth >= (iir.minDepth || 4)) {
+      depth -= (iir.reduction || 1);
+      if (depth <= 0) return this.quiescence(pos, alpha, beta, ply, 0);
+    }
+
     // null move pruning (never a legal chess move — search-only)
     if (this.useNull && this.canNull(pos, depth, inCheck, pvNode)) {
       const R = Math.min(this.params.search.nullMove.maxReduction,
