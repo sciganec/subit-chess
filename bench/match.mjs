@@ -154,6 +154,8 @@ export const CONFIGS = {
   lmridx2: { label: 'LMR from the 3rd move (minMoveIndex 2)', params: { search: { lmr: { minMoveIndex: 2 } } }, opts: {} },
   lmrdepth2: { label: 'LMR from depth 2', params: { search: { lmr: { minDepth: 2 } } }, opts: {} },
   cmove: { label: 'countermove ordering', params: { search: { countermove: { enabled: true } } }, opts: {} },
+  outp: { label: 'knight outpost 20', params: { eval: { outpost: 20 } }, opts: {} },
+  outp35: { label: 'knight outpost 35', params: { eval: { outpost: 35 } }, opts: {} },
   rfp80: { label: 'RFP margin 80', params: { search: { rfp: { margin: 80 } } }, opts: {} },
   rfp180: { label: 'RFP margin 180', params: { search: { rfp: { margin: 180 } } }, opts: {} },
   seeprune: { label: 'SEE pruning of losing captures (depth<=4, 100cp/ply)', params: { search: { seePrune: { enabled: true } } }, opts: {} },

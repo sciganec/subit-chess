@@ -65,6 +65,7 @@ export const DEFAULT_PARAMS = {
     isolated: 16,
     passed: [0, 8, 12, 22, 40, 70, 110, 0],   // by rank of the pawn (0..7)
     rookOpen: 14,
+    outpost: 20,
     rookSemiOpen: 7,
     kingShield: 10,
     kingShieldEndgame: 0.25,                   // shield matters less in the endgame
@@ -305,6 +306,7 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const cfgRookSemiOpen = cfg.rookSemiOpen || 0;
   const cfgShield = cfg.kingShield || 0;
   const cfgConnected = cfg.connected || 0;
+  const cfgOutpost = cfg.outpost || 0;
   const cfgRook7 = cfg.rook7 || 0;
   const cfgShieldEndgame = cfg.kingShieldEndgame || 0;
   const cfgKingOpenFile = cfg.kingOpenFile || 0;
@@ -363,6 +365,36 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const phase = 1 - Math.min(1, nonPawn / PHASE_TOTAL);   // 0 opening .. 1 endgame
 
   let score = cfg.taper === false ? (phase < 0.5 ? mid : end) : mid + (end - mid) * phase;
+
+  // knight outposts: relative ranks 4-6, defended by an own pawn, no enemy pawn can attack the square
+  if (cfgOutpost) {
+    for (let color = 0; color < 2; color++) {
+      const sign = color === WHITE ? 1 : -1;
+      const list = pos.listSq[color];
+      const n = pos.listCnt[color];
+      const mine = pawnMask[color];
+      const theirs = pawnMask[color ^ 1];
+      for (let i = 0; i < n; i++) {
+        const sq = list[i];
+        if ((b[sq] & 7) !== KNIGHT) continue;
+        const r = 7 - (sq >> 4);              // white-relative rank 0..7
+        const rel = color === WHITE ? r : 7 - r;
+        if (rel < 3 || rel > 5) continue;
+        const f = sq & 7;
+        const nf = (f > 0 ? 1 << (f - 1) : 0) | (f < 7 ? 1 << (f + 1) : 0);
+        const supBit = 1 << (color === WHITE ? r - 1 : r + 1);
+        let supported = false;
+        if (f > 0 && (mine[f - 1] & supBit)) supported = true;
+        if (f < 7 && (mine[f + 1] & supBit)) supported = true;
+        if (!supported) continue;
+        const ahead = color === WHITE ? ~((1 << (r + 1)) - 1) & 255 : ((1 << r) - 1);
+        let attacked = false;
+        if (f > 0 && (theirs[f - 1] & ahead)) attacked = true;
+        if (f < 7 && (theirs[f + 1] & ahead)) attacked = true;
+        if (!attacked) score += sign * cfgOutpost * (rel === 3 ? 0.7 : 1);
+      }
+    }
+  }
 
   // ---- structural terms, white-positive ----
   const passed = cfgPassed;
