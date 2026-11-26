@@ -1154,6 +1154,7 @@ export class Searcher {
     const seePrune = this.params.search.see ? this.params.search.see.qsearchPrune !== false : true;
     const seePruneMargin = (this.params.search.see && this.params.search.see.qsearchPruneMargin) || 0;
     const seePruneMinDepth = (this.params.search.see && this.params.search.see.qsearchPruneMinDepth) || 0;
+    const deltaMargin = (this.params.search.qsearch && this.params.search.qsearch.deltaMargin) || 200;
     let legal = 0;
 
     for (let i = 0; i < orderedCount; i++) {
@@ -1170,7 +1171,7 @@ export class Searcher {
         // its material delta understates the true score (A.6/qsearch safety).
         const victim = pos.board[to];
         const victimValue = (flags & FLAG_EP) ? MATERIAL[PAWN] : (victim ? MATERIAL[pieceType(victim)] : 0);
-        if (alpha < MATE_THRESHOLD && best + victimValue + 200 < alpha && !(flags & FLAG_PROMO)) continue;
+        if (alpha < MATE_THRESHOLD && best + victimValue + deltaMargin < alpha && !(flags & FLAG_PROMO)) continue;
       }
       pos.pushRep();
       const undo = pos.makeMove(m, this.undoBuf[ply]);

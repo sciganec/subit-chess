@@ -103,7 +103,7 @@ export const DEFAULT_PARAMS = {
     evalMode: 'fast',      // 'fast' | 'structural' | 'hybrid' — search hot path
     // Quiet checking moves at the first qsearch level. A sacrifice that starts
     // with a silent check is invisible to a captures-only horizon (audit A1).
-    qsearch: { checks: true, maxChecks: 4 },
+    qsearch: { checks: true, maxChecks: 4, deltaMargin: 200 },
     see: { enabled: true, qsearchPrune: true, qsearchPruneMargin: 0, qsearchPruneMinDepth: 0 },
     stagedMoveGen: false, // behavior-changing prototype; default off, strict no-cycle A/B before enabling
     // Gate 3 kill: structural ordering deleted (200-game A/B had no positive CI).
