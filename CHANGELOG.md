@@ -19,6 +19,12 @@ Consolidation of two lines that diverged at f3029ca: the release line `main` (v3
 
 ---
 
+**[3.0.17 merge notes]** What came from where, and what was deliberately not ported:
+- Taken from the strength line: `search.mjs`, `core.mjs`, `evaluate.mjs`, `index.mjs` (all measured results of [3.0.16 strength line] hold for them), the conformance suite, Lazy SMP, adaptive budget.
+- Ported from `main` (all default off, no behaviour change): `field.mjs` and its tests, `pos.attackWeight`, `eval.fdAttackWeight` / `fdPinDiscount` / `fdPressure`, and the matching UCI options plus the tuning options for NMP, aspiration, futility, LMR, RFP, LMP, QSearch.MaxChecks.
+- Not ported: lazy incremental move selection (`pick`; tried on this line: identical nodes and moves on 5 positions, no speed change, ≈290k nps either way), incremental piece lists in make/unmake (the strength line already carries its own allocation-free attack/SEE code; the two changed the same code), `stagedMoveGen` (negative A/B on `main`), `Hash` resizing (the shared transposition table of Lazy SMP is fixed-size), and `main`'s boolean `historyMalus` / `lmrHistory` flags (the strength line has `historyMalus.enabled` and the LMR log options).
+- `main`'s A/B notes in [3.0.16.0] were measured with its own code and are kept as history; they do not apply to the strength line's defaults.
+
 ## [3.0.16.0] - 2026-11-26
 
 Formalized release snapshot. Search/perf/measurement hardening, behavior-preserving micro-opts, and default-off search/pruning hooks with strict no-cycle A/B evidence. **No Elo gain has been established; no external strength claim.** CI spans 0 on all reported A/Bs; defaults unchanged unless explicitly noted.
