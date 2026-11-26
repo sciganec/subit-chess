@@ -98,6 +98,8 @@ export const DEFAULT_PARAMS = {
     lmrHistory: false,
     // Improving: track static eval trend for LMR/futility adjustments. Default off; A/B required.
     improving: false,
+    // Razoring: at shallow depth, if static eval is far below alpha, drop to qsearch. Default off; A/B required.
+    razoring: { enabled: false, maxDepth: 2, margin: 300 },
     checkExtension: 1,
     extensionBudget: 6,
     quietThreatExtension: { enabled: false, maxPly: 2, minVictim: 900 },

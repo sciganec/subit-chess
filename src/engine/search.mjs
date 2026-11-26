@@ -870,17 +870,23 @@ export class Searcher {
       if (score >= beta) return beta;
     }
 
-    // Static eval / improving: used by RFP and optional improving heuristics.
+    // Static eval / improving / razoring: used by RFP and optional heuristics.
     const rfp = this.params.search.rfp;
+    const razoring = this.params.search.razoring;
     const improvingEnabled = this.params.search.improving === true;
     let staticEval = null;
     let improving = true;
     if (!inCheck) {
-      const needStatic = improvingEnabled || (rfp && rfp.enabled && !pvNode && depth <= (rfp.maxDepth || 3) && Math.abs(beta) < MATE_THRESHOLD);
+      const needRfp = rfp && rfp.enabled && !pvNode && depth <= (rfp.maxDepth || 3) && Math.abs(beta) < MATE_THRESHOLD;
+      const needRazoring = razoring && razoring.enabled && !pvNode && depth <= (razoring.maxDepth || 2) && Math.abs(alpha) < MATE_THRESHOLD;
+      const needStatic = improvingEnabled || needRfp || needRazoring;
       if (needStatic) staticEval = this.ev.evaluate(pos, depth);
       if (improvingEnabled) {
         this.evalStack[ply] = staticEval != null ? staticEval : this.ev.evaluate(pos, depth);
         improving = ply >= 2 ? this.evalStack[ply] > this.evalStack[ply - 2] : true;
+      }
+      if (needRazoring && staticEval + (razoring.margin || 300) * depth <= alpha) {
+        return this.quiescence(pos, alpha, beta, ply, 0);
       }
     } else if (improvingEnabled) {
       this.evalStack[ply] = ply >= 2 ? this.evalStack[ply - 2] : 0;

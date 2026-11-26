@@ -463,6 +463,9 @@ async function runUci() {
       send('option name Search.HistoryMalus type check default false');
       send('option name Search.LMRHistory type check default false');
       send('option name Search.Improving type check default false');
+      send('option name Search.Razoring type check default false');
+      send('option name Search.RazoringMaxDepth type spin default 2 min 1 max 4');
+      send('option name Search.RazoringMargin type spin default 300 min 0 max 1200');
       send('option name SEE.QSearchPruneMargin type spin default 0 min 0 max 500');
       send('option name SEE.QSearchPruneMinDepth type spin default 0 min 0 max 4');
       send('option name Search.StagedMoveGen type check default false');
@@ -503,6 +506,9 @@ async function runUci() {
         else if (name === 'search.historymalus' || name === 'historymalus') { if (on||off) engine.params.search.historyMalus = on; }
         else if (name === 'search.lmrhistory' || name === 'lmrhistory') { if (on||off) engine.params.search.lmrHistory = on; }
         else if (name === 'search.improving' || name === 'improving') { if (on||off) engine.params.search.improving = on; }
+        else if (name === 'search.razoring' || name === 'razoring.enabled' || name === 'razoring') { if (on||off) engine.params.search.razoring.enabled = on; }
+        else if (name === 'search.razoringmaxdepth' || name === 'razoring.maxdepth') { if (Number.isFinite(num)) engine.params.search.razoring.maxDepth = Math.max(1, Math.min(4, num|0)); }
+        else if (name === 'search.razoringmargin' || name === 'razoring.margin') { if (Number.isFinite(num)) engine.params.search.razoring.margin = Math.max(0, Math.min(1200, num|0)); }
         else if (name === 'see' || name === 'see.enabled') { if (on||off) engine.params.search.see.enabled = on; }
         else if (name === 'see.qsearchprune') { if (on||off) engine.params.search.see.qsearchPrune = on; }
         else if (name === 'see.qsearchprunemargin') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.see.qsearchPruneMargin = Math.max(0, Math.min(500, n|0)); }
