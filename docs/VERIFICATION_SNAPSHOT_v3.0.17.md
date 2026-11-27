@@ -25,7 +25,9 @@
 | `node tests/engine.movegen_oracle.mjs` | PASS | Independent pseudo-legal generation oracle (not using `Position.generateMoves`); `21200 position checks + 185934 perft nodes cross-checked` (edge-case FENs + 3 deterministic seeds x 60 playouts + small-depth perft cross-checks). Wired into `test:engine`/`test`. Progress on R-02/R-15; not exhaustive proof. |
 | `node tests/engine.field.mjs` | PASS | `All Field Dynamics checks passed.` |
 | `node tests/engine.smp.mjs` | PASS | `smp: 18 passed, 0 failed`. |
+| `node tests/engine.smp_stress.mjs` | PASS | Bounded smoke: repeated search/stop/start cycles, 1/2 helpers, `68 passed, 0 failed`. Not a long-run concurrency proof. |
 | `node tests/engine.audit311.mjs` | PASS | `AUDIT311: ALL CHECKS PASSED (20 checks)`. |
+| `node tests/engine.search_regressions.mjs` | PASS | Targeted R-04/R-05 regressions: qsearch in-check no stand-pat, promotion/EP capture in qsearch, futility mate regression, NMP pawn-only guard. |
 | `npm run test:engine` | PASS | Verified on current HEAD during v3.0.16.x dev cycle. |
 | `node src/engine/index.mjs bench` | PASS/recorded | Current HEAD baseline: `d6=9565/8/b1c3, d7=19319/28/d2d4, d8=81246/17/d2d4, total 110130`. |
 | `node bench/gauntlet_strength.mjs` | **11/12 PASS, 1 FAIL** | Known pre-existing fail on HEAD: `horizon c3c2 blunder (SF19 g8, d4 guard): got=a8c8 expect=!c3c2 score=192.75 d=4`. Not caused by recent default-off UCI exposure commits; verify before any strength claim. |
@@ -34,7 +36,7 @@
 
 - **Release integrity:** no reproducible build manifest/proof beyond recorded hashes; no CI status checks attached by this snapshot.
 - **Independent move oracle:** `tests/engine.movegen_oracle.mjs` adds an independent pseudo-legal completeness oracle (8x8/from-scratch, independent king-safety), now wired into `test:engine`/`test`, and passed on 21200 position checks + 185934 perft nodes cross-checked. This reduces R-02/R-15 risk but is **not exhaustive proof**; broader seeded/FEN-corpus and deeper/exhaustive cross-checks still needed.
-- **Search correctness under selective pruning:** futility/NMP/LMR/qsearch need targeted tactical regression coverage on current HEAD before behavior changes.
+- **Search correctness under selective pruning:** targeted regressions added (`engine.search_regressions.mjs`) but coverage is not exhaustive. **Open finding (R-04):** on current HEAD, `5rk1/5ppp/8/8/8/8/8/R5K1 w - - 0 1` (expected 1.Ra8+ Rf8 2.Rxf8# mate-in-2) was not found at d4/d5 with default/no-null/no-pruning configs during this audit; needs dedicated investigation before behavior changes.
 - **SMP concurrency:** basic SMP tests pass; long-run shared TT stress/cancellation/race audit remains open.
 - **Field Dynamics:** mathematical/invariant tests pass; **no proven chess-strength contribution by default**. Default-off FD eval weights remain 0 unless CI-cleared evidence supports change.
 - **SUBIT decision impact:** unproven. Structural ordering remains removed per ADR 0023; no reintroduction without new ADR + fresh pre-registered A/B.
