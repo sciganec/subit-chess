@@ -36,7 +36,7 @@
 
 - **Release integrity:** no reproducible build manifest/proof beyond recorded hashes; no CI status checks attached by this snapshot.
 - **Independent move oracle:** `tests/engine.movegen_oracle.mjs` adds an independent pseudo-legal completeness oracle (8x8/from-scratch, independent king-safety), now wired into `test:engine`/`test`, and passed on 21200 position checks + 185934 perft nodes cross-checked. This reduces R-02/R-15 risk but is **not exhaustive proof**; broader seeded/FEN-corpus and deeper/exhaustive cross-checks still needed.
-- **Search correctness under selective pruning:** targeted regressions added (`engine.search_regressions.mjs`) but coverage is not exhaustive. **Open finding (R-04):** on current HEAD, `5rk1/5ppp/8/8/8/8/8/R5K1 w - - 0 1` (expected 1.Ra8+ Rf8 2.Rxf8# mate-in-2) was not found at d4/d5 with default/no-null/no-pruning configs during this audit; needs dedicated investigation before behavior changes.
+- **Search correctness under selective pruning:** targeted regressions added (`engine.search_regressions.mjs`) but coverage is not exhaustive. A suspected mate-in-2 miss was investigated and found to be a **test-case error** (1.Ra8 is not check; 1...Rxa8). No confirmed engine regression from that case. Further tactical/pruning regressions still recommended.
 - **SMP concurrency:** basic SMP tests pass; long-run shared TT stress/cancellation/race audit remains open.
 - **Field Dynamics:** mathematical/invariant tests pass; **no proven chess-strength contribution by default**. Default-off FD eval weights remain 0 unless CI-cleared evidence supports change.
 - **SUBIT decision impact:** unproven. Structural ordering remains removed per ADR 0023; no reintroduction without new ADR + fresh pre-registered A/B.

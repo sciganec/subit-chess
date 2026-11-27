@@ -56,8 +56,8 @@ function mk(overrides = {}) {
   check('qsearch sees EP capture', score >= -50, `score=${score}`);
 }
 
-// R-04: observed open issue on current HEAD - simple rook-lift mate-in-2 missed at d4/d5.
-// FEN: 5rk1/5ppp/8/8/8/8/8/R5K1 w - - 0 1 (1.Ra8+ Rf8 2.Rxf8#). Recorded as audit finding, not asserted as pass.
+// R-04 note: an earlier audit draft flagged 5rk1/5ppp/8/8/8/8/8/R5K1 as "mate-in-2 missed";
+// that was a test-case error (1.Ra8 is not check, 1...Rxa8). No engine issue confirmed from that case.
 
 // R-04: futility should not hide short tactical mate (depth-limited, but mate exists).
 {
