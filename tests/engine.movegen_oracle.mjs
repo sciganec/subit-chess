@@ -214,6 +214,7 @@ const positions = [
 ];
 
 let total = 0;
+let perftNodes = 0;
 for (const fen of positions) {
   e.setFEN(fen);
   const pos = e.pos;
@@ -246,8 +247,47 @@ for (const seed0 of [20261127, 20261128, 20261129]) {
   }
 }
 
+function perftOracle(pos, depth) {
+  const moves = legalByOracle(pos);
+  const engMoves = pos.legalMoves();
+  const engSet = keySet(engMoves);
+  const refSet = keySet(moves);
+  for (const m of refSet) check(engSet.has(m), `perft missing in engine: ${m} depth=${depth} fen=${pos.fen()}`);
+  for (const m of engSet) check(refSet.has(m), `perft extra in engine: ${m} depth=${depth} fen=${pos.fen()}`);
+  if (depth === 0) return 1;
+  if (depth === 1) return moves.length;
+  let nodes = 0;
+  for (const m of moves) {
+    const u = pos.makeMove(m);
+    pos.pushRep();
+    nodes += perftOracle(pos, depth - 1);
+    pos.popRep();
+    pos.unmakeMove(u);
+  }
+  return nodes;
+}
+
+const perftCases = [
+  { fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', depths: [1,2,3] },
+  { fen: 'r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1', depths: [1,2,3] },
+  { fen: '8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1', depths: [1,2,3] },
+  { fen: 'r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1', depths: [1,2,3] },
+  { fen: 'rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8', depths: [1,2,3] },
+];
+for (const c of perftCases) {
+  for (const d of c.depths) {
+    e.setFEN(c.fen);
+    const pos = e.pos;
+    const refNodes = perftOracle(pos, d);
+    e.setFEN(c.fen);
+    const engNodes = e.pos.perft(d);
+    check(refNodes === engNodes, `perft count mismatch d=${d} ref=${refNodes} eng=${engNodes} fen=${c.fen}`);
+    perftNodes += refNodes;
+  }
+}
+
 if (failures) {
-  console.error(`MOVEGEN_ORACLE FAIL: ${failures} failures, ${total} positions`);
+  console.error(`MOVEGEN_ORACLE FAIL: ${failures} failures, ${total} position checks, ${perftNodes} perft nodes`);
   process.exit(1);
 }
-console.log(`MOVEGEN_ORACLE OK: ${total} positions checked`);
+console.log(`MOVEGEN_ORACLE OK: ${total} position checks, ${perftNodes} perft nodes cross-checked`);
