@@ -189,8 +189,6 @@ function legalByOracle(pos) {
 
 function keySet(moves) { return new Set(moves.map(m => moveToUci(m))); }
 
-let seed = 20261127;
-const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
 const e = new Engine();
 
 const positions = [
@@ -200,6 +198,19 @@ const positions = [
   'r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1',
   'rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8',
   'r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10',
+  // EP pin / legality edge cases
+  '8/8/8/2k5/3Pp3/8/8/4K3 b - d3 0 1',
+  '8/8/3p4/1Pp4r/1K5k/8/4P1P1/8 w - c6 0 2',
+  '4k3/8/8/8/5pP1/8/8/4K3 b - g3 0 1',
+  // castling/check-through cases
+  'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1',
+  'r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1',
+  'r3k2r/8/8/8/8/8/4r3/R3K2R w KQkq - 0 1',
+  'r3k2r/8/8/8/8/8/5r2/R3K2R w KQkq - 0 1',
+  // promotions/check evasions
+  '8/P7/8/8/8/8/k6p/7K w - - 0 1',
+  'n1n5/PPPk4/8/8/8/8/4Kppp/5N1N b - - 0 1',
+  'rnbqkbnr/ppp1p1pp/8/3pPp2/8/8/PPPP1PPP/RNBQKBNR w KQkq f6 0 3',
 ];
 
 let total = 0;
@@ -214,20 +225,24 @@ for (const fen of positions) {
   total++;
 }
 
-for (let g=0; g<80; g++) {
-  e.setFEN('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
-  const pos = e.pos;
-  for (let ply=0; ply<120; ply++) {
-    const engMoves = pos.legalMoves();
-    if (!engMoves.length) break;
-    const eng = keySet(engMoves);
-    const ref = keySet(legalByOracle(pos));
-    for (const m of ref) check(eng.has(m), `missing in engine: ${m} ply=${ply} fen=${pos.fen()}`);
-    for (const m of eng) check(ref.has(m), `extra in engine: ${m} ply=${ply} fen=${pos.fen()}`);
-    check(eng.size===ref.size, `size mismatch ${eng.size} vs ${ref.size} ply=${ply} fen=${pos.fen()}`);
-    total++;
-    const m = engMoves[rnd(engMoves.length)];
-    pos.pushRep(); pos.makeMove(m);
+for (const seed0 of [20261127, 20261128, 20261129]) {
+  let seed = seed0;
+  const rnd = (n) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
+  for (let g=0; g<60; g++) {
+    e.setFEN('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
+    const pos = e.pos;
+    for (let ply=0; ply<120; ply++) {
+      const engMoves = pos.legalMoves();
+      if (!engMoves.length) break;
+      const eng = keySet(engMoves);
+      const ref = keySet(legalByOracle(pos));
+      for (const m of ref) check(eng.has(m), `missing in engine: ${m} seed=${seed0} ply=${ply} fen=${pos.fen()}`);
+      for (const m of eng) check(ref.has(m), `extra in engine: ${m} seed=${seed0} ply=${ply} fen=${pos.fen()}`);
+      check(eng.size===ref.size, `size mismatch ${eng.size} vs ${ref.size} seed=${seed0} ply=${ply} fen=${pos.fen()}`);
+      total++;
+      const m = engMoves[rnd(engMoves.length)];
+      pos.pushRep(); pos.makeMove(m);
+    }
   }
 }
 

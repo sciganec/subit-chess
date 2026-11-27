@@ -22,7 +22,7 @@
 |---|---:|---|
 | `node tests/core.perft.mjs` | PASS | Core perft suite reported `CORE OK`. |
 | `node tests/engine.conformance.mjs` | PASS | `832100 passed, 0 failed (5934 positions, 759552 isAttacked, 23346 SEE)`. |
-| `node tests/engine.movegen_oracle.mjs` | PASS | Independent pseudo-legal generation oracle (not using `Position.generateMoves`); `9358 positions checked`. Progress on R-02/R-15; not exhaustive proof. |
+| `node tests/engine.movegen_oracle.mjs` | PASS | Independent pseudo-legal generation oracle (not using `Position.generateMoves`); `21200 positions checked` (selected edge-case FENs + 3 deterministic seeds x 60 playouts). Wired into `test:engine`/`test`. Progress on R-02/R-15; not exhaustive proof. |
 | `node tests/engine.field.mjs` | PASS | `All Field Dynamics checks passed.` |
 | `node tests/engine.smp.mjs` | PASS | `smp: 18 passed, 0 failed`. |
 | `node tests/engine.audit311.mjs` | PASS | `AUDIT311: ALL CHECKS PASSED (20 checks)`. |
@@ -33,7 +33,7 @@
 ## Open audit gates / risks (not closed)
 
 - **Release integrity:** no reproducible build manifest/proof beyond recorded hashes; no CI status checks attached by this snapshot.
-- **Independent move oracle:** `tests/engine.movegen_oracle.mjs` adds an independent pseudo-legal completeness oracle (8x8/from-scratch, independent king-safety) and passed on 9358 random/selected positions. This reduces R-02/R-15 risk but is **not exhaustive proof**; broader seeded/FEN-corpus coverage still needed.
+- **Independent move oracle:** `tests/engine.movegen_oracle.mjs` adds an independent pseudo-legal completeness oracle (8x8/from-scratch, independent king-safety), now wired into `test:engine`/`test`, and passed on 21200 selected/random positions. This reduces R-02/R-15 risk but is **not exhaustive proof**; broader seeded/FEN-corpus and exhaustive small-depth cross-checks still needed.
 - **Search correctness under selective pruning:** futility/NMP/LMR/qsearch need targeted tactical regression coverage on current HEAD before behavior changes.
 - **SMP concurrency:** basic SMP tests pass; long-run shared TT stress/cancellation/race audit remains open.
 - **Field Dynamics:** mathematical/invariant tests pass; **no proven chess-strength contribution by default**. Default-off FD eval weights remain 0 unless CI-cleared evidence supports change.

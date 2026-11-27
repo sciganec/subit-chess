@@ -26,6 +26,8 @@ Consolidation of two lines that diverged at f3029ca: the release line `main` (v3
 - `main`'s A/B notes in [3.0.16.0] were measured with its own code and are kept as history; they do not apply to the strength line's defaults.
 - Second sync with `main` (up to 9ff36af): `main` kept adding default-off search experiments (`improving`, `razoring`, `historyPruning`, its own `iir`) and their A/B notes. Not ported: all are off by default and measured only on `main`'s code; the strength line already has `iir` (own implementation, measured no effect) and `rfp` (default on). Their CHANGELOG entries are kept as history. Port them only together with an A/B on this line.
 
+- **Audit/verification (R-02/R-15 progress, no strength claim):** Added `tests/engine.movegen_oracle.mjs` — independent 8x8 pseudo-legal move generation + independent king-safety filter, compared against engine legal move sets (selected edge-case FENs including EP/castling/promotions/check evasions + 3 deterministic seeds x 60 random playouts). **21200 positions checked, PASS**. Wired into `test:engine` and `test`. Reduces move-completeness oracle risk but is **not exhaustive proof**. Added `docs/VERIFICATION_SNAPSHOT_v3.0.17.md` (not certified).
+
 ## [3.0.16.0] - 2026-11-26
 
 Formalized release snapshot. Search/perf/measurement hardening, behavior-preserving micro-opts, and default-off search/pruning hooks with strict no-cycle A/B evidence. **No Elo gain has been established; no external strength claim.** CI spans 0 on all reported A/Bs; defaults unchanged unless explicitly noted.
