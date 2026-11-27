@@ -28,7 +28,7 @@
 | `node tests/engine.smp_stress.mjs` | PASS | Bounded smoke: repeated search/stop/start cycles, 1/2 helpers, `68 passed, 0 failed`. Not a long-run concurrency proof. |
 | `node tests/engine.audit311.mjs` | PASS | `AUDIT311: ALL CHECKS PASSED (20 checks)`. |
 | `node tests/engine.search_regressions.mjs` | PASS | Targeted R-04/R-05 regressions: qsearch in-check no stand-pat, promotion/EP capture in qsearch, futility mate regression, NMP pawn-only guard. |
-| `npm run test:engine` | PASS | Verified on current HEAD during v3.0.16.x dev cycle. |
+| `npm run test:engine` | PASS | Executed on current audit HEAD (includes `engine.movegen_oracle`, `engine.search_regressions`, `engine.smp_stress`); completed with all engine suites passing in this run. |
 | `node src/engine/index.mjs bench` | PASS/recorded | Current HEAD baseline: `d6=9565/8/b1c3, d7=19319/28/d2d4, d8=81246/17/d2d4, total 110130`. |
 | `node bench/gauntlet_strength.mjs` | **11/12 PASS, 1 FAIL** | Known pre-existing fail on HEAD: `horizon c3c2 blunder (SF19 g8, d4 guard): got=a8c8 expect=!c3c2 score=192.75 d=4`. Not caused by recent default-off UCI exposure commits; verify before any strength claim. |
 
