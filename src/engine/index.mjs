@@ -510,6 +510,7 @@ async function runUci() {
       send('option name Eval.FDPinDiscount type spin default 0 min 0 max 20');
       send('option name Eval.KingZone type spin default 0 min 0 max 50');
       send('option name Eval.KingAttack type spin default 0 min 0 max 50');
+      send('option name Eval.PassedKing type spin default 0 min 0 max 30');
       send('option name NMP.Reduction type spin default 3 min 1 max 6');
       send('option name NMP.MaxReduction type spin default 4 min 1 max 6');
       send('option name NMP.MinDepth type spin default 2 min 1 max 8');
@@ -565,6 +566,7 @@ async function runUci() {
         else if (name === 'eval.fdpindiscount' || name === 'fdpindiscount') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdPinDiscount = Math.max(0, Math.min(20, n)); }
         else if (name === 'eval.kingzone' || name === 'kingzone') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.kingZone = Math.max(0, Math.min(50, n)); }
         else if (name === 'eval.kingattack' || name === 'kingattack') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.kingAttack = Math.max(0, Math.min(50, n)); }
+        else if (name === 'eval.passedking' || name === 'passedking') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.passedKing = Math.max(0, Math.min(30, n)); }
         else if (name === 'threads') {
           const n = Math.max(1, Math.min(64, Number(value) | 0 || 1));
           if (engine.pool) { engine.pool.close(); engine.pool = null; engine.reset(); }
