@@ -26,8 +26,10 @@ Statuses:
 - Two intermediate versions were worse and are kept as notes: a win score of 1500+30·rank (no gradient) made the engine shuffle the king (7 of 30 won positions not converted); a win score of 3000−20·distance made it **prefer staying in K+P to promoting** (the position with a new queen scores about 900), 17/30 converted. The final scale stays below the promoted-queen score.
 - With `eval.kpk` off the engine is unchanged (same moves, scores and nodes on the 5-position parity set).
 
-### Not measured
-- Effect in ordinary games: K+P vs K arises rarely from opening positions, so no Elo claim is made; the option stays off until a match over many games shows no loss.
+### Ordinary games (A/B, `kpk` vs `base`, openings suite, depth 5, 300-ply cap)
+- 3 runs of 106 games (seed 1 in suite order; seeds 2 and 3 with `--variety`): 36W 24D 46L, 38W 24D 44L, 39W 23D 44L. Pooled 318 games: 113W 71D 134L, 46.7% ±4.8, −23 Elo [−57; +11]. Not significant, but no sign of a gain and a lean to the negative; the runs reuse the same 53 openings, so they are not independent.
+- Only 2 of the first 106 games actually reached K+P vs K on the board; the difference comes from the search seeing K+P vs K leaves in pawn endings (a leaf scored 500..970 or 0 where the plain eval gave a few hundred). Cause of the lean not diagnosed.
+- Decision: `eval.kpk` stays **off**. The bitbase is exact and useful for endgame work (and for a future tablebase-style probe at the root only), but as a leaf eval it has no measured benefit in normal play.
 
 ### Rejected (measured or analysed this session; no code)
 - Graph/spectral analyzer (SSA-01, Ihara zeta): on 1000 positions the depth-3 transposition graph adds +0.14 CV R² to a baseline for the cost of an alpha-beta search (log nodes at depth 6, R² 0.24 vs 0.09) but nothing for move stability or score change (R² 0–0.03); the spectral radius of the finite-horizon graph is identically 0 (nilpotent adjacency). Not built.
