@@ -25,6 +25,7 @@ import { Percept } from './percept.mjs';
 import { Structure } from './structure.mjs';
 import { computeContext } from './context.mjs';
 import { buildFieldDynamics } from './field.mjs';
+import { kpkDist } from './kpk.mjs';
 
 /* ------------------------------------------------------------------ *
  * Parameter set θ  (all values are centipawn-scaled and tunable)
@@ -73,6 +74,7 @@ export const DEFAULT_PARAMS = {
     fdPressure: 0,                             // FD-inspired king-zone pressure from buildFieldDynamics (structural tier); default off
     passedProtected: 0,
     passedKing: 0,
+    kpk: false,              // exact K+P vs K result from the bitbase (src/engine/kpk.mjs); off until A/B-tested
     rookSemiOpen: 7,
     kingShield: 10,
     kingShieldEndgame: 0.25,                   // shield matters less in the endgame
@@ -301,6 +303,34 @@ function tables(params) {
  *      rook files, king shield. No percept is built here: this runs at every
  *      leaf, so it must stay O(pieces) with no allocation.
  */
+// A certified win is scored below the position after promotion (a queen ahead is ~900+), otherwise the search
+// prefers to stay in K+P vs K instead of promoting. The score rises by 12 per level as the win gets closer.
+const KPK_BASE = 500, KPK_STEP = 12, KPK_LEVELS = 40;
+// Exact K+P vs K: the side-to-move score, or null when the material is something else.
+function kpkScore(pos) {
+  let pawnColor = -1, pawnSq = -1;
+  const kings = [-1, -1];
+  for (let c = 0; c < 2; c++) {
+    const list = pos.listSq[c];
+    for (let i = 0; i < pos.listCnt[c]; i++) {
+      const sq = list[i], t = pos.board[sq] & 7;
+      if (t === KING) kings[c] = sq;
+      else if (t === PAWN) { pawnColor = c; pawnSq = sq; }
+      else return null;
+    }
+  }
+  if (pawnColor < 0 || kings[0] < 0 || kings[1] < 0) return null;
+  const to64 = (sq) => ((7 - (sq >> 4)) << 3) | (sq & 7);           // white's view: rank 1 = row 0
+  const mir = (n) => (n ^ 56);                                        // flip ranks for a black pawn
+  let wk = to64(kings[pawnColor]), bk = to64(kings[pawnColor ^ 1]), p = to64(pawnSq);
+  if (pawnColor === BLACK) { wk = mir(wk); bk = mir(bk); p = mir(p); }
+  const stm = pos.turn === pawnColor ? 0 : 1;
+  const d = kpkDist(wk, bk, p, stm);
+  if (d === 0) return 0;
+  const v = KPK_BASE + KPK_STEP * (KPK_LEVELS - d);
+  return pos.turn === pawnColor ? v : -v;
+}
+
 export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const T = tables(params);
   const cfg = params.eval || {};
@@ -327,6 +357,10 @@ export function evaluateFast(pos, params = DEFAULT_PARAMS) {
   const flatEnd = T.flatEnd;
   pos.refreshPieces();
   const stmSign = pos.turn === WHITE ? 1 : -1;
+  if (cfg.kpk && pos.listCnt[0] + pos.listCnt[1] === 3) {
+    const k = kpkScore(pos);
+    if (k !== null) return k;
+  }
   const b = pos.board;
 
   let mid = 0;

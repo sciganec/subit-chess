@@ -505,6 +505,7 @@ async function runUci() {
       send('option name Hash type spin default 64 min 1 max 1024');
       send('option name TT.MaxAge type spin default 0 min 0 max 10');
       send('option name Threads type spin default 1 min 1 max 64');
+      send('option name Eval.KPK type check default false');
       send('option name Eval.FDPressure type spin default 0 min 0 max 20');
       send('option name Eval.FDAttackWeight type spin default 0 min 0 max 20');
       send('option name Eval.FDPinDiscount type spin default 0 min 0 max 20');
@@ -558,6 +559,7 @@ async function runUci() {
         else if (name === 'lmp' || name === 'lmp.enabled') { if (on||off) engine.params.search.lmp.enabled = on; }
         else if (name === 'lmp.maxdepth') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmp.maxDepth = Math.max(1, Math.min(6, n|0)); }
         else if (name === 'lmp.base') { const n = Number(value); if (Number.isFinite(n)) engine.params.search.lmp.base = Math.max(1, Math.min(20, n|0)); }
+        else if (name === 'eval.kpk' || name === 'kpk') engine.params.eval.kpk = String(value).toLowerCase() === 'true';
         else if (name === 'eval.fdpressure' || name === 'fdpressure') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdPressure = Math.max(0, Math.min(20, n)); }
         else if (name === 'eval.fdattackweight' || name === 'fdattackweight') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdAttackWeight = Math.max(0, Math.min(20, n)); }
         else if (name === 'eval.fdpindiscount' || name === 'fdpindiscount') { const n = Number(value); if (Number.isFinite(n)) engine.params.eval.fdPinDiscount = Math.max(0, Math.min(20, n)); }

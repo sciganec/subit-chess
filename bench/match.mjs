@@ -157,6 +157,7 @@ export const CONFIGS = {
   lmrdepth2: { label: 'LMR from depth 2', params: { search: { lmr: { minDepth: 2 } } }, opts: {} },
   cmove: { label: 'countermove ordering', params: { search: { countermove: { enabled: true } } }, opts: {} },
   outp: { label: 'knight outpost 20', params: { eval: { outpost: 20 } }, opts: {} },
+  kpk: { label: 'exact K+P vs K from the bitbase', params: { eval: { kpk: true } }, opts: {} },
   outp35: { label: 'knight outpost 35', params: { eval: { outpost: 35 } }, opts: {} },
   outp50: { label: 'knight outpost 50', params: { eval: { outpost: 50 } }, opts: {} },
   outpb: { label: 'bishop outpost 20', params: { eval: { outpostBishop: 20 } }, opts: {} },

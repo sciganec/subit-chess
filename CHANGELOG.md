@@ -13,6 +13,28 @@ Statuses:
 
 ---
 
+## [Unreleased] — KPK bitbase (default off)
+
+### Added
+- `src/engine/kpk.mjs`: exact K+P vs K result, computed at first use (about 0.4 s, no external data) by a level-synchronous fix-point over all 2·64·64·48 placements; also gives the distance to the win (max 39 levels). 222 558 won placements; the table is symmetric under the file mirror.
+- `eval.kpk` (default **false**; UCI `Eval.KPK`; match config `kpk`): when the material is exactly K+P vs K the static eval returns 0 for a draw and `500 + 12·(40 − distance)` for a win, side-to-move relative.
+- `tests/engine.kpk.mjs` (in `npm test`): mirror symmetry, known theory (opposition, rook pawn), agreement with the core's legal-move rules on a deterministic sample, eval hook, colour symmetry.
+
+### Measured
+- Full independent check (scratch script, not in the suite): the table agrees with the core's own move generator on all 331 352 legal placements (0 mismatches): white to move wins iff some legal move reaches a won position or a queen promotion that is neither captured nor stalemate; black to move wins iff it is mated or every legal move reaches a won position and none captures the pawn.
+- Play test, 60 K+P vs K positions (30 won, 30 drawn by the table), depth 8, 160-ply cap, 120 games with colour swap, `kpk` vs `base`: as the pawn side `kpk` converts **30/30** won positions (`base` 26/30, 4 not converted in the cap); as the lone king `kpk` holds all 30 drawn positions and `base` once lost a drawn one. Overall 52.1% ±6.2 (31W 63D 26L): not significant overall because most positions are decided by the table, not by search; the per-class counts are the result that matters. Conversion is slower (34.5 vs 23.5 plies on the won games converted by both).
+- Two intermediate versions were worse and are kept as notes: a win score of 1500+30·rank (no gradient) made the engine shuffle the king (7 of 30 won positions not converted); a win score of 3000−20·distance made it **prefer staying in K+P to promoting** (the position with a new queen scores about 900), 17/30 converted. The final scale stays below the promoted-queen score.
+- With `eval.kpk` off the engine is unchanged (same moves, scores and nodes on the 5-position parity set).
+
+### Not measured
+- Effect in ordinary games: K+P vs K arises rarely from opening positions, so no Elo claim is made; the option stays off until a match over many games shows no loss.
+
+### Rejected (measured or analysed this session; no code)
+- Graph/spectral analyzer (SSA-01, Ihara zeta): on 1000 positions the depth-3 transposition graph adds +0.14 CV R² to a baseline for the cost of an alpha-beta search (log nodes at depth 6, R² 0.24 vs 0.09) but nothing for move stability or score change (R² 0–0.03); the spectral radius of the finite-horizon graph is identically 0 (nilpotent adjacency). Not built.
+- SCL / relation algebra / structural state-space reduction specs: overlap with `structure.mjs`, `percept.mjs`, `explain.mjs`, `belnap.mjs`; no measurable-gain hypothesis. Not built. KPK was the only directly usable part.
+
+---
+
 ## [3.0.17] — 2026-11-26 (consolidation, candidate)
 
 Consolidation of two lines that diverged at f3029ca: the release line `main` (v3.0.16.0: field dynamics, perf micro-opts, default-off hooks) and the strength line (`v3.0.16` branch, listed below as [3.0.16 strength line]). Engine files `search.mjs`, `core.mjs`, `evaluate.mjs`, `index.mjs` come from the strength line (its measured gain, +49 Elo at 400 ms/move vs 8bdc3f4, applies to them); from `main` were taken `field.mjs` and the FD hooks (`eval.fdAttackWeight`, `fdPinDiscount`, `fdPressure`, `pos.attackWeight`; all default off). See the entry [3.0.17 merge notes] for what was not ported.
